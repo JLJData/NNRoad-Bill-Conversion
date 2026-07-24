@@ -1,0 +1,58 @@
+eet unsupport
+        } else if (vertical == "top") {
+          cellValue.vt = 1;
+        } else {
+          cellValue.vt = 1;
+        }
+      }
+
+      if (wrapText != undefined) {
+        if (wrapText == "1") {
+          cellValue.tb = 2;
+        } else {
+          cellValue.tb = 1;
+        }
+      } else {
+        cellValue.tb = 1;
+      }
+
+      if (textRotation != undefined) {
+        // tr: number | undefined //Text rotation,0: 0、1: 45 、2: -45、3 Vertical text、4: 90 、5: -90, alignment
+        if (textRotation == "255") {
+          cellValue.tr = 3;
+        } // else if(textRotation=="45"){
+        //     cellValue.tr = 1;
+        // }
+        // else if(textRotation=="90"){
+        //     cellValue.tr = 4;
+        // }
+        // else if(textRotation=="135"){
+        //     cellValue.tr = 2;
+        // }
+        // else if(textRotation=="180"){
+        //     cellValue.tr = 5;
+        // }
+        else {
+            cellValue.tr = 0;
+            cellValue.rt = parseInt(textRotation);
+          }
+      }
+
+      if (shrinkToFit != undefined) {//luckysheet unsupport
+      }
+
+      if (indent != undefined) {//luckysheet unsupport
+      }
+
+      if (borderId != undefined) {
+        var borderIdNum = parseInt(borderId);
+        var border = borders[borderIdNum]; // this._borderId = borderIdNum;
+
+        var borderObject = new LuckyBase_1.LuckySheetborderInfoCellForImp();
+        borderObject.rangeType = "cell"; // borderObject.cells = [];
+
+        var borderCellValue = new LuckyBase_1.LuckySheetborderInfoCellValue();
+        borderCellValue.row_index = this.r;
+        borderCellValue.col_index = this.c;
+        var lefts = border.getInnerElements("left");
+        var rights

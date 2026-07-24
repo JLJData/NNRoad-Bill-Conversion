@@ -1,0 +1,394 @@
+LuckySheetCelldata.prototype.generateValue = function (s, t) {
+    var _this = this;
+
+    var v = this.cell.getInnerElements("v");
+    var f = this.cell.getInnerElements("f");
+
+    if (v == null) {
+      v = this.cell.getInnerElements("t");
+    }
+
+    var cellXfs = this.styles["cellXfs"];
+    var cellStyleXfs = this.styles["cellStyleXfs"];
+    var cellStyles = this.styles["cellStyles"];
+    var fonts = this.styles["fonts"];
+    var fills = this.styles["fills"];
+    var borders = this.styles["borders"];
+    var numfmts = this.styles["numfmts"];
+    var clrScheme = this.styles["clrScheme"];
+    var sharedStrings = this.sharedStrings;
+    var cellValue = new LuckyBase_1.LuckySheetCelldataValue();
+
+    if (f != null) {
+      var formula = f[0],
+          attrList = formula.attributeList;
+      var t_1 = attrList.t,
+          ref = attrList.ref,
+          si = attrList.si;
+      var formulaValue = f[0].value;
+
+      if (t_1 == "shared") {
+        this._fomulaRef = ref;
+        this._formulaType = t_1;
+        this._formulaSi = si;
+      } // console.log(ref, t, si);
+
+
+      if (ref != null || formulaValue != null && formulaValue.length > 0) {
+        formulaValue = method_1.escapeCharacter(formulaValue);
+        cellValue.f = "=" + formulaValue;
+      }
+    }
+
+    var familyFont = null;
+    var quotePrefix;
+
+    if (s != null) {
+      var sNum = parseInt(s);
+      var cellXf = cellXfs[sNum];
+      var xfId = cellXf.attributeList.xfId;
+      var numFmtId = void 0,
+          fontId = void 0,
+          fillId = void 0,
+          borderId = void 0;
+      var horizontal = void 0,
+          vertical = void 0,
+          wrapText = void 0,
+          textRotation = void 0,
+          shrinkToFit = void 0,
+          indent = void 0,
+          applyProtection = void 0;
+
+      if (xfId != null) {
+        var cellStyleXf = cellStyleXfs[parseInt(xfId)];
+        var attrList = cellStyleXf.attributeList;
+        var applyNumberFormat_1 = attrList.applyNumberFormat;
+        var applyFont_1 = attrList.applyFont;
+        var applyFill_1 = attrList.applyFill;
+        var applyBorder_1 = attrList.applyBorder;
+        var applyAlignment_1 = attrList.applyAlignment; // let applyProtection = attrList.applyProtection;
+
+        applyProtection = attrList.applyProtection;
+        quotePrefix = attrList.quotePrefix;
+
+        if (applyNumberFormat_1 != "0" && attrList.numFmtId != null) {
+          // if(attrList.numFmtId!="0"){
+          numFmtId = attrList.numFmtId; // }
+        }
+
+        if (applyFont_1 != "0" && attrList.fontId != null) {
+          fontId = attrList.fontId;
+        }
+
+        if (applyFill_1 != "0" && attrList.fillId != null) {
+          fillId = attrList.fillId;
+        }
+
+        if (applyBorder_1 != "0" && attrList.borderId != null) {
+          borderId = attrList.borderId;
+        }
+
+        if (applyAlignment_1 != null && applyAlignment_1 != "0") {
+          var alignment = cellStyleXf.getInnerElements("alignment");
+
+          if (alignment != null) {
+            var attrList_1 = alignment[0].attributeList;
+
+            if (attrList_1.horizontal != null) {
+              horizontal = attrList_1.horizontal;
+            }
+
+            if (attrList_1.vertical != null) {
+              vertical = attrList_1.vertical;
+            }
+
+            if (attrList_1.wrapText != null) {
+              wrapText = attrList_1.wrapText;
+            }
+
+            if (attrList_1.textRotation != null) {
+              textRotation = attrList_1.textRotation;
+            }
+
+            if (attrList_1.shrinkToFit != null) {
+              shrinkToFit = attrList_1.shrinkToFit;
+            }
+
+            if (attrList_1.indent != null) {
+              indent = attrList_1.indent;
+            }
+          }
+        }
+      }
+
+      var applyNumberFormat = cellXf.attributeList.applyNumberFormat;
+      var applyFont = cellXf.attributeList.applyFont;
+      var applyFill = cellXf.attributeList.applyFill;
+      var applyBorder = cellXf.attributeList.applyBorder;
+      var applyAlignment = cellXf.attributeList.applyAlignment;
+
+      if (cellXf.attributeList.applyProtection != null) {
+        applyProtection = cellXf.attributeList.applyProtection;
+      }
+
+      if (cellXf.attributeList.quotePrefix != null) {
+        quotePrefix = cellXf.attributeList.quotePrefix;
+      }
+
+      if (applyNumberFormat != "0" && cellXf.attributeList.numFmtId != null) {
+        numFmtId = cellXf.attributeList.numFmtId;
+      }
+
+      if (applyFont != "0") {
+        fontId = cellXf.attributeList.fontId;
+      }
+
+      if (applyFill != "0") {
+        fillId = cellXf.attributeList.fillId;
+      }
+
+      if (applyBorder != "0") {
+        borderId = cellXf.attributeList.borderId;
+      }
+
+      if (applyAlignment != "0") {
+        var alignment = cellXf.getInnerElements("alignment");
+
+        if (alignment != null && alignment.length > 0) {
+          var attrList = alignment[0].attributeList;
+
+          if (attrList.horizontal != null) {
+            horizontal = attrList.horizontal;
+          }
+
+          if (attrList.vertical != null) {
+            vertical = attrList.vertical;
+          }
+
+          if (attrList.wrapText != null) {
+            wrapText = attrList.wrapText;
+          }
+
+          if (attrList.textRotation != null) {
+            textRotation = attrList.textRotation;
+          }
+
+          if (attrList.shrinkToFit != null) {
+            shrinkToFit = attrList.shrinkToFit;
+          }
+
+          if (attrList.indent != null) {
+            indent = attrList.indent;
+          }
+        }
+      }
+
+      if (numFmtId != undefined) {
+        var numf = numfmts[parseInt(numFmtId)];
+        var cellFormat = new LuckyBase_1.LuckySheetCellFormat();
+        cellFormat.fa = method_1.escapeCharacter(numf); // console.log(numf, numFmtId, this.v);
+
+        cellFormat.t = t;
+        cellValue.ct = cellFormat;
+      }
+
+      if (fillId != undefined) {
+        var fillIdNum = parseInt(fillId);
+        var fill = fills[fillIdNum]; // console.log(cellValue.v);
+
+        var bg = this.getBackgroundByFill(fill, clrScheme);
+
+        if (bg != null) {
+          cellValue.bg = bg;
+        }
+      }
+
+      if (fontId != undefined) {
+        var fontIdNum = parseInt(fontId);
+        var font = fonts[fontIdNum];
+
+        if (font != null) {
+          var sz = font.getInnerElements("sz"); //font size
+
+          var colors = font.getInnerElements("color"); //font color
+
+          var family = font.getInnerElements("name"); //font family
+
+          var familyOverrides = font.getInnerElements("family"); //font family will be overrided by name
+
+          var charset = font.getInnerElements("charset"); //font charset
+
+          var bolds = font.getInnerElements("b"); //font bold
+
+          var italics = font.getInnerElements("i"); //font italic
+
+          var strikes = font.getInnerElements("strike"); //font italic
+
+          var underlines = font.getInnerElements("u"); //font italic
+
+          if (sz != null && sz.length > 0) {
+            var fs = sz[0].attributeList.val;
+
+            if (fs != null) {
+              cellValue.fs = parseInt(fs);
+            }
+          }
+
+          if (colors != null && colors.length > 0) {
+            var color = colors[0];
+            var fc = ReadXml_1.getColor(color, this.styles, "t");
+
+            if (fc != null) {
+              cellValue.fc = fc;
+            }
+          }
+
+          if (familyOverrides != null && familyOverrides.length > 0) {
+            var val = familyOverrides[0].attributeList.val;
+
+            if (val != null) {
+              familyFont = constant_1.fontFamilys[val];
+            }
+          }
+
+          if (family != null && family.length > 0) {
+            var val = family[0].attributeList.val;
+
+            if (val != null) {
+              cellValue.ff = val;
+            }
+          }
+
+          if (bolds != null && bolds.length > 0) {
+            var bold = bolds[0].attributeList.val;
+
+            if (bold == "0") {
+              cellValue.bl = 0;
+            } else {
+              cellValue.bl = 1;
+            }
+          }
+
+          if (italics != null && italics.length > 0) {
+            var italic = italics[0].attributeList.val;
+
+            if (italic == "0") {
+              cellValue.it = 0;
+            } else {
+              cellValue.it = 1;
+            }
+          }
+
+          if (strikes != null && strikes.length > 0) {
+            var strike = strikes[0].attributeList.val;
+
+            if (strike == "0") {
+              cellValue.cl = 0;
+            } else {
+              cellValue.cl = 1;
+            }
+          }
+
+          if (underlines != null && underlines.length > 0) {
+            var underline = underlines[0].attributeList.val;
+
+            if (underline == "single") {
+              cellValue.un = 1;
+            } else if (underline == "double") {
+              cellValue.un = 2;
+            } else if (underline == "singleAccounting") {
+              cellValue.un = 3;
+            } else if (underline == "doubleAccounting") {
+              cellValue.un = 4;
+            } else {
+              cellValue.un = 0;
+            }
+          }
+        }
+      } // vt: number | undefined//Vertical alignment, 0 middle, 1 up, 2 down, alignment
+      // ht: number | undefined//Horizontal alignment,0 center, 1 left, 2 right, alignment
+      // tr: number | undefined //Text rotation,0: 0、1: 45 、2: -45、3 Vertical text、4: 90 、5: -90, alignment
+      // tb: number | undefined //Text wrap,0 truncation, 1 overflow, 2 word wrap, alignment
+
+
+      if (horizontal != undefined) {
+        //Horizontal alignment
+        if (horizontal == "center") {
+          cellValue.ht = 0;
+        } else if (horizontal == "centerContinuous") {
+          cellValue.ht = 0; //luckysheet unsupport
+        } else if (horizontal == "left") {
+          cellValue.ht = 1;
+        } else if (horizontal == "right") {
+          cellValue.ht = 2;
+        } else if (horizontal == "distributed") {
+          cellValue.ht = 0; //luckysheet unsupport
+        } else if (horizontal == "fill") {
+          cellValue.ht = 1; //luckysheet unsupport
+        } else if (horizontal == "general") {
+          cellValue.ht = 1; //luckysheet unsupport
+        } else if (horizontal == "justify") {
+          cellValue.ht = 0; //luckysheet unsupport
+        } else {
+          cellValue.ht = 1;
+        }
+      }
+
+      if (vertical != undefined) {
+        //Vertical alignment
+        if (vertical == "bottom") {
+          cellValue.vt = 2;
+        } else if (vertical == "center") {
+          cellValue.vt = 0;
+        } else if (vertical == "distributed") {
+          cellValue.vt = 0; //luckysheet unsupport
+        } else if (vertical == "justify") {
+          cellValue.vt = 0; //luckysheet unsupport
+        } else if (vertical == "top") {
+          cellValue.vt = 1;
+        } else {
+          cellValue.vt = 1;
+        }
+      }
+
+      if (wrapText != undefined) {
+        if (wrapText == "1") {
+          cellValue.tb = 2;
+        } else {
+          cellValue.tb = 1;
+        }
+      } else {
+        cellValue.tb = 1;
+      }
+
+      if (textRotation != undefined) {
+        // tr: number | undefined //Text rotation,0: 0、1: 45 、2: -45、3 Vertical text、4: 90 、5: -90, alignment
+        if (textRotation == "255") {
+          cellValue.tr = 3;
+        } // else if(textRotation=="45"){
+        //     cellValue.tr = 1;
+        // }
+        // else if(textRotation=="90"){
+        //     cellValue.tr = 4;
+        // }
+        // else if(textRotation=="135"){
+        //     cellValue.tr = 2;
+        // }
+        // else if(textRotation=="180"){
+        //     cellValue.tr = 5;
+        // }
+        else {
+            cellValue.tr = 0;
+            cellValue.rt = parseInt(textRotation);
+          }
+      }
+
+      if (shrinkToFit != undefined) {//luckysheet unsupport
+      }
+
+      if (indent != undefined) {//luckysheet unsupport
+      }
+
+      if (borderId != undefined) {
+        var borderIdNum = parseInt(borderId);
+        var border = borders[borderIdNum]; // this._borde

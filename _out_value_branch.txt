@@ -1,0 +1,140 @@
+ue.b = bottom;
+          isAdd = true;
+        }
+
+        if (isAdd) {
+          borderObject.value = borderCellValue; // this.config._borderInfo[borderId] = borderObject;
+
+          this._borderObject = borderObject;
+        }
+      }
+    } else {
+      cellValue.tb = 1;
+    }
+
+    if (v != null) {
+      var value = v[0].value;
+
+      if (/&#\d+;/.test(value)) {
+        value = this.htmlDecode(value);
+      }
+
+      if (t == constant_1.ST_CellType["SharedString"]) {
+        var siIndex = parseInt(v[0].value);
+        var sharedSI = sharedStrings[siIndex];
+        var rFlag = sharedSI.getInnerElements("r");
+
+        if (rFlag == null) {
+          var tFlag = sharedSI.getInnerElements("t");
+
+          if (tFlag != null) {
+            var text_1 = "";
+            tFlag.forEach(function (t) {
+              text_1 += t.value;
+            });
+            text_1 = method_1.escapeCharacter(text_1); //isContainMultiType(text) &&
+
+            if (familyFont == "Roman" && text_1.length > 0) {
+              var textArray = text_1.split("");
+              var preWordType = null,
+                  wordText = "",
+                  preWholef = null;
+              var wholef = "Times New Roman";
+
+              if (cellValue.ff != null) {
+                wholef = cellValue.ff;
+              }
+
+              var cellFormat = cellValue.ct;
+
+              if (cellFormat == null) {
+                cellFormat = new LuckyBase_1.LuckySheetCellFormat();
+              }
+
+              if (cellFormat.s == null) {
+                cellFormat.s = [];
+              }
+
+              for (var i = 0; i < textArray.length; i++) {
+                var w = textArray[i];
+                var type = null,
+                    ff = wholef;
+
+                if (method_1.isChinese(w)) {
+                  type = "c";
+                  ff = "宋体";
+                } else if (method_1.isJapanese(w)) {
+                  type = "j";
+                  ff = "Yu Gothic";
+                } else if (method_1.isKoera(w)) {
+                  type = "k";
+                  ff = "Malgun Gothic";
+                } else {
+                  type = "e";
+                }
+
+                if (type != preWordType && preWordType != null || i == textArray.length - 1) {
+                  var InlineString = new LuckyBase_1.LuckyInlineString();
+                  InlineString.ff = preWholef;
+
+                  if (cellValue.fc != null) {
+                    InlineString.fc = cellValue.fc;
+                  }
+
+                  if (cellValue.fs != null) {
+                    InlineString.fs = cellValue.fs;
+                  }
+
+                  if (cellValue.cl != null) {
+                    InlineString.cl = cellValue.cl;
+                  }
+
+                  if (cellValue.un != null) {
+                    InlineString.un = cellValue.un;
+                  }
+
+                  if (cellValue.bl != null) {
+                    InlineString.bl = cellValue.bl;
+                  }
+
+                  if (cellValue.it != null) {
+                    InlineString.it = cellValue.it;
+                  }
+
+                  if (i == textArray.length - 1) {
+                    if (type == preWordType) {
+                      InlineString.ff = ff;
+                      InlineString.v = wordText + w;
+                    } else {
+                      InlineString.ff = preWholef;
+                      InlineString.v = wordText;
+                      cellFormat.s.push(InlineString);
+                      var InlineStringLast = new LuckyBase_1.LuckyInlineString();
+                      InlineStringLast.ff = ff;
+                      InlineStringLast.v = w;
+
+                      if (cellValue.fc != null) {
+                        InlineStringLast.fc = cellValue.fc;
+                      }
+
+                      if (cellValue.fs != null) {
+                        InlineStringLast.fs = cellValue.fs;
+                      }
+
+                      if (cellValue.cl != null) {
+                        InlineStringLast.cl = cellValue.cl;
+                      }
+
+                      if (cellValue.un != null) {
+                        InlineStringLast.un = cellValue.un;
+                      }
+
+                      if (cellValue.bl != null) {
+                        InlineStringLast.bl = cellValue.bl;
+                      }
+
+                      if (cellValue.it != null) {
+                        InlineStringLast.it = cellValue.it;
+                      }
+
+                      cellFormat.s.push(InlineStringLast);

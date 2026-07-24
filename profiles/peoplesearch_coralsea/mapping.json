@@ -1,0 +1,2179 @@
+{
+  "mapping_row8": [
+    {
+      "out": "Full Pay/Hourly Rate",
+      "pc": "時薪 Hourly Rate",
+      "val": 1261
+    },
+    {
+      "out": "Monthly\nBasic Salary",
+      "pc": "Allw- Phone/ Communication",
+      "val": 0
+    },
+    {
+      "out": "Allw- Phone/ Communication",
+      "pc": "Allw- Phone/ Communication",
+      "val": 0
+    },
+    {
+      "out": "Allw \nTransportation",
+      "pc": "Allw- Phone/ Communication",
+      "val": 0
+    },
+    {
+      "out": "Allw Meal",
+      "pc": "Allw- Phone/ Communication",
+      "val": 0
+    },
+    {
+      "out": "Employment day/Hours Worked",
+      "pc": "時數\nHours Worked",
+      "val": 87
+    },
+    {
+      "out": "薪資\nBasic Salary",
+      "pc": "薪資\nBasic Salary",
+      "val": 38155
+    },
+    {
+      "out": "Back Pay",
+      "pc": "Allw- Phone/ Communication",
+      "val": 0
+    },
+    {
+      "out": "伙食津貼Allw Meal",
+      "pc": "Allw- Phone/ Communication",
+      "val": 0
+    },
+    {
+      "out": "Remote Stipend",
+      "pc": "Allw- Phone/ Communication",
+      "val": 0
+    },
+    {
+      "out": "病假時數 Sick Leave Hours",
+      "pc": "病假時數 Sick Leave Hours",
+      "val": 5
+    },
+    {
+      "out": "病假扣薪\nSick Leave\n(half pay)",
+      "pc": null,
+      "val": -1152.5
+    },
+    {
+      "out": "NPL Hours",
+      "pc": "Allw- Phone/ Communication",
+      "val": 0
+    },
+    {
+      "out": "No Pay Leave",
+      "pc": "Allw- Phone/ Communication",
+      "val": 0
+    },
+    {
+      "out": "Bonus VB",
+      "pc": "Allw- Phone/ Communication",
+      "val": 0
+    },
+    {
+      "out": "Incentives",
+      "pc": "Allw- Phone/ Communication",
+      "val": 0
+    },
+    {
+      "out": "報帳\nReimb Claim",
+      "pc": "Allw- Phone/ Communication",
+      "val": 0
+    },
+    {
+      "out": "特休結算\nUntaken AL",
+      "pc": "Allw- Phone/ Communication",
+      "val": 0
+    },
+    {
+      "out": "資遣費\nSeverance",
+      "pc": "Allw- Phone/ Communication",
+      "val": 0
+    },
+    {
+      "out": "加班費\nOvertime Payment",
+      "pc": "加班費\nOvertime Payment",
+      "val": 13220
+    },
+    {
+      "out": "Hr (1.34x)",
+      "pc": "Allw- Phone/ Communication",
+      "val": 0
+    },
+    {
+      "out": "OT Payment (1.34x)",
+      "pc": "Allw- Phone/ Communication",
+      "val": 0
+    },
+    {
+      "out": "Hr (1.67x)",
+      "pc": "Allw- Phone/ Communication",
+      "val": 0
+    },
+    {
+      "out": "OT Payment (1.67x)",
+      "pc": "Allw- Phone/ Communication",
+      "val": 0
+    },
+    {
+      "out": "Hr (1x)",
+      "pc": "Allw- Phone/ Communication",
+      "val": 0
+    },
+    {
+      "out": "OT Payment (1x)",
+      "pc": "Allw- Phone/ Communication",
+      "val": 0
+    },
+    {
+      "out": "Hr (2.67x)",
+      "pc": "Allw- Phone/ Communication",
+      "val": 0
+    },
+    {
+      "out": "OT Payment (2.67x)",
+      "pc": "Allw- Phone/ Communication",
+      "val": 0
+    },
+    {
+      "out": "勞保級距\nInsured Salary Grading - LI",
+      "pc": "勞保級距\nInsured Salary Grading - LI",
+      "val": 62300
+    },
+    {
+      "out": "勞退級距 Pension Salary Grading",
+      "pc": "勞退級距 Pension Salary Grading",
+      "val": 54800
+    },
+    {
+      "out": "健保投保級距Insured Salary Grading - HI",
+      "pc": "Allw- Phone/ Communication",
+      "val": 0
+    },
+    {
+      "out": "健保眷屬\nHI Dependent (person)",
+      "pc": "Allw- Phone/ Communication",
+      "val": 0
+    },
+    {
+      "out": "勞保投保天數\nLI Days",
+      "pc": "勞保投保天數\nLI Days",
+      "val": 90
+    },
+    {
+      "out": "所得稅代扣\nWithholding Tax",
+      "pc": "Allw- Phone/ Communication",
+      "val": 0
+    },
+    {
+      "out": "勞保自付\nLI EE",
+      "pc": "勞保自付\nLI EE",
+      "val": -1556
+    },
+    {
+      "out": "勞保自付(調整)\nLI EE 1T",
+      "pc": "Allw- Phone/ Communication",
+      "val": 0
+    },
+    {
+      "out": "勞退自提\nPension EE",
+      "pc": "Allw- Phone/ Communication",
+      "val": 0
+    },
+    {
+      "out": "勞退自提 (調整)\nPension EE 1T",
+      "pc": "Allw- Phone/ Communication",
+      "val": 0
+    },
+    {
+      "out": "健保自付\nHI EE",
+      "pc": "Allw- Phone/ Communication",
+      "val": 0
+    },
+    {
+      "out": "健保自付(調整)\nHI EE 1T",
+      "pc": "Allw- Phone/ Communication",
+      "val": 0
+    },
+    {
+      "out": "健保眷屬\nHI\nDep",
+      "pc": "Allw- Phone/ Communication",
+      "val": 0
+    },
+    {
+      "out": "二代健保\n自付\n2G HI EE",
+      "pc": "Allw- Phone/ Communication",
+      "val": 0
+    },
+    {
+      "out": "Gross Taxable Income",
+      "pc": "Gross Taxable Income",
+      "val": 37002
+    },
+    {
+      "out": "Net Salary",
+      "pc": "Net Salary",
+      "val": 48666
+    },
+    {
+      "out": "勞保雇主 \nLI ER",
+      "pc": "勞保雇主 \nLI ER",
+      "val": 5577
+    },
+    {
+      "out": "勞保雇主\nLI ER\n1T",
+      "pc": "Allw- Phone/ Communication",
+      "val": 0
+    },
+    {
+      "out": "勞退雇主\nPension ER 6%",
+      "pc": "勞退雇主\nPension ER 6%",
+      "val": 3288
+    },
+    {
+      "out": "勞退雇主\nPension \nER 1T",
+      "pc": "Allw- Phone/ Communication",
+      "val": 0
+    },
+    {
+      "out": "健保雇主\nHI ER",
+      "pc": "Allw- Phone/ Communication",
+      "val": 0
+    },
+    {
+      "out": "健保雇主\nHI ER\n1T",
+      "pc": "Allw- Phone/ Communication",
+      "val": 0
+    },
+    {
+      "out": "二代健保\n雇主\n2G HI ER",
+      "pc": "二代健保\n雇主\n2G HI ER",
+      "val": 781
+    },
+    {
+      "out": "二代健保\n雇主\n2G HI ER \n1T",
+      "pc": "Allw- Phone/ Communication",
+      "val": 0
+    },
+    {
+      "out": "團保\nGI",
+      "pc": "團保\nGI",
+      "val": 399
+    },
+    {
+      "out": "Gross Salary\n(payable)",
+      "pc": "Gross Salary\n(payable)",
+      "val": 50222
+    },
+    {
+      "out": "ER Insurance",
+      "pc": "ER Insurance",
+      "val": 10045
+    },
+    {
+      "out": "Service Fee",
+      "pc": "Allw- Phone/ Communication",
+      "val": 0
+    },
+    {
+      "out": "Operation \nFee",
+      "pc": "Allw- Phone/ Communication",
+      "val": 0
+    },
+    {
+      "out": "Total",
+      "pc": "Total",
+      "val": 69267
+    }
+  ],
+  "mapping_row9": [
+    {
+      "out": "BU",
+      "pc": "BU",
+      "val": "Coral Sea"
+    },
+    {
+      "out": "CN Name",
+      "pc": "CN Name",
+      "val": "王品涵"
+    },
+    {
+      "out": "EN Name",
+      "pc": "EN Name",
+      "val": "Pin Han"
+    },
+    {
+      "out": "Position",
+      "pc": "Position",
+      "val": "Aquarist"
+    },
+    {
+      "out": "Start Date",
+      "pc": "Start Date",
+      "val": "2020-11-02 00:00:00"
+    },
+    {
+      "out": "FT/PT",
+      "pc": "FT/PT",
+      "val": "PT"
+    },
+    {
+      "out": "Full Pay/Hourly Rate",
+      "pc": "時薪 Hourly Rate",
+      "val": 461
+    },
+    {
+      "out": "Employment day/Hours Worked",
+      "pc": "時數\nHours Worked",
+      "val": 55
+    },
+    {
+      "out": "薪資\nBasic Salary",
+      "pc": "薪資\nBasic Salary",
+      "val": 25355
+    },
+    {
+      "out": "Back Pay",
+      "pc": "Allw- Phone/ Communication",
+      "val": 0
+    },
+    {
+      "out": "伙食津貼Allw Meal",
+      "pc": "Allw- Phone/ Communication",
+      "val": 0
+    },
+    {
+      "out": "病假時數 Sick Leave Hours",
+      "pc": "病假時數 Sick Leave Hours",
+      "val": 5
+    },
+    {
+      "out": "病假扣薪\nSick Leave\n(half pay)",
+      "pc": null,
+      "val": -1152.5
+    },
+    {
+      "out": "Bonus VB",
+      "pc": "Allw- Phone/ Communication",
+      "val": 0
+    },
+    {
+      "out": "Incentives",
+      "pc": "Allw- Phone/ Communication",
+      "val": 0
+    },
+    {
+      "out": "報帳\nReimb Claim",
+      "pc": "Allw- Phone/ Communication",
+      "val": 0
+    },
+    {
+      "out": "特休結算\nUntaken AL",
+      "pc": "Allw- Phone/ Communication",
+      "val": 0
+    },
+    {
+      "out": "資遣費\nSeverance",
+      "pc": "Allw- Phone/ Communication",
+      "val": 0
+    },
+    {
+      "out": "加班費\nOvertime Payment",
+      "pc": "加班費\nOvertime Payment",
+      "val": 9220
+    },
+    {
+      "out": "Hr (1.34x)",
+      "pc": "Allw- Phone/ Communication",
+      "val": 0
+    },
+    {
+      "out": "OT Payment (1.34x)",
+      "pc": "Allw- Phone/ Communication",
+      "val": 0
+    },
+    {
+      "out": "Hr (1.67x)",
+      "pc": "Allw- Phone/ Communication",
+      "val": 0
+    },
+    {
+      "out": "OT Payment (1.67x)",
+      "pc": "Allw- Phone/ Communication",
+      "val": 0
+    },
+    {
+      "out": "Hr (1x)",
+      "pc": "Allw- Phone/ Communication",
+      "val": 0
+    },
+    {
+      "out": "OT Payment (1x)",
+      "pc": "Allw- Phone/ Communication",
+      "val": 0
+    },
+    {
+      "out": "Hr (2.67x)",
+      "pc": "Allw- Phone/ Communication",
+      "val": 0
+    },
+    {
+      "out": "OT Payment (2.67x)",
+      "pc": "Allw- Phone/ Communication",
+      "val": 0
+    },
+    {
+      "out": "勞保級距\nInsured Salary Grading - LI",
+      "pc": "勞保級距\nInsured Salary Grading - LI",
+      "val": 40100
+    },
+    {
+      "out": "勞退級距 Pension Salary Grading",
+      "pc": "勞保級距\nInsured Salary Grading - LI",
+      "val": 40100
+    },
+    {
+      "out": "健保投保級距Insured Salary Grading - HI",
+      "pc": "Allw- Phone/ Communication",
+      "val": 0
+    },
+    {
+      "out": "健保眷屬\nHI Dependent (person)",
+      "pc": "Allw- Phone/ Communication",
+      "val": 0
+    },
+    {
+      "out": "勞保投保天數\nLI Days",
+      "pc": "勞保投保天數\nLI Days",
+      "val": 30
+    },
+    {
+      "out": "所得稅代扣\nWithholding Tax",
+      "pc": "Allw- Phone/ Communication",
+      "val": 0
+    },
+    {
+      "out": "勞保自付\nLI EE",
+      "pc": "勞保自付\nLI EE",
+      "val": -1002
+    },
+    {
+      "out": "勞保自付(調整)\nLI EE 1T",
+      "pc": "Allw- Phone/ Communication",
+      "val": 0
+    },
+    {
+      "out": "勞退自提\nPension EE",
+      "pc": "Allw- Phone/ Communication",
+      "val": 0
+    },
+    {
+      "out": "勞退自提 (調整)\nPension EE 1T",
+      "pc": "Allw- Phone/ Communication",
+      "val": 0
+    },
+    {
+      "out": "健保自付\nHI EE",
+      "pc": "Allw- Phone/ Communication",
+      "val": 0
+    },
+    {
+      "out": "健保自付(調整)\nHI EE 1T",
+      "pc": "Allw- Phone/ Communication",
+      "val": 0
+    },
+    {
+      "out": "健保眷屬\nHI\nDep",
+      "pc": "Allw- Phone/ Communication",
+      "val": 0
+    },
+    {
+      "out": "二代健保\n自付\n2G HI EE",
+      "pc": "Allw- Phone/ Communication",
+      "val": 0
+    },
+    {
+      "out": "Gross Taxable Income",
+      "pc": "Gross Taxable Income",
+      "val": 24202
+    },
+    {
+      "out": "Net Salary",
+      "pc": "Net Salary",
+      "val": 32420
+    },
+    {
+      "out": "勞保雇主 \nLI ER",
+      "pc": "勞保雇主 \nLI ER",
+      "val": 3563
+    },
+    {
+      "out": "勞保雇主\nLI ER\n1T",
+      "pc": "Allw- Phone/ Communication",
+      "val": 0
+    },
+    {
+      "out": "勞退雇主\nPension ER 6%",
+      "pc": "勞退雇主\nPension ER 6%",
+      "val": 2406
+    },
+    {
+      "out": "勞退雇主\nPension \nER 1T",
+      "pc": "Allw- Phone/ Communication",
+      "val": 0
+    },
+    {
+      "out": "健保雇主\nHI ER",
+      "pc": "Allw- Phone/ Communication",
+      "val": 0
+    },
+    {
+      "out": "健保雇主\nHI ER\n1T",
+      "pc": "Allw- Phone/ Communication",
+      "val": 0
+    },
+    {
+      "out": "二代健保\n雇主\n2G HI ER",
+      "pc": "二代健保\n雇主\n2G HI ER",
+      "val": 511
+    },
+    {
+      "out": "二代健保\n雇主\n2G HI ER \n1T",
+      "pc": "Allw- Phone/ Communication",
+      "val": 0
+    },
+    {
+      "out": "團保\nGI",
+      "pc": "團保\nGI",
+      "val": 133
+    },
+    {
+      "out": "Gross Salary\n(payable)",
+      "pc": "Gross Salary\n(payable)",
+      "val": 33422
+    },
+    {
+      "out": "ER Insurance",
+      "pc": "ER Insurance",
+      "val": 6613
+    },
+    {
+      "out": "Operation \nFee",
+      "pc": "Allw- Phone/ Communication",
+      "val": 0
+    },
+    {
+      "out": "Total",
+      "pc": "Total",
+      "val": 43035
+    }
+  ],
+  "tw_info": {
+    "meta": [
+      {
+        "cell": "A1",
+        "v": "=MID(CELL(\"filename\",A1),FIND(\"]\",CELL(\"filename\",A1))+1,256)"
+      },
+      {
+        "cell": "A2",
+        "v": "Pay Period"
+      },
+      {
+        "cell": "B2",
+        "v": "='TW-L'!C4"
+      },
+      {
+        "cell": "C2",
+        "v": "='TW-L'!C5"
+      },
+      {
+        "cell": "E2",
+        "v": "ER"
+      },
+      {
+        "cell": "E3",
+        "v": "Sum"
+      },
+      {
+        "cell": "F3",
+        "v": "Business\nTax"
+      },
+      {
+        "cell": "G3",
+        "v": "Management Fee\nFee"
+      },
+      {
+        "cell": "J3",
+        "v": "Gross Salary"
+      },
+      {
+        "cell": "G4",
+        "v": "Subtotal"
+      },
+      {
+        "cell": "H4",
+        "v": "Recurring\nFee"
+      },
+      {
+        "cell": "I4",
+        "v": "Expense\nFee"
+      },
+      {
+        "cell": "J4",
+        "v": "Subtotal"
+      },
+      {
+        "cell": "K4",
+        "v": "Basic\nSalary"
+      },
+      {
+        "cell": "L4",
+        "v": "Salary\nAdjustment"
+      },
+      {
+        "cell": "M4",
+        "v": "OT"
+      },
+      {
+        "cell": "N4",
+        "v": "Allw- Phone/ Communication"
+      },
+      {
+        "cell": "B6",
+        "v": "Sum"
+      },
+      {
+        "cell": "C6",
+        "v": "(NTD)"
+      },
+      {
+        "cell": "E6",
+        "v": "=SUM(E9:E17)"
+      },
+      {
+        "cell": "F6",
+        "v": "=SUM(F9:F17)"
+      },
+      {
+        "cell": "G6",
+        "v": "=SUM(G9:G17)"
+      },
+      {
+        "cell": "H6",
+        "v": "=SUM(H9:H17)"
+      },
+      {
+        "cell": "I6",
+        "v": "=SUM(I9:I17)"
+      },
+      {
+        "cell": "J6",
+        "v": "=SUM(J9:J17)"
+      },
+      {
+        "cell": "K6",
+        "v": "=SUM(K9:K17)"
+      },
+      {
+        "cell": "L6",
+        "v": "=SUM(L9:L17)"
+      },
+      {
+        "cell": "M6",
+        "v": "=SUM(M9:M17)"
+      },
+      {
+        "cell": "N6",
+        "v": "=SUM(N9:N17)"
+      },
+      {
+        "cell": "B9",
+        "v": "='TW-L'!C9"
+      },
+      {
+        "cell": "C9",
+        "v": "='TW EE'!D10"
+      },
+      {
+        "cell": "E9",
+        "v": "=SUM(F9:G9)+J9+Z9+AB9"
+      },
+      {
+        "cell": "F9",
+        "v": "2152"
+      },
+      {
+        "cell": "G9",
+        "v": "=SUM(H9:I9)"
+      },
+      {
+        "cell": "H9",
+        "v": "=MAX(4500,(J9+Z9)*12%)"
+      },
+      {
+        "cell": "I9",
+        "v": "=IF(AB9>0,1500,0)"
+      },
+      {
+        "cell": "J9",
+        "v": "=SUM(K9:Y9)"
+      },
+      {
+        "cell": "K9",
+        "v": "='TW-L'!N9"
+      },
+      {
+        "cell": "L9",
+        "v": "0"
+      },
+      {
+        "cell": "M9",
+        "v": "='TW-L'!AC9"
+      },
+      {
+        "cell": "N9",
+        "v": "='TW-L'!O9"
+      },
+      {
+        "cell": "B10",
+        "v": "='TW-L'!C10"
+      },
+      {
+        "cell": "C10",
+        "v": "='TW EE'!D11"
+      },
+      {
+        "cell": "E10",
+        "v": "=SUM(F10:G10)+J10+Z10+AB10"
+      },
+      {
+        "cell": "F10",
+        "v": "639"
+      },
+      {
+        "cell": "G10",
+        "v": "=SUM(H10:I10)"
+      },
+      {
+        "cell": "H10",
+        "v": "=MAX(4500,(J10+Z10)*12%)"
+      },
+      {
+        "cell": "I10",
+        "v": "=IF(AB10>0,1500,0)"
+      },
+      {
+        "cell": "J10",
+        "v": "=SUM(K10:Y10)"
+      },
+      {
+        "cell": "K10",
+        "v": "='TW-L'!N10"
+      },
+      {
+        "cell": "L10",
+        "v": "0"
+      },
+      {
+        "cell": "M10",
+        "v": "='TW-L'!AC10"
+      },
+      {
+        "cell": "N10",
+        "v": "='TW-L'!O10"
+      },
+      {
+        "cell": "B11",
+        "v": "='TW-L'!C11"
+      },
+      {
+        "cell": "C11",
+        "v": "='TW EE'!D12"
+      },
+      {
+        "cell": "E11",
+        "v": "=SUM(F11:G11)+J11+Z11+AB11"
+      },
+      {
+        "cell": "F11",
+        "v": "672"
+      },
+      {
+        "cell": "G11",
+        "v": "=SUM(H11:I11)"
+      },
+      {
+        "cell": "H11",
+        "v": "=MAX(4500,(J11+Z11)*12%)"
+      },
+      {
+        "cell": "I11",
+        "v": "=IF(AB11>0,1500,0)"
+      },
+      {
+        "cell": "J11",
+        "v": "=SUM(K11:Y11)"
+      },
+      {
+        "cell": "K11",
+        "v": "='TW-L'!N11"
+      },
+      {
+        "cell": "L11",
+        "v": "0"
+      },
+      {
+        "cell": "M11",
+        "v": "='TW-L'!AC11"
+      },
+      {
+        "cell": "N11",
+        "v": "='TW-L'!O11"
+      }
+    ],
+    "formulas": [
+      {
+        "row": 9,
+        "cells": [
+          {
+            "col": "B",
+            "v": "='TW-L'!C9",
+            "f": true
+          },
+          {
+            "col": "C",
+            "v": "='TW EE'!D10",
+            "f": true
+          },
+          {
+            "col": "E",
+            "v": "=SUM(F9:G9)+J9+Z9+AB9",
+            "f": true
+          },
+          {
+            "col": "F",
+            "v": "2152"
+          },
+          {
+            "col": "G",
+            "v": "=SUM(H9:I9)",
+            "f": true
+          },
+          {
+            "col": "H",
+            "v": "=MAX(4500,(J9+Z9)*12%)",
+            "f": true
+          },
+          {
+            "col": "I",
+            "v": "=IF(AB9>0,1500,0)",
+            "f": true
+          },
+          {
+            "col": "J",
+            "v": "=SUM(K9:Y9)",
+            "f": true
+          },
+          {
+            "col": "K",
+            "v": "='TW-L'!N9",
+            "f": true
+          },
+          {
+            "col": "L",
+            "v": "0"
+          },
+          {
+            "col": "M",
+            "v": "='TW-L'!AC9",
+            "f": true
+          },
+          {
+            "col": "N",
+            "v": "='TW-L'!O9",
+            "f": true
+          },
+          {
+            "col": "O",
+            "v": "='TW-L'!P9",
+            "f": true
+          },
+          {
+            "col": "P",
+            "v": "='TW-L'!Q9",
+            "f": true
+          },
+          {
+            "col": "Q",
+            "v": "='TW-L'!R9",
+            "f": true
+          },
+          {
+            "col": "R",
+            "v": "='TW-L'!R9",
+            "f": true
+          },
+          {
+            "col": "S",
+            "v": "='TW-L'!U9",
+            "f": true
+          },
+          {
+            "col": "T",
+            "v": "='TW-L'!V9",
+            "f": true
+          },
+          {
+            "col": "U",
+            "v": "='TW-L'!W9",
+            "f": true
+          },
+          {
+            "col": "V",
+            "v": "='TW-L'!X9",
+            "f": true
+          },
+          {
+            "col": "W",
+            "v": "='TW-L'!Y9",
+            "f": true
+          },
+          {
+            "col": "X",
+            "v": "='TW-L'!AA9",
+            "f": true
+          },
+          {
+            "col": "Y",
+            "v": "='TW-L'!AB9",
+            "f": true
+          },
+          {
+            "col": "Z",
+            "v": "=SUM(AA9:AA9)",
+            "f": true
+          },
+          {
+            "col": "AA",
+            "v": "='TW-L'!BL9",
+            "f": true
+          },
+          {
+            "col": "AB",
+            "v": "=SUM(AC9:AC9)",
+            "f": true
+          },
+          {
+            "col": "AC",
+            "v": "='TW-L'!Z9",
+            "f": true
+          }
+        ]
+      },
+      {
+        "row": 10,
+        "cells": [
+          {
+            "col": "B",
+            "v": "='TW-L'!C10",
+            "f": true
+          },
+          {
+            "col": "C",
+            "v": "='TW EE'!D11",
+            "f": true
+          },
+          {
+            "col": "E",
+            "v": "=SUM(F10:G10)+J10+Z10+AB10",
+            "f": true
+          },
+          {
+            "col": "F",
+            "v": "639"
+          },
+          {
+            "col": "G",
+            "v": "=SUM(H10:I10)",
+            "f": true
+          },
+          {
+            "col": "H",
+            "v": "=MAX(4500,(J10+Z10)*12%)",
+            "f": true
+          },
+          {
+            "col": "I",
+            "v": "=IF(AB10>0,1500,0)",
+            "f": true
+          },
+          {
+            "col": "J",
+            "v": "=SUM(K10:Y10)",
+            "f": true
+          },
+          {
+            "col": "K",
+            "v": "='TW-L'!N10",
+            "f": true
+          },
+          {
+            "col": "L",
+            "v": "0"
+          },
+          {
+            "col": "M",
+            "v": "='TW-L'!AC10",
+            "f": true
+          },
+          {
+            "col": "N",
+            "v": "='TW-L'!O10",
+            "f": true
+          },
+          {
+            "col": "O",
+            "v": "='TW-L'!P10",
+            "f": true
+          },
+          {
+            "col": "P",
+            "v": "='TW-L'!Q10",
+            "f": true
+          },
+          {
+            "col": "Q",
+            "v": "='TW-L'!R10",
+            "f": true
+          },
+          {
+            "col": "R",
+            "v": "='TW-L'!R10",
+            "f": true
+          },
+          {
+            "col": "S",
+            "v": "='TW-L'!U10",
+            "f": true
+          },
+          {
+            "col": "T",
+            "v": "='TW-L'!V10",
+            "f": true
+          },
+          {
+            "col": "U",
+            "v": "='TW-L'!W10",
+            "f": true
+          },
+          {
+            "col": "V",
+            "v": "='TW-L'!X10",
+            "f": true
+          },
+          {
+            "col": "W",
+            "v": "='TW-L'!Y10",
+            "f": true
+          },
+          {
+            "col": "X",
+            "v": "='TW-L'!AA10",
+            "f": true
+          },
+          {
+            "col": "Y",
+            "v": "='TW-L'!AB10",
+            "f": true
+          },
+          {
+            "col": "Z",
+            "v": "=SUM(AA10:AA10)",
+            "f": true
+          },
+          {
+            "col": "AA",
+            "v": "='TW-L'!BL10",
+            "f": true
+          },
+          {
+            "col": "AB",
+            "v": "=SUM(AC10:AC10)",
+            "f": true
+          },
+          {
+            "col": "AC",
+            "v": "='TW-L'!Z10",
+            "f": true
+          }
+        ]
+      },
+      {
+        "row": 11,
+        "cells": [
+          {
+            "col": "B",
+            "v": "='TW-L'!C11",
+            "f": true
+          },
+          {
+            "col": "C",
+            "v": "='TW EE'!D12",
+            "f": true
+          },
+          {
+            "col": "E",
+            "v": "=SUM(F11:G11)+J11+Z11+AB11",
+            "f": true
+          },
+          {
+            "col": "F",
+            "v": "672"
+          },
+          {
+            "col": "G",
+            "v": "=SUM(H11:I11)",
+            "f": true
+          },
+          {
+            "col": "H",
+            "v": "=MAX(4500,(J11+Z11)*12%)",
+            "f": true
+          },
+          {
+            "col": "I",
+            "v": "=IF(AB11>0,1500,0)",
+            "f": true
+          },
+          {
+            "col": "J",
+            "v": "=SUM(K11:Y11)",
+            "f": true
+          },
+          {
+            "col": "K",
+            "v": "='TW-L'!N11",
+            "f": true
+          },
+          {
+            "col": "L",
+            "v": "0"
+          },
+          {
+            "col": "M",
+            "v": "='TW-L'!AC11",
+            "f": true
+          },
+          {
+            "col": "N",
+            "v": "='TW-L'!O11",
+            "f": true
+          },
+          {
+            "col": "O",
+            "v": "='TW-L'!P11",
+            "f": true
+          },
+          {
+            "col": "P",
+            "v": "='TW-L'!Q11",
+            "f": true
+          },
+          {
+            "col": "Q",
+            "v": "='TW-L'!R11",
+            "f": true
+          },
+          {
+            "col": "R",
+            "v": "='TW-L'!R11",
+            "f": true
+          },
+          {
+            "col": "S",
+            "v": "='TW-L'!U11",
+            "f": true
+          },
+          {
+            "col": "T",
+            "v": "='TW-L'!V11",
+            "f": true
+          },
+          {
+            "col": "U",
+            "v": "='TW-L'!W11",
+            "f": true
+          },
+          {
+            "col": "V",
+            "v": "='TW-L'!X11",
+            "f": true
+          },
+          {
+            "col": "W",
+            "v": "='TW-L'!Y11",
+            "f": true
+          },
+          {
+            "col": "X",
+            "v": "='TW-L'!AA11",
+            "f": true
+          },
+          {
+            "col": "Y",
+            "v": "='TW-L'!AB11",
+            "f": true
+          },
+          {
+            "col": "Z",
+            "v": "=SUM(AA11:AA11)",
+            "f": true
+          },
+          {
+            "col": "AA",
+            "v": "='TW-L'!BL11",
+            "f": true
+          },
+          {
+            "col": "AB",
+            "v": "=SUM(AC11:AC11)",
+            "f": true
+          },
+          {
+            "col": "AC",
+            "v": "='TW-L'!Z11",
+            "f": true
+          }
+        ]
+      }
+    ]
+  },
+  "ee_info": {
+    "formulas": [
+      {
+        "row": 4,
+        "cells": [
+          {
+            "col": "F",
+            "v": "From"
+          },
+          {
+            "col": "G",
+            "v": "To"
+          },
+          {
+            "col": "I",
+            "v": "Subtotal"
+          },
+          {
+            "col": "J",
+            "v": "Basic\nSalary"
+          },
+          {
+            "col": "K",
+            "v": "Salary\nAdjustment"
+          },
+          {
+            "col": "L",
+            "v": "OT"
+          },
+          {
+            "col": "M",
+            "v": "Allw- Phone/ Communication"
+          },
+          {
+            "col": "N",
+            "v": "Allw \nTransportation"
+          },
+          {
+            "col": "O",
+            "v": "Back Pay"
+          },
+          {
+            "col": "P",
+            "v": "伙食津貼  Allw Meal"
+          },
+          {
+            "col": "Q",
+            "v": "Remote Stipend"
+          },
+          {
+            "col": "R",
+            "v": "病假扣薪\nSick Leave\n(half pay)"
+          },
+          {
+            "col": "S",
+            "v": "NPL Hours"
+          },
+          {
+            "col": "T",
+            "v": "No Pay Leave"
+          },
+          {
+            "col": "U",
+            "v": "Bonus VB"
+          },
+          {
+            "col": "V",
+            "v": "Incentives"
+          },
+          {
+            "col": "W",
+            "v": "特休結算\nUntaken AL"
+          },
+          {
+            "col": "X",
+            "v": "資遣費\nSeverance"
+          },
+          {
+            "col": "Y",
+            "v": "Subtotal"
+          },
+          {
+            "col": "Z",
+            "v": "Expense\nClaim"
+          },
+          {
+            "col": "AA",
+            "v": "Subtotal"
+          },
+          {
+            "col": "AB",
+            "v": "LI"
+          },
+          {
+            "col": "AC",
+            "v": "Pension"
+          },
+          {
+            "col": "AD",
+            "v": "HI"
+          },
+          {
+            "col": "AE",
+            "v": "2G HI"
+          }
+        ]
+      },
+      {
+        "row": 6,
+        "cells": [
+          {
+            "col": "A",
+            "v": "EOR/PEO(NTD)"
+          }
+        ]
+      },
+      {
+        "row": 10,
+        "cells": [
+          {
+            "col": "B",
+            "v": "=PN!$B$9",
+            "f": true
+          },
+          {
+            "col": "C",
+            "v": "=PN!$B$8",
+            "f": true
+          },
+          {
+            "col": "D",
+            "v": "CUS1516-0001"
+          },
+          {
+            "col": "E",
+            "v": "='TW-L'!C9",
+            "f": true
+          },
+          {
+            "col": "F",
+            "v": "='TW-L'!$C$4",
+            "f": true
+          },
+          {
+            "col": "G",
+            "v": "='TW-L'!$C$5",
+            "f": true
+          },
+          {
+            "col": "H",
+            "v": "=I10+Y10+AA10+AF10+AG10",
+            "f": true
+          },
+          {
+            "col": "I",
+            "v": "=SUM(J10:X10)",
+            "f": true
+          },
+          {
+            "col": "J",
+            "v": "='TW-L'!N9",
+            "f": true
+          },
+          {
+            "col": "K",
+            "v": "0"
+          },
+          {
+            "col": "L",
+            "v": "='TW-L'!AC9",
+            "f": true
+          },
+          {
+            "col": "M",
+            "v": "='TW-L'!O9",
+            "f": true
+          },
+          {
+            "col": "N",
+            "v": "='TW-L'!P9",
+            "f": true
+          },
+          {
+            "col": "O",
+            "v": "='TW-L'!Q9",
+            "f": true
+          },
+          {
+            "col": "P",
+            "v": "='TW-L'!R9",
+            "f": true
+          },
+          {
+            "col": "Q",
+            "v": "='TW-L'!X9+'TW-L'!Y9",
+            "f": true
+          },
+          {
+            "col": "R",
+            "v": "='TW-L'!U9",
+            "f": true
+          },
+          {
+            "col": "S",
+            "v": "='TW-L'!V9",
+            "f": true
+          },
+          {
+            "col": "T",
+            "v": "='TW-L'!W9",
+            "f": true
+          },
+          {
+            "col": "U",
+            "v": "='TW-L'!X9",
+            "f": true
+          },
+          {
+            "col": "V",
+            "v": "='TW-L'!Y9",
+            "f": true
+          },
+          {
+            "col": "W",
+            "v": "='TW-L'!AA9",
+            "f": true
+          },
+          {
+            "col": "X",
+            "v": "='TW-L'!AB9",
+            "f": true
+          },
+          {
+            "col": "Y",
+            "v": "=SUM(Z10:Z10)",
+            "f": true
+          },
+          {
+            "col": "Z",
+            "v": "='TW-L'!Z9",
+            "f": true
+          },
+          {
+            "col": "AA",
+            "v": "=SUM(AB10:AE10)",
+            "f": true
+          },
+          {
+            "col": "AB",
+            "v": "='TW-L'!AR9+'TW-L'!AS9",
+            "f": true
+          },
+          {
+            "col": "AC",
+            "v": "='TW-L'!AT9+'TW-L'!AU9",
+            "f": true
+          },
+          {
+            "col": "AD",
+            "v": "='TW-L'!AV9+'TW-L'!AW9",
+            "f": true
+          },
+          {
+            "col": "AE",
+            "v": "='TW-L'!AY9",
+            "f": true
+          },
+          {
+            "col": "AF",
+            "v": "0"
+          },
+          {
+            "col": "AG",
+            "v": "='TW-L'!AQ9",
+            "f": true
+          }
+        ]
+      },
+      {
+        "row": 11,
+        "cells": [
+          {
+            "col": "B",
+            "v": "=PN!$B$9",
+            "f": true
+          },
+          {
+            "col": "C",
+            "v": "=PN!B8",
+            "f": true
+          },
+          {
+            "col": "D",
+            "v": "CUS1516-0002"
+          },
+          {
+            "col": "E",
+            "v": "='TW-L'!C10",
+            "f": true
+          },
+          {
+            "col": "F",
+            "v": "='TW-L'!$C$4",
+            "f": true
+          },
+          {
+            "col": "G",
+            "v": "='TW-L'!$C$5",
+            "f": true
+          },
+          {
+            "col": "H",
+            "v": "=I11+Y11+AA11+AF11+AG11",
+            "f": true
+          },
+          {
+            "col": "I",
+            "v": "=SUM(J11:X11)",
+            "f": true
+          },
+          {
+            "col": "J",
+            "v": "='TW-L'!N10",
+            "f": true
+          },
+          {
+            "col": "K",
+            "v": "0"
+          },
+          {
+            "col": "L",
+            "v": "='TW-L'!AC10",
+            "f": true
+          },
+          {
+            "col": "M",
+            "v": "='TW-L'!O10",
+            "f": true
+          },
+          {
+            "col": "N",
+            "v": "='TW-L'!P10",
+            "f": true
+          },
+          {
+            "col": "O",
+            "v": "='TW-L'!Q10",
+            "f": true
+          },
+          {
+            "col": "P",
+            "v": "='TW-L'!R10",
+            "f": true
+          },
+          {
+            "col": "Q",
+            "v": "='TW-L'!X10+'TW-L'!Y10",
+            "f": true
+          },
+          {
+            "col": "R",
+            "v": "='TW-L'!U10",
+            "f": true
+          },
+          {
+            "col": "S",
+            "v": "='TW-L'!V10",
+            "f": true
+          },
+          {
+            "col": "T",
+            "v": "='TW-L'!W10",
+            "f": true
+          },
+          {
+            "col": "U",
+            "v": "='TW-L'!X10",
+            "f": true
+          },
+          {
+            "col": "V",
+            "v": "='TW-L'!Y10",
+            "f": true
+          },
+          {
+            "col": "W",
+            "v": "='TW-L'!AA10",
+            "f": true
+          },
+          {
+            "col": "X",
+            "v": "='TW-L'!AB10",
+            "f": true
+          },
+          {
+            "col": "Y",
+            "v": "=SUM(Z11:Z11)",
+            "f": true
+          },
+          {
+            "col": "Z",
+            "v": "='TW-L'!Z10",
+            "f": true
+          },
+          {
+            "col": "AA",
+            "v": "=SUM(AB11:AE11)",
+            "f": true
+          },
+          {
+            "col": "AB",
+            "v": "='TW-L'!AR10+'TW-L'!AS10",
+            "f": true
+          },
+          {
+            "col": "AC",
+            "v": "='TW-L'!AT10+'TW-L'!AU10",
+            "f": true
+          },
+          {
+            "col": "AD",
+            "v": "='TW-L'!AV10+'TW-L'!AW10",
+            "f": true
+          },
+          {
+            "col": "AE",
+            "v": "='TW-L'!AY10",
+            "f": true
+          },
+          {
+            "col": "AF",
+            "v": "0"
+          },
+          {
+            "col": "AG",
+            "v": "='TW-L'!AQ10",
+            "f": true
+          }
+        ]
+      },
+      {
+        "row": 12,
+        "cells": [
+          {
+            "col": "B",
+            "v": "=PN!$B$9",
+            "f": true
+          },
+          {
+            "col": "C",
+            "v": "=PN!B9",
+            "f": true
+          },
+          {
+            "col": "D",
+            "v": "CUS1516-0003"
+          },
+          {
+            "col": "E",
+            "v": "='TW-L'!C11",
+            "f": true
+          },
+          {
+            "col": "F",
+            "v": "='TW-L'!$C$4",
+            "f": true
+          },
+          {
+            "col": "G",
+            "v": "='TW-L'!$C$5",
+            "f": true
+          },
+          {
+            "col": "H",
+            "v": "=I12+Y12+AA12+AF12+AG12",
+            "f": true
+          },
+          {
+            "col": "I",
+            "v": "=SUM(J12:X12)",
+            "f": true
+          },
+          {
+            "col": "J",
+            "v": "='TW-L'!N11",
+            "f": true
+          },
+          {
+            "col": "K",
+            "v": "0"
+          },
+          {
+            "col": "L",
+            "v": "='TW-L'!AC11",
+            "f": true
+          },
+          {
+            "col": "M",
+            "v": "='TW-L'!O11",
+            "f": true
+          },
+          {
+            "col": "N",
+            "v": "='TW-L'!P11",
+            "f": true
+          },
+          {
+            "col": "O",
+            "v": "='TW-L'!Q11",
+            "f": true
+          },
+          {
+            "col": "P",
+            "v": "='TW-L'!R11",
+            "f": true
+          },
+          {
+            "col": "Q",
+            "v": "='TW-L'!X11+'TW-L'!Y11",
+            "f": true
+          },
+          {
+            "col": "R",
+            "v": "='TW-L'!U11",
+            "f": true
+          },
+          {
+            "col": "S",
+            "v": "='TW-L'!V11",
+            "f": true
+          },
+          {
+            "col": "T",
+            "v": "='TW-L'!W11",
+            "f": true
+          },
+          {
+            "col": "U",
+            "v": "='TW-L'!X11",
+            "f": true
+          },
+          {
+            "col": "V",
+            "v": "='TW-L'!Y11",
+            "f": true
+          },
+          {
+            "col": "W",
+            "v": "='TW-L'!AA11",
+            "f": true
+          },
+          {
+            "col": "X",
+            "v": "='TW-L'!AB11",
+            "f": true
+          },
+          {
+            "col": "Y",
+            "v": "=SUM(Z12:Z12)",
+            "f": true
+          },
+          {
+            "col": "Z",
+            "v": "='TW-L'!Z11",
+            "f": true
+          },
+          {
+            "col": "AA",
+            "v": "=SUM(AB12:AE12)",
+            "f": true
+          },
+          {
+            "col": "AB",
+            "v": "='TW-L'!AR11+'TW-L'!AS11",
+            "f": true
+          },
+          {
+            "col": "AC",
+            "v": "='TW-L'!AT11+'TW-L'!AU11",
+            "f": true
+          },
+          {
+            "col": "AD",
+            "v": "='TW-L'!AV11+'TW-L'!AW11",
+            "f": true
+          },
+          {
+            "col": "AE",
+            "v": "='TW-L'!AY11",
+            "f": true
+          },
+          {
+            "col": "AF",
+            "v": "0"
+          },
+          {
+            "col": "AG",
+            "v": "='TW-L'!AQ11",
+            "f": true
+          }
+        ]
+      }
+    ]
+  },
+  "summary_meta": [
+    {
+      "cell": "A1",
+      "v": "Client"
+    },
+    {
+      "cell": "B1",
+      "v": "Coral Sea"
+    },
+    {
+      "cell": "A2",
+      "v": "Payroll Month"
+    },
+    {
+      "cell": "B2",
+      "v": "2026-03-27 00:00:00"
+    },
+    {
+      "cell": "A3",
+      "v": "Period"
+    },
+    {
+      "cell": "B3",
+      "v": "3/1-3/31"
+    },
+    {
+      "cell": "A4",
+      "v": "Headcount"
+    },
+    {
+      "cell": "B4",
+      "v": 3
+    },
+    {
+      "cell": "A5",
+      "v": "Service Fee"
+    },
+    {
+      "cell": "B5",
+      "v": 0.07
+    },
+    {
+      "cell": "A6",
+      "v": "Minimum"
+    },
+    {
+      "cell": "B6",
+      "v": 3000
+    },
+    {
+      "cell": "A7",
+      "v": "Expense Claim Operation Fee"
+    },
+    {
+      "cell": "B7",
+      "v": 1000
+    },
+    {
+      "cell": "B9",
+      "v": "NTD"
+    },
+    {
+      "cell": "C9",
+      "v": "USD"
+    },
+    {
+      "cell": "A10",
+      "v": "Total Gross Salary"
+    },
+    {
+      "cell": "B10",
+      "v": 50222
+    },
+    {
+      "cell": "C10",
+      "v": 1604.65
+    },
+    {
+      "cell": "A11",
+      "v": "ER Insurance(LI+GI+HI+2nd HI+PF6%)"
+    },
+    {
+      "cell": "B11",
+      "v": 10045
+    },
+    {
+      "cell": "C11",
+      "v": 320.95
+    },
+    {
+      "cell": "A12",
+      "v": "Service fee"
+    },
+    {
+      "cell": "B12",
+      "v": 9000
+    },
+    {
+      "cell": "C12",
+      "v": 287.56
+    },
+    {
+      "cell": "A13",
+      "v": "Sub Total"
+    },
+    {
+      "cell": "B13",
+      "v": 69267
+    },
+    {
+      "cell": "C13",
+      "v": 2213.1600000000003
+    },
+    {
+      "cell": "A14",
+      "v": "Tax (5%)"
+    },
+    {
+      "cell": "B14",
+      "v": 3463
+    },
+    {
+      "cell": "C14",
+      "v": 110.66
+    },
+    {
+      "cell": "A15",
+      "v": "Grand Total"
+    },
+    {
+      "cell": "B15",
+      "v": 72730
+    },
+    {
+      "cell": "C15",
+      "v": 2323.82
+    },
+    {
+      "cell": "A17",
+      "v": "Exchange rate"
+    },
+    {
+      "cell": "B17",
+      "v": 31.2977
+    }
+  ],
+  "employees": [
+    {
+      "row": 4,
+      "cn": "王品涵",
+      "en": "Pin Han"
+    },
+    {
+      "row": 5,
+      "cn": "洪民翰",
+      "en": "Min Han"
+    },
+    {
+      "row": 6,
+      "cn": "楊文凱",
+      "en": "Wen kai"
+    }
+  ],
+  "summary_rows": [
+    {
+      "row": 3,
+      "preview": {
+        "時薪 Hourly Rate": 1261,
+        "時數\nHours Worked": 87,
+        "薪資\nBasic Salary": 38155,
+        "Allw- Phone/ Communication": 0,
+        "Allw \nTransportation": 0
+      }
+    }
+  ],
+  "pc_headers": [
+    "BU",
+    "CN Name",
+    "EN Name",
+    "Position",
+    "Start Date",
+    "End Date",
+    "FT/PT",
+    "時薪 Hourly Rate",
+    "時數\nHours Worked",
+    "薪資\nBasic Salary",
+    "Allw- Phone/ Communication",
+    "Allw \nTransportation",
+    "Back Pay",
+    "伙食津貼Allw Meal",
+    "病假時數 Sick Leave Hours",
+    "病假扣薪\nSick Leave\n(half pay)",
+    "Bonus VB",
+    "Incentives",
+    "報帳\nReimb Claim",
+    "特休結算\nUntaken AL",
+    "資遣費\nSeverance",
+    "加班費\nOvertime Payment",
+    "Hr (1.34x)",
+    "OT Payment (1.34x)",
+    "Hr (1.67x)",
+    "OT Payment (1.67x)",
+    "Hr (1x)",
+    "OT Payment (1x)",
+    "Hr (2.67x)",
+    "OT Payment (2.67x)",
+    "勞保級距\nInsured Salary Grading - LI",
+    "勞退級距 Pension Salary Grading",
+    "健保級距\nInsured Salary Grading - HI",
+    "健保眷屬\nHI Dependent (person)",
+    "勞保投保天數\nLI Days",
+    "所得稅代扣\nWithholding Tax",
+    "勞保自付\nLI EE",
+    "勞保自付(調整)\nLI EE 1T",
+    "勞退自提\nPension EE",
+    "勞退自提 (調整)\nPension EE 1T",
+    "健保自付\nHI EE",
+    "健保自付(調整)\nHI EE 1T",
+    "健保眷屬\nHI\nDep",
+    "二代健保\n自付\n2G HI EE",
+    "Gross Taxable Income",
+    "Net Salary",
+    "勞保雇主 \nLI ER",
+    "勞保雇主\nLI ER\n1T",
+    "勞退雇主\nPension ER 6%",
+    "勞退雇主\nPension \nER 1T",
+    "健保雇主\nHI ER",
+    "健保雇主\nHI ER\n1T",
+    "二代健保\n雇主\n2G HI ER",
+    "二代健保\n雇主\n2G HI ER \n1T",
+    "團保\nGI",
+    "Gross Salary\n(payable)",
+    "ER Insurance",
+    "Service Fee",
+    "Operation \nFee",
+    "Total"
+  ],
+  "out_headers": [
+    "BU",
+    "CN Name",
+    "EN Name",
+    "Position",
+    "Start Date",
+    "End Date",
+    "FT/PT",
+    "Full Pay/Hourly Rate",
+    "Monthly\nBasic Salary",
+    "Allw- Phone/ Communication",
+    "Allw \nTransportation",
+    "Allw Meal",
+    "Employment day/Hours Worked",
+    "薪資\nBasic Salary",
+    "Back Pay",
+    "伙食津貼Allw Meal",
+    "Remote Stipend",
+    "病假時數 Sick Leave Hours",
+    "病假扣薪\nSick Leave\n(half pay)",
+    "NPL Hours",
+    "No Pay Leave",
+    "Bonus VB",
+    "Incentives",
+    "報帳\nReimb Claim",
+    "特休結算\nUntaken AL",
+    "資遣費\nSeverance",
+    "加班費\nOvertime Payment",
+    "Hr (1.34x)",
+    "OT Payment (1.34x)",
+    "Hr (1.67x)",
+    "OT Payment (1.67x)",
+    "Hr (1x)",
+    "OT Payment (1x)",
+    "Hr (2.67x)",
+    "OT Payment (2.67x)",
+    "勞保級距\nInsured Salary Grading - LI",
+    "勞退級距 Pension Salary Grading",
+    "健保投保級距Insured Salary Grading - HI",
+    "健保眷屬\nHI Dependent (person)",
+    "勞保投保天數\nLI Days",
+    "所得稅代扣\nWithholding Tax",
+    "勞保自付\nLI EE",
+    "勞保自付(調整)\nLI EE 1T",
+    "勞退自提\nPension EE",
+    "勞退自提 (調整)\nPension EE 1T",
+    "健保自付\nHI EE",
+    "健保自付(調整)\nHI EE 1T",
+    "健保眷屬\nHI\nDep",
+    "二代健保\n自付\n2G HI EE",
+    "Gross Taxable Income",
+    "Net Salary",
+    "勞保雇主 \nLI ER",
+    "勞保雇主\nLI ER\n1T",
+    "勞退雇主\nPension ER 6%",
+    "勞退雇主\nPension \nER 1T",
+    "健保雇主\nHI ER",
+    "健保雇主\nHI ER\n1T",
+    "二代健保\n雇主\n2G HI ER",
+    "二代健保\n雇主\n2G HI ER \n1T",
+    "團保\nGI",
+    "Gross Salary\n(payable)",
+    "ER Insurance",
+    "Service Fee",
+    "Operation \nFee",
+    "Total"
+  ],
+  "out_only": [
+    "Allw Meal",
+    "Employment day/Hours Worked",
+    "Full Pay/Hourly Rate",
+    "Monthly\nBasic Salary",
+    "NPL Hours",
+    "No Pay Leave",
+    "Remote Stipend",
+    "健保投保級距Insured Salary Grading - HI"
+  ],
+  "pc_only": [
+    "健保級距\nInsured Salary Grading - HI",
+    "時數\nHours Worked",
+    "時薪 Hourly Rate"
+  ]
+}

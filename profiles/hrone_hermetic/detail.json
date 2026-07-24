@@ -1,0 +1,1773 @@
+{
+  "other_fee": {
+    "C15": {
+      "value": null,
+      "formula": null
+    },
+    "D19": {
+      "value": 200,
+      "formula": null
+    },
+    "B15": {
+      "value": "1笔报销",
+      "formula": null
+    },
+    "A15": {
+      "value": "报销服务费",
+      "formula": null
+    },
+    "A19": {
+      "value": "其他",
+      "formula": null
+    },
+    "B19": {
+      "value": "异地大礼包",
+      "formula": null
+    },
+    "C19": {
+      "value": null,
+      "formula": null
+    },
+    "context": [
+      {
+        "row": 12,
+        "cells": [
+          {
+            "D": "RMB"
+          }
+        ]
+      },
+      {
+        "row": 13,
+        "cells": [
+          {
+            "A": "Other Service Fee Tax    其他服务费税"
+          }
+        ]
+      },
+      {
+        "row": 14,
+        "cells": [
+          {
+            "A": "Other Service Fee    其他服务费"
+          },
+          {
+            "E": "=SUM(D15:D25)"
+          }
+        ]
+      },
+      {
+        "row": 15,
+        "cells": [
+          {
+            "A": "报销服务费"
+          },
+          {
+            "B": "1笔报销"
+          }
+        ]
+      },
+      {
+        "row": 16,
+        "cells": [
+          {
+            "A": "签证&户口"
+          }
+        ]
+      },
+      {
+        "row": 17,
+        "cells": [
+          {
+            "A": "外勤服务"
+          }
+        ]
+      },
+      {
+        "row": 18,
+        "cells": [
+          {
+            "A": "背景调查"
+          }
+        ]
+      },
+      {
+        "row": 19,
+        "cells": [
+          {
+            "A": "其他"
+          },
+          {
+            "B": "异地大礼包"
+          },
+          {
+            "D": "200"
+          }
+        ]
+      }
+    ]
+  },
+  "payment_notice": {
+    "B29": {
+      "value": null,
+      "formula": null
+    },
+    "B8": {
+      "value": null,
+      "formula": null
+    },
+    "C49": {
+      "value": 6.91,
+      "formula": null
+    }
+  },
+  "other_fee_values": {
+    "C15": null,
+    "D19": 200
+  },
+  "payment_notice_C49_value": 6.91,
+  "china_l": [
+    {
+      "col": "A",
+      "field": "工号",
+      "value": "CUS1525-0002"
+    },
+    {
+      "col": "B",
+      "field": "姓名",
+      "value": "杨明华"
+    },
+    {
+      "col": "C",
+      "field": "基本工资",
+      "value": 37337.5
+    },
+    {
+      "col": "D",
+      "field": "浮动工资",
+      "value": 0
+    },
+    {
+      "col": "E",
+      "field": "月奖",
+      "value": 0
+    },
+    {
+      "col": "F",
+      "field": "季奖",
+      "value": 0
+    },
+    {
+      "col": "G",
+      "field": "其他奖金",
+      "value": 16372.29
+    },
+    {
+      "col": "H",
+      "field": "加班工资150",
+      "value": 0
+    },
+    {
+      "col": "I",
+      "field": "加班工资200",
+      "value": 0
+    },
+    {
+      "col": "J",
+      "field": "加班工资300",
+      "value": 0
+    },
+    {
+      "col": "K",
+      "field": "入离职缺勤扣",
+      "value": 0
+    },
+    {
+      "col": "L",
+      "field": "扣事假",
+      "value": 0
+    },
+    {
+      "col": "M",
+      "field": "扣旷工",
+      "value": 0
+    },
+    {
+      "col": "N",
+      "field": "扣病假",
+      "value": 0
+    },
+    {
+      "col": "O",
+      "field": "交通费",
+      "value": 1171.3
+    },
+    {
+      "col": "P",
+      "field": "通讯费",
+      "value": 0
+    },
+    {
+      "col": "Q",
+      "field": "其他津贴",
+      "value": 0
+    },
+    {
+      "col": "R",
+      "field": "中班费",
+      "value": 0
+    },
+    {
+      "col": "S",
+      "field": "夜班费",
+      "value": 0
+    },
+    {
+      "col": "T",
+      "field": "高温费",
+      "value": 0
+    },
+    {
+      "col": "U",
+      "field": "高温作业费",
+      "value": 0
+    },
+    {
+      "col": "V",
+      "field": "有毒有害作业费",
+      "value": 0
+    },
+    {
+      "col": "W",
+      "field": "补发",
+      "value": 0
+    },
+    {
+      "col": "X",
+      "field": "补扣",
+      "value": 0
+    },
+    {
+      "col": "Y",
+      "field": "税前调整",
+      "value": 0
+    },
+    {
+      "col": "Z",
+      "field": "缴养老",
+      "value": 2203.92
+    },
+    {
+      "col": "AA",
+      "field": "缴医疗",
+      "value": 672.66
+    },
+    {
+      "col": "AB",
+      "field": "缴失业",
+      "value": 84.58
+    },
+    {
+      "col": "AC",
+      "field": "缴公积金",
+      "value": 4229
+    },
+    {
+      "col": "AD",
+      "field": "缴补充公积金（免税）",
+      "value": 0
+    },
+    {
+      "col": "AE",
+      "field": "社保调整",
+      "value": 0
+    },
+    {
+      "col": "AF",
+      "field": "公积金调整",
+      "value": 0
+    },
+    {
+      "col": "AG",
+      "field": "年金",
+      "value": 0
+    },
+    {
+      "col": "AH",
+      "field": "工会费",
+      "value": 0
+    },
+    {
+      "col": "AI",
+      "field": "计税不发",
+      "value": 0
+    },
+    {
+      "col": "AJ",
+      "field": "当月税前收入额",
+      "value": 54881.09
+    },
+    {
+      "col": "AK",
+      "field": "当月基本扣除",
+      "value": 5000
+    },
+    {
+      "col": "AL",
+      "field": "累计税前收入-员工",
+      "value": 140221.115521191
+    },
+    {
+      "col": "AM",
+      "field": "累计个人社保公积金",
+      "value": 21570.48
+    },
+    {
+      "col": "AN",
+      "field": "累计基本扣除",
+      "value": 15000
+    },
+    {
+      "col": "AO",
+      "field": "累计子女教育",
+      "value": 12000
+    },
+    {
+      "col": "AP",
+      "field": "累计继续教育",
+      "value": 0
+    },
+    {
+      "col": "AQ",
+      "field": "累计住房贷款利息",
+      "value": 3000
+    },
+    {
+      "col": "AR",
+      "field": "累计住房租金",
+      "value": 0
+    },
+    {
+      "col": "AS",
+      "field": "累计赡养老人",
+      "value": 9000
+    },
+    {
+      "col": "AT",
+      "field": "累计其他税前扣除",
+      "value": 0
+    },
+    {
+      "col": "AU",
+      "field": "累计免税扣除合计(不含社保公积金）",
+      "value": 39000
+    },
+    {
+      "col": "AV",
+      "field": "累计应税总额",
+      "value": 79650.6355211913
+    },
+    {
+      "col": "AW",
+      "field": "累计个税（个人）",
+      "value": 5445.06355211913
+    },
+    {
+      "col": "AX",
+      "field": "当月个税（个人）",
+      "value": 3469.09
+    },
+    {
+      "col": "AY",
+      "field": "公司负税项",
+      "value": 0
+    },
+    {
+      "col": "AZ",
+      "field": "当月公司负税合计",
+      "value": 0
+    },
+    {
+      "col": "BA",
+      "field": "累计税后计税收入",
+      "value": 113205.571969072
+    },
+    {
+      "col": "BB",
+      "field": "累计税前收入",
+      "value": 118650.635521191
+    },
+    {
+      "col": "BC",
+      "field": "导算当月应发工资",
+      "value": 54881.09
+    },
+    {
+      "col": "BD",
+      "field": "累计个税（公司+个人）",
+      "value": 5445.06355211913
+    },
+    {
+      "col": "BE",
+      "field": "当月个税（公司）",
+      "value": 0
+    },
+    {
+      "col": "BF",
+      "field": "独生子女费",
+      "value": 0
+    },
+    {
+      "col": "BG",
+      "field": "缴补充公积金（不免税）",
+      "value": 0
+    },
+    {
+      "col": "BH",
+      "field": "报销款",
+      "value": 290.7
+    },
+    {
+      "col": "BI",
+      "field": "报销款25%",
+      "value": 0
+    },
+    {
+      "col": "BJ",
+      "field": "外籍生活津贴",
+      "value": 0
+    },
+    {
+      "col": "BK",
+      "field": "税后补",
+      "value": 0
+    },
+    {
+      "col": "BL",
+      "field": "税后扣",
+      "value": 0
+    },
+    {
+      "col": "BM",
+      "field": "13薪/年终奖",
+      "value": 0
+    },
+    {
+      "col": "BN",
+      "field": "13薪/年终奖税",
+      "value": 0
+    },
+    {
+      "col": "BO",
+      "field": "离职补偿金/赔偿金",
+      "value": 0
+    },
+    {
+      "col": "BP",
+      "field": "离职补偿金税/赔偿金税",
+      "value": 0
+    },
+    {
+      "col": "BQ",
+      "field": "股权激励",
+      "value": 0
+    },
+    {
+      "col": "BR",
+      "field": "股权激励税",
+      "value": 0
+    },
+    {
+      "col": "BS",
+      "field": "应发",
+      "value": 55171.79
+    },
+    {
+      "col": "BT",
+      "field": "应扣",
+      "value": 10659.25
+    },
+    {
+      "col": "BU",
+      "field": "实发",
+      "value": 44512.54
+    },
+    {
+      "col": "BV",
+      "field": "公司养老",
+      "value": 4683.33
+    },
+    {
+      "col": "BW",
+      "field": "公司医疗",
+      "value": 2017.98
+    },
+    {
+      "col": "BX",
+      "field": "公司失业",
+      "value": 338.32
+    },
+    {
+      "col": "BY",
+      "field": "生育",
+      "value": 168.17
+    },
+    {
+      "col": "BZ",
+      "field": "工伤",
+      "value": 169.16
+    },
+    {
+      "col": "CA",
+      "field": "残保金",
+      "value": 56
+    },
+    {
+      "col": "CB",
+      "field": "公积金",
+      "value": 4229
+    },
+    {
+      "col": "CC",
+      "field": "补充公积金（免税）",
+      "value": 0
+    },
+    {
+      "col": "CD",
+      "field": "累计已扣工资税",
+      "value": 5445.06
+    },
+    {
+      "col": "CE",
+      "field": "累计婴幼儿照护费用",
+      "value": 0
+    },
+    {
+      "col": "CF",
+      "field": "工会费",
+      "value": 0
+    },
+    {
+      "col": "CG",
+      "field": "雇主责任险",
+      "value": 0
+    },
+    {
+      "col": "CK",
+      "field": "公司社保公积金调整",
+      "value": 0
+    }
+  ],
+  "china": {
+    "rows": [
+      {
+        "row": 1,
+        "cells": [
+          {
+            "col": "A",
+            "v": "=MID(CELL(\"filename\",A1),FIND(\"]\",CELL(\"filename\",A1))+1,256)",
+            "formula": "=MID(CELL(\"filename\",A1),FIND(\"]\",CELL(\"filename\",A1))+1,256)"
+          }
+        ]
+      },
+      {
+        "row": 2,
+        "cells": [
+          {
+            "col": "A",
+            "v": "Pay Period"
+          },
+          {
+            "col": "B",
+            "v": "=EOMONTH(TODAY(),-1)+1",
+            "formula": "=EOMONTH(TODAY(),-1)+1"
+          },
+          {
+            "col": "C",
+            "v": "=EOMONTH(TODAY(),0)",
+            "formula": "=EOMONTH(TODAY(),0)"
+          },
+          {
+            "col": "E",
+            "v": "ER"
+          }
+        ]
+      },
+      {
+        "row": 3,
+        "cells": [
+          {
+            "col": "E",
+            "v": "Sum"
+          },
+          {
+            "col": "F",
+            "v": "Business\nTax"
+          },
+          {
+            "col": "G",
+            "v": "Management Fee"
+          },
+          {
+            "col": "K",
+            "v": "Gross Salary"
+          },
+          {
+            "col": "AQ",
+            "v": "Mandatory Contribution"
+          },
+          {
+            "col": "BC",
+            "v": "Other Payment For EE"
+          },
+          {
+            "col": "BF",
+            "v": "Expense Claim"
+          },
+          {
+            "col": "BI",
+            "v": "Refundable\nDeposit"
+          }
+        ]
+      },
+      {
+        "row": 4,
+        "cells": [
+          {
+            "col": "G",
+            "v": "Subtotal"
+          },
+          {
+            "col": "H",
+            "v": "For\nRecurring"
+          },
+          {
+            "col": "I",
+            "v": "For\nExpense"
+          },
+          {
+            "col": "J",
+            "v": "Other"
+          },
+          {
+            "col": "K",
+            "v": "Subtotal"
+          },
+          {
+            "col": "L",
+            "v": "基本工资"
+          },
+          {
+            "col": "M",
+            "v": "浮动工资"
+          },
+          {
+            "col": "N",
+            "v": "月奖"
+          },
+          {
+            "col": "O",
+            "v": "季奖"
+          },
+          {
+            "col": "P",
+            "v": "其他奖金"
+          },
+          {
+            "col": "Q",
+            "v": "加班工资150"
+          },
+          {
+            "col": "R",
+            "v": "加班工资200"
+          },
+          {
+            "col": "S",
+            "v": "加班工资300"
+          },
+          {
+            "col": "T",
+            "v": "入离职缺勤扣"
+          },
+          {
+            "col": "U",
+            "v": "扣事假"
+          },
+          {
+            "col": "V",
+            "v": "扣旷工"
+          },
+          {
+            "col": "W",
+            "v": "扣病假"
+          },
+          {
+            "col": "X",
+            "v": "交通费"
+          },
+          {
+            "col": "Y",
+            "v": "通讯费"
+          },
+          {
+            "col": "Z",
+            "v": "其他津贴"
+          },
+          {
+            "col": "AA",
+            "v": "中班费"
+          },
+          {
+            "col": "AB",
+            "v": "夜班费"
+          },
+          {
+            "col": "AC",
+            "v": "高温费"
+          },
+          {
+            "col": "AD",
+            "v": "高温作业费"
+          },
+          {
+            "col": "AE",
+            "v": "有毒有害作业费"
+          },
+          {
+            "col": "AF",
+            "v": "补发"
+          },
+          {
+            "col": "AG",
+            "v": "补扣"
+          },
+          {
+            "col": "AH",
+            "v": "税前调整"
+          },
+          {
+            "col": "AI",
+            "v": "公司负税项"
+          },
+          {
+            "col": "AJ",
+            "v": "独生子女费"
+          },
+          {
+            "col": "AK",
+            "v": "外籍生活津贴"
+          },
+          {
+            "col": "AL",
+            "v": "税后补"
+          },
+          {
+            "col": "AM",
+            "v": "税后扣"
+          },
+          {
+            "col": "AN",
+            "v": "13薪/年终奖"
+          },
+          {
+            "col": "AO",
+            "v": "离职补偿金/赔偿金"
+          },
+          {
+            "col": "AP",
+            "v": "股权激励"
+          },
+          {
+            "col": "AQ",
+            "v": "Subtotal"
+          },
+          {
+            "col": "AR",
+            "v": "公司养老"
+          },
+          {
+            "col": "AS",
+            "v": "公司医疗 "
+          },
+          {
+            "col": "AT",
+            "v": "公司失业"
+          },
+          {
+            "col": "AU",
+            "v": "生育"
+          },
+          {
+            "col": "AV",
+            "v": "工伤"
+          },
+          {
+            "col": "AW",
+            "v": "残保金"
+          },
+          {
+            "col": "AX",
+            "v": "公积金"
+          },
+          {
+            "col": "AY",
+            "v": "补充公积金（免税）"
+          },
+          {
+            "col": "AZ",
+            "v": "工会费"
+          },
+          {
+            "col": "BA",
+            "v": "雇主责任险"
+          },
+          {
+            "col": "BB",
+            "v": "公司社保公积金调整"
+          },
+          {
+            "col": "BC",
+            "v": "Subtotal"
+          },
+          {
+            "col": "BD",
+            "v": "计税不发"
+          },
+          {
+            "col": "BE",
+            "v": "当月个税（公司）"
+          },
+          {
+            "col": "BF",
+            "v": "Subtotal"
+          },
+          {
+            "col": "BG",
+            "v": "报销款"
+          },
+          {
+            "col": "BH",
+            "v": "报销款25%"
+          }
+        ]
+      },
+      {
+        "row": 6,
+        "cells": [
+          {
+            "col": "B",
+            "v": "Sum"
+          },
+          {
+            "col": "C",
+            "v": "(RMB)"
+          },
+          {
+            "col": "E",
+            "v": "=SUM(E9:E18)",
+            "formula": "=SUM(E9:E18)"
+          },
+          {
+            "col": "F",
+            "v": "=SUM(F9:F18)",
+            "formula": "=SUM(F9:F18)"
+          },
+          {
+            "col": "G",
+            "v": "=SUM(G9:G18)",
+            "formula": "=SUM(G9:G18)"
+          },
+          {
+            "col": "H",
+            "v": "=SUM(H9:H18)",
+            "formula": "=SUM(H9:H18)"
+          },
+          {
+            "col": "I",
+            "v": "=SUM(I9:I18)",
+            "formula": "=SUM(I9:I18)"
+          },
+          {
+            "col": "J",
+            "v": "=SUM(J9:J18)",
+            "formula": "=SUM(J9:J18)"
+          },
+          {
+            "col": "K",
+            "v": "=SUM(K9:K18)",
+            "formula": "=SUM(K9:K18)"
+          },
+          {
+            "col": "L",
+            "v": "=SUM(L9:L18)",
+            "formula": "=SUM(L9:L18)"
+          },
+          {
+            "col": "M",
+            "v": "=SUM(M9:M18)",
+            "formula": "=SUM(M9:M18)"
+          },
+          {
+            "col": "N",
+            "v": "=SUM(N9:N18)",
+            "formula": "=SUM(N9:N18)"
+          },
+          {
+            "col": "O",
+            "v": "=SUM(O9:O18)",
+            "formula": "=SUM(O9:O18)"
+          },
+          {
+            "col": "P",
+            "v": "=SUM(P9:P18)",
+            "formula": "=SUM(P9:P18)"
+          },
+          {
+            "col": "Q",
+            "v": "=SUM(Q9:Q18)",
+            "formula": "=SUM(Q9:Q18)"
+          },
+          {
+            "col": "R",
+            "v": "=SUM(R9:R18)",
+            "formula": "=SUM(R9:R18)"
+          },
+          {
+            "col": "S",
+            "v": "=SUM(S9:S18)",
+            "formula": "=SUM(S9:S18)"
+          },
+          {
+            "col": "T",
+            "v": "=SUM(T9:T18)",
+            "formula": "=SUM(T9:T18)"
+          },
+          {
+            "col": "U",
+            "v": "=SUM(U9:U18)",
+            "formula": "=SUM(U9:U18)"
+          },
+          {
+            "col": "V",
+            "v": "=SUM(V9:V18)",
+            "formula": "=SUM(V9:V18)"
+          },
+          {
+            "col": "W",
+            "v": "=SUM(W9:W18)",
+            "formula": "=SUM(W9:W18)"
+          },
+          {
+            "col": "X",
+            "v": "=SUM(X9:X18)",
+            "formula": "=SUM(X9:X18)"
+          },
+          {
+            "col": "Y",
+            "v": "=SUM(Y9:Y18)",
+            "formula": "=SUM(Y9:Y18)"
+          },
+          {
+            "col": "Z",
+            "v": "=SUM(Z9:Z18)",
+            "formula": "=SUM(Z9:Z18)"
+          },
+          {
+            "col": "AA",
+            "v": "=SUM(AA9:AA18)",
+            "formula": "=SUM(AA9:AA18)"
+          },
+          {
+            "col": "AB",
+            "v": "=SUM(AB9:AB18)",
+            "formula": "=SUM(AB9:AB18)"
+          },
+          {
+            "col": "AC",
+            "v": "=SUM(AC9:AC18)",
+            "formula": "=SUM(AC9:AC18)"
+          },
+          {
+            "col": "AD",
+            "v": "=SUM(AD9:AD18)",
+            "formula": "=SUM(AD9:AD18)"
+          },
+          {
+            "col": "AE",
+            "v": "=SUM(AE9:AE18)",
+            "formula": "=SUM(AE9:AE18)"
+          },
+          {
+            "col": "AF",
+            "v": "=SUM(AF9:AF18)",
+            "formula": "=SUM(AF9:AF18)"
+          },
+          {
+            "col": "AG",
+            "v": "=SUM(AG9:AG18)",
+            "formula": "=SUM(AG9:AG18)"
+          },
+          {
+            "col": "AH",
+            "v": "=SUM(AH9:AH18)",
+            "formula": "=SUM(AH9:AH18)"
+          },
+          {
+            "col": "AI",
+            "v": "=SUM(AI9:AI18)",
+            "formula": "=SUM(AI9:AI18)"
+          },
+          {
+            "col": "AJ",
+            "v": "=SUM(AJ9:AJ18)",
+            "formula": "=SUM(AJ9:AJ18)"
+          },
+          {
+            "col": "AK",
+            "v": "=SUM(AK9:AK18)",
+            "formula": "=SUM(AK9:AK18)"
+          },
+          {
+            "col": "AL",
+            "v": "=SUM(AL9:AL18)",
+            "formula": "=SUM(AL9:AL18)"
+          },
+          {
+            "col": "AM",
+            "v": "=SUM(AM9:AM18)",
+            "formula": "=SUM(AM9:AM18)"
+          },
+          {
+            "col": "AN",
+            "v": "=SUM(AN9:AN18)",
+            "formula": "=SUM(AN9:AN18)"
+          },
+          {
+            "col": "AO",
+            "v": "=SUM(AO9:AO18)",
+            "formula": "=SUM(AO9:AO18)"
+          },
+          {
+            "col": "AP",
+            "v": "=SUM(AP9:AP18)",
+            "formula": "=SUM(AP9:AP18)"
+          },
+          {
+            "col": "AQ",
+            "v": "=SUM(AQ9:AQ18)",
+            "formula": "=SUM(AQ9:AQ18)"
+          },
+          {
+            "col": "AR",
+            "v": "=SUM(AR9:AR18)",
+            "formula": "=SUM(AR9:AR18)"
+          },
+          {
+            "col": "AS",
+            "v": "=SUM(AS9:AS18)",
+            "formula": "=SUM(AS9:AS18)"
+          },
+          {
+            "col": "AT",
+            "v": "=SUM(AT9:AT18)",
+            "formula": "=SUM(AT9:AT18)"
+          },
+          {
+            "col": "AU",
+            "v": "=SUM(AU9:AU18)",
+            "formula": "=SUM(AU9:AU18)"
+          },
+          {
+            "col": "AV",
+            "v": "=SUM(AV9:AV18)",
+            "formula": "=SUM(AV9:AV18)"
+          },
+          {
+            "col": "AW",
+            "v": "=SUM(AW9:AW18)",
+            "formula": "=SUM(AW9:AW18)"
+          },
+          {
+            "col": "AX",
+            "v": "=SUM(AX9:AX18)",
+            "formula": "=SUM(AX9:AX18)"
+          },
+          {
+            "col": "AY",
+            "v": "=SUM(AY9:AY18)",
+            "formula": "=SUM(AY9:AY18)"
+          },
+          {
+            "col": "AZ",
+            "v": "=SUM(AZ9:AZ18)",
+            "formula": "=SUM(AZ9:AZ18)"
+          },
+          {
+            "col": "BA",
+            "v": "=SUM(BA9:BA18)",
+            "formula": "=SUM(BA9:BA18)"
+          },
+          {
+            "col": "BB",
+            "v": "=SUM(BB9:BB18)",
+            "formula": "=SUM(BB9:BB18)"
+          },
+          {
+            "col": "BC",
+            "v": "=SUM(BC9:BC18)",
+            "formula": "=SUM(BC9:BC18)"
+          },
+          {
+            "col": "BD",
+            "v": "=SUM(BD9:BD18)",
+            "formula": "=SUM(BD9:BD18)"
+          },
+          {
+            "col": "BE",
+            "v": "=SUM(BE9:BE18)",
+            "formula": "=SUM(BE9:BE18)"
+          },
+          {
+            "col": "BF",
+            "v": "=SUM(BF9:BF18)",
+            "formula": "=SUM(BF9:BF18)"
+          },
+          {
+            "col": "BG",
+            "v": "=SUM(BG9:BG18)",
+            "formula": "=SUM(BG9:BG18)"
+          },
+          {
+            "col": "BH",
+            "v": "=SUM(BH9:BH18)",
+            "formula": "=SUM(BH9:BH18)"
+          },
+          {
+            "col": "BI",
+            "v": "=SUM(BI9:BI18)",
+            "formula": "=SUM(BI9:BI18)"
+          }
+        ]
+      },
+      {
+        "row": 9,
+        "cells": [
+          {
+            "col": "B",
+            "v": "CPT"
+          },
+          {
+            "col": "C",
+            "v": "='China-L'!A2",
+            "formula": "='China-L'!A2"
+          },
+          {
+            "col": "E",
+            "v": "=SUM(F9:G9)+K9+AQ9+BC9+BF9+BI9",
+            "formula": "=SUM(F9:G9)+K9+AQ9+BC9+BF9+BI9"
+          },
+          {
+            "col": "F",
+            "v": "=(K9+AQ9+BC9+BF9)*6%",
+            "formula": "=(K9+AQ9+BC9+BF9)*6%"
+          },
+          {
+            "col": "G",
+            "v": "=SUM(H9:J9)",
+            "formula": "=SUM(H9:J9)"
+          },
+          {
+            "col": "H",
+            "v": "=300*PN!$B$29+IF(AN9=0,0,300*PN!$B$29)",
+            "formula": "=300*PN!$B$29+IF(AN9=0,0,300*PN!$B$29)"
+          },
+          {
+            "col": "I",
+            "v": "=40*PN!$B$29*1",
+            "formula": "=40*PN!$B$29*1"
+          },
+          {
+            "col": "J",
+            "v": "200"
+          },
+          {
+            "col": "K",
+            "v": "=SUM(L9:AP9)",
+            "formula": "=SUM(L9:AP9)"
+          },
+          {
+            "col": "L",
+            "v": "='China-L'!C2",
+            "formula": "='China-L'!C2"
+          },
+          {
+            "col": "M",
+            "v": "='China-L'!D2",
+            "formula": "='China-L'!D2"
+          },
+          {
+            "col": "N",
+            "v": "='China-L'!E2",
+            "formula": "='China-L'!E2"
+          },
+          {
+            "col": "O",
+            "v": "='China-L'!F2",
+            "formula": "='China-L'!F2"
+          },
+          {
+            "col": "P",
+            "v": "='China-L'!G2",
+            "formula": "='China-L'!G2"
+          },
+          {
+            "col": "Q",
+            "v": "='China-L'!H2",
+            "formula": "='China-L'!H2"
+          },
+          {
+            "col": "R",
+            "v": "='China-L'!I2",
+            "formula": "='China-L'!I2"
+          },
+          {
+            "col": "S",
+            "v": "='China-L'!J2",
+            "formula": "='China-L'!J2"
+          },
+          {
+            "col": "T",
+            "v": "='China-L'!K2",
+            "formula": "='China-L'!K2"
+          },
+          {
+            "col": "U",
+            "v": "='China-L'!L2",
+            "formula": "='China-L'!L2"
+          },
+          {
+            "col": "V",
+            "v": "='China-L'!M2",
+            "formula": "='China-L'!M2"
+          },
+          {
+            "col": "W",
+            "v": "='China-L'!N2",
+            "formula": "='China-L'!N2"
+          },
+          {
+            "col": "X",
+            "v": "='China-L'!O2",
+            "formula": "='China-L'!O2"
+          },
+          {
+            "col": "Y",
+            "v": "='China-L'!P2",
+            "formula": "='China-L'!P2"
+          },
+          {
+            "col": "Z",
+            "v": "='China-L'!Q2",
+            "formula": "='China-L'!Q2"
+          },
+          {
+            "col": "AA",
+            "v": "='China-L'!R2",
+            "formula": "='China-L'!R2"
+          },
+          {
+            "col": "AB",
+            "v": "='China-L'!S2",
+            "formula": "='China-L'!S2"
+          },
+          {
+            "col": "AC",
+            "v": "='China-L'!T2",
+            "formula": "='China-L'!T2"
+          },
+          {
+            "col": "AD",
+            "v": "='China-L'!U2",
+            "formula": "='China-L'!U2"
+          },
+          {
+            "col": "AE",
+            "v": "='China-L'!V2",
+            "formula": "='China-L'!V2"
+          },
+          {
+            "col": "AF",
+            "v": "='China-L'!W2",
+            "formula": "='China-L'!W2"
+          },
+          {
+            "col": "AG",
+            "v": "='China-L'!X2",
+            "formula": "='China-L'!X2"
+          },
+          {
+            "col": "AH",
+            "v": "='China-L'!Y2",
+            "formula": "='China-L'!Y2"
+          },
+          {
+            "col": "AI",
+            "v": "='China-L'!AY2",
+            "formula": "='China-L'!AY2"
+          },
+          {
+            "col": "AJ",
+            "v": "='China-L'!BF2",
+            "formula": "='China-L'!BF2"
+          },
+          {
+            "col": "AK",
+            "v": "='China-L'!BJ2",
+            "formula": "='China-L'!BJ2"
+          },
+          {
+            "col": "AL",
+            "v": "='China-L'!BK2",
+            "formula": "='China-L'!BK2"
+          },
+          {
+            "col": "AM",
+            "v": "='China-L'!BL2",
+            "formula": "='China-L'!BL2"
+          },
+          {
+            "col": "AN",
+            "v": "='China-L'!BM2",
+            "formula": "='China-L'!BM2"
+          },
+          {
+            "col": "AO",
+            "v": "='China-L'!BO2",
+            "formula": "='China-L'!BO2"
+          },
+          {
+            "col": "AP",
+            "v": "='China-L'!BQ2",
+            "formula": "='China-L'!BQ2"
+          },
+          {
+            "col": "AQ",
+            "v": "=SUM(AR9:BB9)",
+            "formula": "=SUM(AR9:BB9)"
+          },
+          {
+            "col": "AR",
+            "v": "='China-L'!BV2",
+            "formula": "='China-L'!BV2"
+          },
+          {
+            "col": "AS",
+            "v": "='China-L'!BW2",
+            "formula": "='China-L'!BW2"
+          },
+          {
+            "col": "AT",
+            "v": "='China-L'!BX2",
+            "formula": "='China-L'!BX2"
+          },
+          {
+            "col": "AU",
+            "v": "='China-L'!BY2",
+            "formula": "='China-L'!BY2"
+          },
+          {
+            "col": "AV",
+            "v": "='China-L'!BZ2",
+            "formula": "='China-L'!BZ2"
+          },
+          {
+            "col": "AW",
+            "v": "='China-L'!CA2",
+            "formula": "='China-L'!CA2"
+          },
+          {
+            "col": "AX",
+            "v": "='China-L'!CB2",
+            "formula": "='China-L'!CB2"
+          },
+          {
+            "col": "AY",
+            "v": "='China-L'!CC2",
+            "formula": "='China-L'!CC2"
+          },
+          {
+            "col": "AZ",
+            "v": "='China-L'!CF2",
+            "formula": "='China-L'!CF2"
+          },
+          {
+            "col": "BA",
+            "v": "='China-L'!CG2",
+            "formula": "='China-L'!CG2"
+          },
+          {
+            "col": "BB",
+            "v": "='China-L'!CK2",
+            "formula": "='China-L'!CK2"
+          },
+          {
+            "col": "BC",
+            "v": "=SUM(BD9:BE9)",
+            "formula": "=SUM(BD9:BE9)"
+          },
+          {
+            "col": "BD",
+            "v": "='China-L'!AI2",
+            "formula": "='China-L'!AI2"
+          },
+          {
+            "col": "BE",
+            "v": "='China-L'!BE2",
+            "formula": "='China-L'!BE2"
+          },
+          {
+            "col": "BF",
+            "v": "=SUM(BG9:BH9)",
+            "formula": "=SUM(BG9:BH9)"
+          },
+          {
+            "col": "BG",
+            "v": "='China-L'!BH2",
+            "formula": "='China-L'!BH2"
+          },
+          {
+            "col": "BH",
+            "v": "=+'China-L'!BI2",
+            "formula": "=+'China-L'!BI2"
+          },
+          {
+            "col": "BI",
+            "v": "=(K9+AQ9+BC9)*20%",
+            "formula": "=(K9+AQ9+BC9)*20%"
+          }
+        ]
+      }
+    ]
+  },
+  "pn": {
+    "B29": {
+      "value": 6.91,
+      "formula": null
+    },
+    "B8": {
+      "value": "Hermetic Solutions Group, Inc",
+      "formula": null
+    },
+    "C49": {
+      "value": null,
+      "formula": null
+    }
+  },
+  "china_ee": [
+    {
+      "row": 1,
+      "cells": [
+        {
+          "col": "A",
+          "v": "=MID(CELL(\"filename\",A1),FIND(\"]\",CELL(\"filename\",A1))+1,256)",
+          "formula": "=MID(CELL(\"filename\",A1),FIND(\"]\",CELL(\"filename\",A1))+1,256)"
+        }
+      ]
+    },
+    {
+      "row": 2,
+      "cells": [
+        {
+          "col": "H",
+          "v": "EE"
+        }
+      ]
+    },
+    {
+      "row": 3,
+      "cells": [
+        {
+          "col": "B",
+          "v": "Client Code"
+        },
+        {
+          "col": "C",
+          "v": "Client Name"
+        },
+        {
+          "col": "D",
+          "v": "EE Code"
+        },
+        {
+          "col": "E",
+          "v": "EE Name"
+        },
+        {
+          "col": "F",
+          "v": "Pay Period"
+        },
+        {
+          "col": "H",
+          "v": "Net\nIncome"
+        },
+        {
+          "col": "I",
+          "v": "Salary"
+        }
+      ]
+    },
+    {
+      "row": 4,
+      "cells": [
+        {
+          "col": "F",
+          "v": "From"
+        },
+        {
+          "col": "G",
+          "v": "To"
+        },
+        {
+          "col": "I",
+          "v": "Subtotal"
+        },
+        {
+          "col": "J",
+          "v": "基本工资"
+        },
+        {
+          "col": "K",
+          "v": "浮动工资"
+        },
+        {
+          "col": "L",
+          "v": "月奖"
+        },
+        {
+          "col": "M",
+          "v": "季奖"
+        },
+        {
+          "col": "N",
+          "v": "其他奖金"
+        },
+        {
+          "col": "O",
+          "v": "加班工资150"
+        },
+        {
+          "col": "P",
+          "v": "加班工资200"
+        },
+        {
+          "col": "Q",
+          "v": "加班工资300"
+        },
+        {
+          "col": "R",
+          "v": "入离职缺勤扣"
+        },
+        {
+          "col": "S",
+          "v": "扣事假"
+        },
+        {
+          "col": "T",
+          "v": "扣旷工"
+        },
+        {
+          "col": "U",
+          "v": "扣病假"
+        },
+        {
+          "col": "V",
+          "v": "交通费"
+        },
+        {
+          "col": "W",
+          "v": "通讯费"
+        },
+        {
+          "col": "X",
+          "v": "其他津贴"
+        },
+        {
+          "col": "Y",
+          "v": "中班费"
+        },
+        {
+          "col": "Z",
+          "v": "夜班费"
+        },
+        {
+          "col": "AA",
+          "v": "高温费"
+        },
+        {
+          "col": "AB",
+          "v": "高温作业费"
+        },
+        {
+          "col": "AC",
+          "v": "有毒有害作业费"
+        }
+      ]
+    },
+    {
+      "row": 6,
+      "cells": [
+        {
+          "col": "A",
+          "v": "EOR/PEO(CNY)"
+        }
+      ]
+    },
+    {
+      "row": 10,
+      "cells": [
+        {
+          "col": "B",
+          "v": "CUS1525"
+        },
+        {
+          "col": "C",
+          "v": "=PN!B8",
+          "formula": "=PN!B8"
+        },
+        {
+          "col": "D",
+          "v": "=China!C9",
+          "formula": "=China!C9"
+        },
+        {
+          "col": "E",
+          "v": "=China!B9",
+          "formula": "=China!B9"
+        },
+        {
+          "col": "F",
+          "v": "=China!B2",
+          "formula": "=China!B2"
+        },
+        {
+          "col": "G",
+          "v": "=China!C2",
+          "formula": "=China!C2"
+        },
+        {
+          "col": "H",
+          "v": "=I10+AO10-AR10-BB10-BC10",
+          "formula": "=I10+AO10-AR10-BB10-BC10"
+        },
+        {
+          "col": "I",
+          "v": "=SUM(J10:AN10)",
+          "formula": "=SUM(J10:AN10)"
+        },
+        {
+          "col": "J",
+          "v": "='China-L'!C2",
+          "formula": "='China-L'!C2"
+        },
+        {
+          "col": "K",
+          "v": "='China-L'!D2",
+          "formula": "='China-L'!D2"
+        },
+        {
+          "col": "L",
+          "v": "='China-L'!E2",
+          "formula": "='China-L'!E2"
+        },
+        {
+          "col": "M",
+          "v": "='China-L'!F2",
+          "formula": "='China-L'!F2"
+        },
+        {
+          "col": "N",
+          "v": "='China-L'!G2",
+          "formula": "='China-L'!G2"
+        },
+        {
+          "col": "O",
+          "v": "='China-L'!H2",
+          "formula": "='China-L'!H2"
+        },
+        {
+          "col": "P",
+          "v": "='China-L'!I2",
+          "formula": "='China-L'!I2"
+        },
+        {
+          "col": "Q",
+          "v": "='China-L'!J2",
+          "formula": "='China-L'!J2"
+        },
+        {
+          "col": "R",
+          "v": "='China-L'!K2",
+          "formula": "='China-L'!K2"
+        },
+        {
+          "col": "S",
+          "v": "='China-L'!L2",
+          "formula": "='China-L'!L2"
+        },
+        {
+          "col": "T",
+          "v": "='China-L'!M2",
+          "formula": "='China-L'!M2"
+        },
+        {
+          "col": "U",
+          "v": "='China-L'!N2",
+          "formula": "='China-L'!N2"
+        },
+        {
+          "col": "V",
+          "v": "='China-L'!O2",
+          "formula": "='China-L'!O2"
+        },
+        {
+          "col": "W",
+          "v": "='China-L'!P2",
+          "formula": "='China-L'!P2"
+        },
+        {
+          "col": "X",
+          "v": "='China-L'!Q2",
+          "formula": "='China-L'!Q2"
+        },
+        {
+          "col": "Y",
+          "v": "='China-L'!R2",
+          "formula": "='China-L'!R2"
+        },
+        {
+          "col": "Z",
+          "v": "='China-L'!S2",
+          "formula": "='China-L'!S2"
+        },
+        {
+          "col": "AA",
+          "v": "='China-L'!T2",
+          "formula": "='China-L'!T2"
+        },
+        {
+          "col": "AB",
+          "v": "='China-L'!U2",
+          "formula": "='China-L'!U2"
+        },
+        {
+          "col": "AC",
+          "v": "='China-L'!V2",
+          "formula": "='China-L'!V2"
+        }
+      ]
+    }
+  ],
+  "template_sheets": [
+    "EE"
+  ]
+}

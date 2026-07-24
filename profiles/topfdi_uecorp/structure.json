@@ -1,0 +1,581 @@
+{
+  "src_hk_l": [
+    {
+      "col": "A",
+      "field": "Company name:",
+      "row2": "Payroll period:",
+      "row3": "Currency: "
+    },
+    {
+      "col": "C",
+      "field": "NNRoad (UE Corp)",
+      "row2": "3/1/2026",
+      "row3": "HKD"
+    }
+  ],
+  "out_hk_l": [
+    {
+      "col": "A",
+      "field": "Company name:",
+      "row2": "Payroll period:",
+      "row3": "Currency: "
+    },
+    {
+      "col": "C",
+      "field": "UE Corp",
+      "row2": "2026/3/1",
+      "row3": "HKD"
+    }
+  ],
+  "hk_l_diffs": [
+    {
+      "field": "NNRoad (UE Corp)",
+      "src_row2": "3/1/2026",
+      "out_row2": null
+    },
+    {
+      "field": "UE Corp",
+      "src_row2": null,
+      "out_row2": "2026/3/1"
+    }
+  ],
+  "out_hk_l_data_rows": [
+    {
+      "row": 2,
+      "preview": [
+        "Payroll period:",
+        null,
+        "2026/3/1",
+        "to",
+        "2026/3/31"
+      ]
+    },
+    {
+      "row": 3,
+      "preview": [
+        "Currency: ",
+        null,
+        "HKD",
+        null,
+        null
+      ]
+    },
+    {
+      "row": 7,
+      "preview": [
+        "No. of EE",
+        "Name of Employee",
+        "Base Salary",
+        "OT",
+        "Salary Adjusment"
+      ]
+    },
+    {
+      "row": 8,
+      "preview": [
+        "CUS1503-0001",
+        "Chan Kin Pong",
+        62130.35,
+        null,
+        0
+      ]
+    }
+  ],
+  "src_hk_row9": [
+    {
+      "col": "A",
+      "v": "EOR/PEO"
+    },
+    {
+      "col": "B",
+      "v": "Sum"
+    },
+    {
+      "col": "C",
+      "v": "(USD)"
+    },
+    {
+      "col": "E",
+      "v": "=E10/$B$3",
+      "formula": "=E10/$B$3"
+    },
+    {
+      "col": "F",
+      "v": "=F10/$B$3",
+      "formula": "=F10/$B$3"
+    },
+    {
+      "col": "G",
+      "v": "=G10/$B$3",
+      "formula": "=G10/$B$3"
+    },
+    {
+      "col": "H",
+      "v": "=H10/$B$3",
+      "formula": "=H10/$B$3"
+    },
+    {
+      "col": "I",
+      "v": "=I10/$B$3",
+      "formula": "=I10/$B$3"
+    },
+    {
+      "col": "J",
+      "v": "=J10/$B$3",
+      "formula": "=J10/$B$3"
+    },
+    {
+      "col": "K",
+      "v": "=K10/$B$3",
+      "formula": "=K10/$B$3"
+    },
+    {
+      "col": "L",
+      "v": "=L10/$B$3",
+      "formula": "=L10/$B$3"
+    },
+    {
+      "col": "M",
+      "v": "=M10/$B$3",
+      "formula": "=M10/$B$3"
+    },
+    {
+      "col": "N",
+      "v": "=N10/$B$3",
+      "formula": "=N10/$B$3"
+    },
+    {
+      "col": "O",
+      "v": "=O10/$B$3",
+      "formula": "=O10/$B$3"
+    },
+    {
+      "col": "P",
+      "v": "=P10/$B$3",
+      "formula": "=P10/$B$3"
+    },
+    {
+      "col": "Q",
+      "v": "=Q10/$B$3",
+      "formula": "=Q10/$B$3"
+    },
+    {
+      "col": "R",
+      "v": "=R10/$B$3",
+      "formula": "=R10/$B$3"
+    },
+    {
+      "col": "S",
+      "v": "=S10/$B$3",
+      "formula": "=S10/$B$3"
+    },
+    {
+      "col": "T",
+      "v": "=T10/$B$3",
+      "formula": "=T10/$B$3"
+    },
+    {
+      "col": "U",
+      "v": "=U10/$B$3",
+      "formula": "=U10/$B$3"
+    },
+    {
+      "col": "V",
+      "v": "=V10/$B$3",
+      "formula": "=V10/$B$3"
+    },
+    {
+      "col": "W",
+      "v": "=W10/$B$3",
+      "formula": "=W10/$B$3"
+    },
+    {
+      "col": "X",
+      "v": "=X10/$B$3",
+      "formula": "=X10/$B$3"
+    },
+    {
+      "col": "Y",
+      "v": "=Y10/$B$3",
+      "formula": "=Y10/$B$3"
+    },
+    {
+      "col": "Z",
+      "v": "=Z10/$B$3",
+      "formula": "=Z10/$B$3"
+    },
+    {
+      "col": "AA",
+      "v": "=AA10/$B$3",
+      "formula": "=AA10/$B$3"
+    },
+    {
+      "col": "AB",
+      "v": "=AB10/$B$3",
+      "formula": "=AB10/$B$3"
+    },
+    {
+      "col": "AC",
+      "v": "=AC10/$B$3",
+      "formula": "=AC10/$B$3"
+    },
+    {
+      "col": "AD",
+      "v": "=AD10/$B$3",
+      "formula": "=AD10/$B$3"
+    },
+    {
+      "col": "AE",
+      "v": "=AE10/$B$3",
+      "formula": "=AE10/$B$3"
+    },
+    {
+      "col": "AF",
+      "v": "=AF10/$B$3",
+      "formula": "=AF10/$B$3"
+    }
+  ],
+  "out_hk_row9": [
+    {
+      "col": "B",
+      "v": "='Hong Kong-L'!B8",
+      "formula": "='Hong Kong-L'!B8"
+    },
+    {
+      "col": "C",
+      "v": "='Hong Kong EE'!D10",
+      "formula": "='Hong Kong EE'!D10"
+    },
+    {
+      "col": "E",
+      "v": "=F9+G9+I9+R9+V9",
+      "formula": "=F9+G9+I9+R9+V9"
+    },
+    {
+      "col": "F",
+      "v": "0"
+    },
+    {
+      "col": "G",
+      "v": "=SUM(H9:H9)",
+      "formula": "=SUM(H9:H9)"
+    },
+    {
+      "col": "H",
+      "v": "=MAX(600*PN!B28,(I9+R9+V9)*16%)",
+      "formula": "=MAX(600*PN!B28,(I9+R9+V9)*16%)"
+    },
+    {
+      "col": "I",
+      "v": "=SUM(J9:Q9)",
+      "formula": "=SUM(J9:Q9)"
+    },
+    {
+      "col": "J",
+      "v": "='Hong Kong-L'!C8",
+      "formula": "='Hong Kong-L'!C8"
+    },
+    {
+      "col": "K",
+      "v": "='Hong Kong-L'!D8",
+      "formula": "='Hong Kong-L'!D8"
+    },
+    {
+      "col": "L",
+      "v": "='Hong Kong-L'!E8",
+      "formula": "='Hong Kong-L'!E8"
+    },
+    {
+      "col": "M",
+      "v": "='Hong Kong-L'!F8",
+      "formula": "='Hong Kong-L'!F8"
+    },
+    {
+      "col": "N",
+      "v": "='Hong Kong-L'!G8",
+      "formula": "='Hong Kong-L'!G8"
+    },
+    {
+      "col": "O",
+      "v": "='Hong Kong-L'!H8",
+      "formula": "='Hong Kong-L'!H8"
+    },
+    {
+      "col": "P",
+      "v": "='Hong Kong-L'!I8",
+      "formula": "='Hong Kong-L'!I8"
+    },
+    {
+      "col": "Q",
+      "v": "='Hong Kong-L'!P8",
+      "formula": "='Hong Kong-L'!P8"
+    },
+    {
+      "col": "R",
+      "v": "=SUM(S9:U9)",
+      "formula": "=SUM(S9:U9)"
+    },
+    {
+      "col": "S",
+      "v": "='Hong Kong-L'!L8",
+      "formula": "='Hong Kong-L'!L8"
+    },
+    {
+      "col": "T",
+      "v": "='Hong Kong-L'!M8",
+      "formula": "='Hong Kong-L'!M8"
+    },
+    {
+      "col": "U",
+      "v": "='Hong Kong-L'!O8",
+      "formula": "='Hong Kong-L'!O8"
+    },
+    {
+      "col": "V",
+      "v": "=SUM(W9:W9)",
+      "formula": "=SUM(W9:W9)"
+    },
+    {
+      "col": "W",
+      "v": "='Hong Kong-L'!J8",
+      "formula": "='Hong Kong-L'!J8"
+    }
+  ],
+  "src_hk_ee_row10": [],
+  "out_hk_ee_row10": [
+    {
+      "col": "B",
+      "v": "=PN!B9",
+      "formula": "=PN!B9"
+    },
+    {
+      "col": "C",
+      "v": "=PN!B8",
+      "formula": "=PN!B8"
+    },
+    {
+      "col": "D",
+      "v": "='Hong Kong-L'!A8",
+      "formula": "='Hong Kong-L'!A8"
+    },
+    {
+      "col": "E",
+      "v": "='Hong Kong-L'!B8",
+      "formula": "='Hong Kong-L'!B8"
+    },
+    {
+      "col": "F",
+      "v": "='Hong Kong-L'!C2",
+      "formula": "='Hong Kong-L'!C2"
+    },
+    {
+      "col": "G",
+      "v": "='Hong Kong-L'!E2",
+      "formula": "='Hong Kong-L'!E2"
+    },
+    {
+      "col": "H",
+      "v": "=I10+R10+T10",
+      "formula": "=I10+R10+T10"
+    },
+    {
+      "col": "I",
+      "v": "=SUM(J10:Q10)",
+      "formula": "=SUM(J10:Q10)"
+    },
+    {
+      "col": "J",
+      "v": "='Hong Kong-L'!C8",
+      "formula": "='Hong Kong-L'!C8"
+    },
+    {
+      "col": "K",
+      "v": "='Hong Kong-L'!D8",
+      "formula": "='Hong Kong-L'!D8"
+    },
+    {
+      "col": "L",
+      "v": "='Hong Kong-L'!E8",
+      "formula": "='Hong Kong-L'!E8"
+    },
+    {
+      "col": "M",
+      "v": "='Hong Kong-L'!F8",
+      "formula": "='Hong Kong-L'!F8"
+    },
+    {
+      "col": "N",
+      "v": "='Hong Kong-L'!G8",
+      "formula": "='Hong Kong-L'!G8"
+    },
+    {
+      "col": "O",
+      "v": "='Hong Kong-L'!H8",
+      "formula": "='Hong Kong-L'!H8"
+    },
+    {
+      "col": "P",
+      "v": "='Hong Kong-L'!I8",
+      "formula": "='Hong Kong-L'!I8"
+    },
+    {
+      "col": "Q",
+      "v": "='Hong Kong-L'!P8",
+      "formula": "='Hong Kong-L'!P8"
+    },
+    {
+      "col": "R",
+      "v": "=SUM(S10:S10)",
+      "formula": "=SUM(S10:S10)"
+    },
+    {
+      "col": "S",
+      "v": "='Hong Kong-L'!J8",
+      "formula": "='Hong Kong-L'!J8"
+    },
+    {
+      "col": "T",
+      "v": "=SUM(U10:U10)",
+      "formula": "=SUM(U10:U10)"
+    },
+    {
+      "col": "U",
+      "v": "='Hong Kong-L'!N8",
+      "formula": "='Hong Kong-L'!N8"
+    }
+  ],
+  "src_pn_B8": "2026-03-18 00:00:00",
+  "out_pn_B8": "UE Corp",
+  "src_pn_B29": "=SUM(B30:B35)",
+  "out_pn_B29": null,
+  "src_pn_C49": null,
+  "out_pn_C49": null,
+  "hong_kong_row9_value_diffs": [
+    {
+      "col": "A",
+      "header": null,
+      "src": "EOR/PEO",
+      "out": null
+    },
+    {
+      "col": "B",
+      "header": null,
+      "src": "Sum",
+      "out": "Chan Kin Pong"
+    },
+    {
+      "col": "C",
+      "header": null,
+      "src": "(USD)",
+      "out": "CUS1503-0001"
+    },
+    {
+      "col": "E",
+      "header": "Sum",
+      "src": 40561.64490688297,
+      "out": 355408.03416511987
+    },
+    {
+      "col": "G",
+      "header": "Subtotal",
+      "src": 120.37888858247788,
+      "out": 49021.7978158786
+    },
+    {
+      "col": "H",
+      "header": "Recurring\nFee",
+      "src": 0,
+      "out": 49021.7978158786
+    },
+    {
+      "col": "I",
+      "header": "Subtotal",
+      "src": 120.37888858247788,
+      "out": 255626.8199502365
+    },
+    {
+      "col": "J",
+      "header": "Base Salary",
+      "src": 0,
+      "out": 62130.35
+    },
+    {
+      "col": "K",
+      "header": "OT",
+      "src": 8200.857982719688,
+      "out": 0
+    },
+    {
+      "col": "L",
+      "header": "Salary Adjusment",
+      "src": 8200.857982719688,
+      "out": 0
+    },
+    {
+      "col": "M",
+      "header": "Bonus",
+      "src": 0,
+      "out": 184496.4699502365
+    },
+    {
+      "col": "P",
+      "header": "Other",
+      "src": 0,
+      "out": 9000
+    },
+    {
+      "col": "R",
+      "header": "Subtotal",
+      "src": 25540.449558379714,
+      "out": 6612.53639900473
+    },
+    {
+      "col": "S",
+      "header": "Employees' Compensation Insurance",
+      "src": 24352.5,
+      "out": 5112.53639900473
+    },
+    {
+      "col": "T",
+      "header": "MPF ER",
+      "src": 0,
+      "out": 1500
+    },
+    {
+      "col": "U",
+      "header": "Others",
+      "src": 1187.9495583797159,
+      "out": 0
+    },
+    {
+      "col": "V",
+      "header": "Subtotal",
+      "src": 872.817743885274,
+      "out": 44146.88
+    },
+    {
+      "col": "W",
+      "header": "Expense\nClaim",
+      "src": 674.826150821988,
+      "out": 44146.88
+    },
+    {
+      "col": "X",
+      "header": null,
+      "src": 197.991593063286,
+      "out": null
+    },
+    {
+      "col": "AC",
+      "header": null,
+      "src": 5827.140733315812,
+      "out": null
+    },
+    {
+      "col": "AD",
+      "header": null,
+      "src": 5827.140733315812,
+      "out": null
+    }
+  ]
+}

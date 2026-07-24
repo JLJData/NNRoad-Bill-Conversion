@@ -1,0 +1,1372 @@
+{
+  "source_sheets": [
+    "S-Payment Notice",
+    "Other Fee",
+    "MLC to China",
+    "S-Payroll Report",
+    "S-Payslip",
+    "基本信息",
+    "专项附加",
+    "计算结果",
+    "YTD",
+    "工资税",
+    "年终奖税",
+    "离职补偿金税",
+    "股权激励税",
+    "交行发薪",
+    "其他行发薪",
+    "Formula Statement",
+    "各地政策",
+    "批注"
+  ],
+  "calc_sheet_name": "计算结果",
+  "calc_headers": [
+    {
+      "col": 1,
+      "letter": "A",
+      "parent": "工号",
+      "header": "工号"
+    },
+    {
+      "col": 2,
+      "letter": "B",
+      "parent": "姓名",
+      "header": "姓名"
+    },
+    {
+      "col": 3,
+      "letter": "C",
+      "parent": "基本工资",
+      "header": "基本工资"
+    },
+    {
+      "col": 4,
+      "letter": "D",
+      "parent": "浮动工资",
+      "header": "浮动工资"
+    },
+    {
+      "col": 5,
+      "letter": "E",
+      "parent": "月奖",
+      "header": "月奖"
+    },
+    {
+      "col": 6,
+      "letter": "F",
+      "parent": "季奖",
+      "header": "季奖"
+    },
+    {
+      "col": 7,
+      "letter": "G",
+      "parent": "其他奖金",
+      "header": "其他奖金"
+    },
+    {
+      "col": 8,
+      "letter": "H",
+      "parent": "加班工资150",
+      "header": "加班工资150"
+    },
+    {
+      "col": 9,
+      "letter": "I",
+      "parent": "加班工资200",
+      "header": "加班工资200"
+    },
+    {
+      "col": 10,
+      "letter": "J",
+      "parent": "加班工资300",
+      "header": "加班工资300"
+    },
+    {
+      "col": 11,
+      "letter": "K",
+      "parent": "入离职缺勤扣",
+      "header": "入离职缺勤扣"
+    },
+    {
+      "col": 12,
+      "letter": "L",
+      "parent": "扣事假",
+      "header": "扣事假"
+    },
+    {
+      "col": 13,
+      "letter": "M",
+      "parent": "扣旷工",
+      "header": "扣旷工"
+    },
+    {
+      "col": 14,
+      "letter": "N",
+      "parent": "扣病假",
+      "header": "扣病假"
+    },
+    {
+      "col": 15,
+      "letter": "O",
+      "parent": "交通费",
+      "header": "交通费"
+    },
+    {
+      "col": 16,
+      "letter": "P",
+      "parent": "通讯费",
+      "header": "通讯费"
+    },
+    {
+      "col": 17,
+      "letter": "Q",
+      "parent": "其他津贴",
+      "header": "其他津贴"
+    },
+    {
+      "col": 18,
+      "letter": "R",
+      "parent": "中班费",
+      "header": "中班费"
+    },
+    {
+      "col": 19,
+      "letter": "S",
+      "parent": "夜班费",
+      "header": "夜班费"
+    },
+    {
+      "col": 20,
+      "letter": "T",
+      "parent": "高温费",
+      "header": "高温费"
+    },
+    {
+      "col": 21,
+      "letter": "U",
+      "parent": "高温作业费",
+      "header": "高温作业费"
+    },
+    {
+      "col": 22,
+      "letter": "V",
+      "parent": "有毒有害作业费",
+      "header": "有毒有害作业费"
+    },
+    {
+      "col": 23,
+      "letter": "W",
+      "parent": "补发",
+      "header": "补发"
+    },
+    {
+      "col": 24,
+      "letter": "X",
+      "parent": "补扣",
+      "header": "补扣"
+    },
+    {
+      "col": 25,
+      "letter": "Y",
+      "parent": "税前调整",
+      "header": "税前调整"
+    },
+    {
+      "col": 26,
+      "letter": "Z",
+      "parent": "缴养老",
+      "header": "缴养老"
+    },
+    {
+      "col": 27,
+      "letter": "AA",
+      "parent": "缴医疗",
+      "header": "缴医疗"
+    },
+    {
+      "col": 28,
+      "letter": "AB",
+      "parent": "缴失业",
+      "header": "缴失业"
+    },
+    {
+      "col": 29,
+      "letter": "AC",
+      "parent": "缴公积金",
+      "header": "缴公积金"
+    },
+    {
+      "col": 30,
+      "letter": "AD",
+      "parent": "缴补充公积金（免税）",
+      "header": "缴补充公积金（免税）"
+    },
+    {
+      "col": 31,
+      "letter": "AE",
+      "parent": "社保调整",
+      "header": "社保调整"
+    },
+    {
+      "col": 32,
+      "letter": "AF",
+      "parent": "公积金调整",
+      "header": "公积金调整"
+    },
+    {
+      "col": 33,
+      "letter": "AG",
+      "parent": "年金",
+      "header": "年金"
+    },
+    {
+      "col": 34,
+      "letter": "AH",
+      "parent": "工会费",
+      "header": "工会费"
+    },
+    {
+      "col": 35,
+      "letter": "AI",
+      "parent": "计税不发",
+      "header": "计税不发"
+    },
+    {
+      "col": 36,
+      "letter": "AJ",
+      "parent": "当月税前收入额",
+      "header": "当月税前收入额"
+    },
+    {
+      "col": 37,
+      "letter": "AK",
+      "parent": "当月基本扣除",
+      "header": "当月基本扣除"
+    },
+    {
+      "col": 38,
+      "letter": "AL",
+      "parent": "累计税前收入-员工",
+      "header": "累计税前收入-员工"
+    },
+    {
+      "col": 39,
+      "letter": "AM",
+      "parent": "累计个人社保公积金",
+      "header": "累计个人社保公积金"
+    },
+    {
+      "col": 40,
+      "letter": "AN",
+      "parent": "累计基本扣除",
+      "header": "累计基本扣除"
+    },
+    {
+      "col": 41,
+      "letter": "AO",
+      "parent": "累计子女教育",
+      "header": "累计子女教育"
+    },
+    {
+      "col": 42,
+      "letter": "AP",
+      "parent": "累计继续教育",
+      "header": "累计继续教育"
+    },
+    {
+      "col": 43,
+      "letter": "AQ",
+      "parent": "累计住房贷款利息",
+      "header": "累计住房贷款利息"
+    },
+    {
+      "col": 44,
+      "letter": "AR",
+      "parent": "累计住房租金",
+      "header": "累计住房租金"
+    },
+    {
+      "col": 45,
+      "letter": "AS",
+      "parent": "累计赡养老人",
+      "header": "累计赡养老人"
+    },
+    {
+      "col": 46,
+      "letter": "AT",
+      "parent": "累计其他税前扣除",
+      "header": "累计其他税前扣除"
+    },
+    {
+      "col": 47,
+      "letter": "AU",
+      "parent": "累计免税扣除合计(不含社保公积金）",
+      "header": "累计免税扣除合计(不含社保公积金）"
+    },
+    {
+      "col": 48,
+      "letter": "AV",
+      "parent": "累计应税总额",
+      "header": "累计应税总额"
+    },
+    {
+      "col": 49,
+      "letter": "AW",
+      "parent": "累计个税（个人）",
+      "header": "累计个税（个人）"
+    },
+    {
+      "col": 50,
+      "letter": "AX",
+      "parent": "当月个税（个人）",
+      "header": "当月个税（个人）"
+    },
+    {
+      "col": 51,
+      "letter": "AY",
+      "parent": "公司负税项",
+      "header": "公司负税项"
+    },
+    {
+      "col": 52,
+      "letter": "AZ",
+      "parent": "当月公司负税合计",
+      "header": "当月公司负税合计"
+    },
+    {
+      "col": 53,
+      "letter": "BA",
+      "parent": "累计税后计税收入",
+      "header": "累计税后计税收入"
+    },
+    {
+      "col": 54,
+      "letter": "BB",
+      "parent": "累计税前收入",
+      "header": "累计税前收入"
+    },
+    {
+      "col": 55,
+      "letter": "BC",
+      "parent": "导算当月应发工资",
+      "header": "导算当月应发工资"
+    },
+    {
+      "col": 56,
+      "letter": "BD",
+      "parent": "累计个税（公司+个人）",
+      "header": "累计个税（公司+个人）"
+    },
+    {
+      "col": 57,
+      "letter": "BE",
+      "parent": "当月个税（公司）",
+      "header": "当月个税（公司）"
+    },
+    {
+      "col": 58,
+      "letter": "BF",
+      "parent": "独生子女费",
+      "header": "独生子女费"
+    },
+    {
+      "col": 59,
+      "letter": "BG",
+      "parent": "缴补充公积金（不免税）",
+      "header": "缴补充公积金（不免税）"
+    },
+    {
+      "col": 60,
+      "letter": "BH",
+      "parent": "报销款",
+      "header": "报销款"
+    },
+    {
+      "col": 61,
+      "letter": "BI",
+      "parent": "报销款25%",
+      "header": "报销款25%"
+    },
+    {
+      "col": 62,
+      "letter": "BJ",
+      "parent": "外籍生活津贴",
+      "header": "外籍生活津贴"
+    },
+    {
+      "col": 63,
+      "letter": "BK",
+      "parent": "税后补",
+      "header": "税后补"
+    },
+    {
+      "col": 64,
+      "letter": "BL",
+      "parent": "税后扣",
+      "header": "税后扣"
+    },
+    {
+      "col": 65,
+      "letter": "BM",
+      "parent": "13薪/年终奖",
+      "header": "13薪/年终奖"
+    },
+    {
+      "col": 66,
+      "letter": "BN",
+      "parent": "13薪/年终奖税",
+      "header": "13薪/年终奖税"
+    },
+    {
+      "col": 67,
+      "letter": "BO",
+      "parent": "离职补偿金/赔偿金",
+      "header": "离职补偿金/赔偿金"
+    },
+    {
+      "col": 68,
+      "letter": "BP",
+      "parent": "离职补偿金税/赔偿金税",
+      "header": "离职补偿金税/赔偿金税"
+    },
+    {
+      "col": 69,
+      "letter": "BQ",
+      "parent": "股权激励",
+      "header": "股权激励"
+    },
+    {
+      "col": 70,
+      "letter": "BR",
+      "parent": "股权激励税",
+      "header": "股权激励税"
+    },
+    {
+      "col": 71,
+      "letter": "BS",
+      "parent": "应发",
+      "header": "应发"
+    },
+    {
+      "col": 72,
+      "letter": "BT",
+      "parent": "应扣",
+      "header": "应扣"
+    },
+    {
+      "col": 73,
+      "letter": "BU",
+      "parent": "实发",
+      "header": "实发"
+    },
+    {
+      "col": 74,
+      "letter": "BV",
+      "parent": "公司养老",
+      "header": "公司养老"
+    },
+    {
+      "col": 75,
+      "letter": "BW",
+      "parent": "公司医疗",
+      "header": "公司医疗"
+    },
+    {
+      "col": 76,
+      "letter": "BX",
+      "parent": "公司失业",
+      "header": "公司失业"
+    },
+    {
+      "col": 77,
+      "letter": "BY",
+      "parent": "生育",
+      "header": "生育"
+    },
+    {
+      "col": 78,
+      "letter": "BZ",
+      "parent": "工伤",
+      "header": "工伤"
+    },
+    {
+      "col": 79,
+      "letter": "CA",
+      "parent": "残保金",
+      "header": "残保金"
+    },
+    {
+      "col": 80,
+      "letter": "CB",
+      "parent": "公积金",
+      "header": "公积金"
+    }
+  ],
+  "calc_sample_rows": [
+    {
+      "row": 2,
+      "data": {
+        "工号": "CUS1525-0002",
+        "姓名": "杨明华",
+        "基本工资": 37337.5,
+        "浮动工资": 0,
+        "月奖": 0,
+        "季奖": 0,
+        "其他奖金": 16372.29,
+        "加班工资150": 0,
+        "加班工资200": 0,
+        "加班工资300": 0,
+        "入离职缺勤扣": 0,
+        "扣事假": 0,
+        "扣旷工": 0,
+        "扣病假": 0,
+        "交通费": 1171.3,
+        "通讯费": 0,
+        "其他津贴": 0,
+        "中班费": 0,
+        "夜班费": 0,
+        "高温费": 0,
+        "高温作业费": 0,
+        "有毒有害作业费": 0,
+        "补发": 0,
+        "补扣": 0,
+        "税前调整": 0,
+        "缴养老": 2203.92,
+        "缴医疗": 672.66,
+        "缴失业": 84.58,
+        "缴公积金": 4229,
+        "缴补充公积金（免税）": 0,
+        "社保调整": 0,
+        "公积金调整": 0,
+        "年金": 0,
+        "工会费": 0,
+        "计税不发": 0,
+        "当月税前收入额": 54881.090000000004,
+        "当月基本扣除": 5000,
+        "累计税前收入-员工": 140221.1155211913,
+        "累计个人社保公积金": 21570.48,
+        "累计基本扣除": 15000
+      }
+    },
+    {
+      "row": 3,
+      "data": {
+        "基本工资": 0,
+        "浮动工资": 0,
+        "月奖": 0,
+        "季奖": 0,
+        "其他奖金": 0,
+        "加班工资150": 0,
+        "加班工资200": 0,
+        "加班工资300": 0,
+        "入离职缺勤扣": 0,
+        "扣事假": 0,
+        "扣旷工": 0,
+        "扣病假": 0,
+        "交通费": 0,
+        "通讯费": 0,
+        "其他津贴": 0,
+        "中班费": 0,
+        "夜班费": 0,
+        "高温费": 0,
+        "高温作业费": 0,
+        "有毒有害作业费": 0,
+        "补发": 0,
+        "补扣": 0,
+        "税前调整": 0,
+        "缴养老": "#N/A",
+        "缴医疗": "#N/A",
+        "缴失业": "#N/A",
+        "缴公积金": "#N/A",
+        "缴补充公积金（免税）": "#N/A",
+        "社保调整": 0,
+        "公积金调整": 0,
+        "年金": 0,
+        "工会费": 0,
+        "计税不发": 0,
+        "当月税前收入额": 0,
+        "当月基本扣除": 5000,
+        "累计税前收入-员工": 0,
+        "累计个人社保公积金": "#N/A",
+        "累计基本扣除": 285000
+      }
+    },
+    {
+      "row": 4,
+      "data": {
+        "基本工资": 0,
+        "浮动工资": 0,
+        "月奖": 0,
+        "季奖": 0,
+        "其他奖金": 0,
+        "加班工资150": 0,
+        "加班工资200": 0,
+        "加班工资300": 0,
+        "入离职缺勤扣": 0,
+        "扣事假": 0,
+        "扣旷工": 0,
+        "扣病假": 0,
+        "交通费": 0,
+        "通讯费": 0,
+        "其他津贴": 0,
+        "中班费": 0,
+        "夜班费": 0,
+        "高温费": 0,
+        "高温作业费": 0,
+        "有毒有害作业费": 0,
+        "补发": 0,
+        "补扣": 0,
+        "税前调整": 0,
+        "缴养老": "#N/A",
+        "缴医疗": "#N/A",
+        "缴失业": "#N/A",
+        "缴公积金": "#N/A",
+        "缴补充公积金（免税）": "#N/A",
+        "社保调整": 0,
+        "公积金调整": 0,
+        "年金": 0,
+        "工会费": 0,
+        "计税不发": 0,
+        "当月税前收入额": 0,
+        "当月基本扣除": 5000,
+        "累计税前收入-员工": 0,
+        "累计个人社保公积金": "#N/A",
+        "累计基本扣除": 285000
+      }
+    },
+    {
+      "row": 5,
+      "data": {
+        "基本工资": 0,
+        "浮动工资": 0,
+        "月奖": 0,
+        "季奖": 0,
+        "其他奖金": 0,
+        "加班工资150": 0,
+        "加班工资200": 0,
+        "加班工资300": 0,
+        "入离职缺勤扣": 0,
+        "扣事假": 0,
+        "扣旷工": 0,
+        "扣病假": 0,
+        "交通费": 0,
+        "通讯费": 0,
+        "其他津贴": 0,
+        "中班费": 0,
+        "夜班费": 0,
+        "高温费": 0,
+        "高温作业费": 0,
+        "有毒有害作业费": 0,
+        "补发": 0,
+        "补扣": 0,
+        "税前调整": 0,
+        "缴养老": "#N/A",
+        "缴医疗": "#N/A",
+        "缴失业": "#N/A",
+        "缴公积金": "#N/A",
+        "缴补充公积金（免税）": "#N/A",
+        "社保调整": 0,
+        "公积金调整": 0,
+        "年金": 0,
+        "工会费": 0,
+        "计税不发": 0,
+        "当月税前收入额": 0,
+        "当月基本扣除": 5000,
+        "累计税前收入-员工": 0,
+        "累计个人社保公积金": "#N/A",
+        "累计基本扣除": 285000
+      }
+    }
+  ],
+  "other_fee": {
+    "C15": null,
+    "D19": 200
+  },
+  "payment_notice_C49": 6.91,
+  "output_sheets": [
+    "PN",
+    "China",
+    "China EE",
+    "China-L",
+    "FI Report"
+  ],
+  "china_l": {
+    "sheet": "China-L",
+    "headers": [
+      {
+        "col": 1,
+        "letter": "A",
+        "parent": "工号",
+        "header": "CUS1525-0002"
+      },
+      {
+        "col": 2,
+        "letter": "B",
+        "parent": "姓名",
+        "header": "杨明华"
+      },
+      {
+        "col": 3,
+        "letter": "C",
+        "parent": "基本工资",
+        "header": "37337.5"
+      },
+      {
+        "col": 4,
+        "letter": "D",
+        "parent": "浮动工资",
+        "header": "浮动工资"
+      },
+      {
+        "col": 5,
+        "letter": "E",
+        "parent": "月奖",
+        "header": "月奖"
+      },
+      {
+        "col": 6,
+        "letter": "F",
+        "parent": "季奖",
+        "header": "季奖"
+      },
+      {
+        "col": 7,
+        "letter": "G",
+        "parent": "其他奖金",
+        "header": "16372.29"
+      },
+      {
+        "col": 8,
+        "letter": "H",
+        "parent": "加班工资150",
+        "header": "加班工资150"
+      },
+      {
+        "col": 9,
+        "letter": "I",
+        "parent": "加班工资200",
+        "header": "加班工资200"
+      },
+      {
+        "col": 10,
+        "letter": "J",
+        "parent": "加班工资300",
+        "header": "加班工资300"
+      },
+      {
+        "col": 11,
+        "letter": "K",
+        "parent": "入离职缺勤扣",
+        "header": "入离职缺勤扣"
+      },
+      {
+        "col": 12,
+        "letter": "L",
+        "parent": "扣事假",
+        "header": "扣事假"
+      },
+      {
+        "col": 13,
+        "letter": "M",
+        "parent": "扣旷工",
+        "header": "扣旷工"
+      },
+      {
+        "col": 14,
+        "letter": "N",
+        "parent": "扣病假",
+        "header": "扣病假"
+      },
+      {
+        "col": 15,
+        "letter": "O",
+        "parent": "交通费",
+        "header": "1171.3"
+      },
+      {
+        "col": 16,
+        "letter": "P",
+        "parent": "通讯费",
+        "header": "通讯费"
+      },
+      {
+        "col": 17,
+        "letter": "Q",
+        "parent": "其他津贴",
+        "header": "其他津贴"
+      },
+      {
+        "col": 18,
+        "letter": "R",
+        "parent": "中班费",
+        "header": "中班费"
+      },
+      {
+        "col": 19,
+        "letter": "S",
+        "parent": "夜班费",
+        "header": "夜班费"
+      },
+      {
+        "col": 20,
+        "letter": "T",
+        "parent": "高温费",
+        "header": "高温费"
+      },
+      {
+        "col": 21,
+        "letter": "U",
+        "parent": "高温作业费",
+        "header": "高温作业费"
+      },
+      {
+        "col": 22,
+        "letter": "V",
+        "parent": "有毒有害作业费",
+        "header": "有毒有害作业费"
+      },
+      {
+        "col": 23,
+        "letter": "W",
+        "parent": "补发",
+        "header": "补发"
+      },
+      {
+        "col": 24,
+        "letter": "X",
+        "parent": "补扣",
+        "header": "补扣"
+      },
+      {
+        "col": 25,
+        "letter": "Y",
+        "parent": "税前调整",
+        "header": "税前调整"
+      },
+      {
+        "col": 26,
+        "letter": "Z",
+        "parent": "缴养老",
+        "header": "2203.92"
+      },
+      {
+        "col": 27,
+        "letter": "AA",
+        "parent": "缴医疗",
+        "header": "672.66"
+      },
+      {
+        "col": 28,
+        "letter": "AB",
+        "parent": "缴失业",
+        "header": "84.58"
+      },
+      {
+        "col": 29,
+        "letter": "AC",
+        "parent": "缴公积金",
+        "header": "4229"
+      },
+      {
+        "col": 30,
+        "letter": "AD",
+        "parent": "缴补充公积金（免税）",
+        "header": "缴补充公积金（免税）"
+      },
+      {
+        "col": 31,
+        "letter": "AE",
+        "parent": "社保调整",
+        "header": "社保调整"
+      },
+      {
+        "col": 32,
+        "letter": "AF",
+        "parent": "公积金调整",
+        "header": "公积金调整"
+      },
+      {
+        "col": 33,
+        "letter": "AG",
+        "parent": "年金",
+        "header": "年金"
+      },
+      {
+        "col": 34,
+        "letter": "AH",
+        "parent": "工会费",
+        "header": "工会费"
+      },
+      {
+        "col": 35,
+        "letter": "AI",
+        "parent": "计税不发",
+        "header": "计税不发"
+      },
+      {
+        "col": 36,
+        "letter": "AJ",
+        "parent": "当月税前收入额",
+        "header": "54881.09"
+      },
+      {
+        "col": 37,
+        "letter": "AK",
+        "parent": "当月基本扣除",
+        "header": "5000"
+      },
+      {
+        "col": 38,
+        "letter": "AL",
+        "parent": "累计税前收入-员工",
+        "header": "140221.115521191"
+      },
+      {
+        "col": 39,
+        "letter": "AM",
+        "parent": "累计个人社保公积金",
+        "header": "21570.48"
+      },
+      {
+        "col": 40,
+        "letter": "AN",
+        "parent": "累计基本扣除",
+        "header": "15000"
+      },
+      {
+        "col": 41,
+        "letter": "AO",
+        "parent": "累计子女教育",
+        "header": "12000"
+      },
+      {
+        "col": 42,
+        "letter": "AP",
+        "parent": "累计继续教育",
+        "header": "累计继续教育"
+      },
+      {
+        "col": 43,
+        "letter": "AQ",
+        "parent": "累计住房贷款利息",
+        "header": "3000"
+      },
+      {
+        "col": 44,
+        "letter": "AR",
+        "parent": "累计住房租金",
+        "header": "累计住房租金"
+      },
+      {
+        "col": 45,
+        "letter": "AS",
+        "parent": "累计赡养老人",
+        "header": "9000"
+      },
+      {
+        "col": 46,
+        "letter": "AT",
+        "parent": "累计其他税前扣除",
+        "header": "累计其他税前扣除"
+      },
+      {
+        "col": 47,
+        "letter": "AU",
+        "parent": "累计免税扣除合计(不含社保公积金）",
+        "header": "39000"
+      },
+      {
+        "col": 48,
+        "letter": "AV",
+        "parent": "累计应税总额",
+        "header": "79650.6355211913"
+      },
+      {
+        "col": 49,
+        "letter": "AW",
+        "parent": "累计个税（个人）",
+        "header": "5445.06355211913"
+      },
+      {
+        "col": 50,
+        "letter": "AX",
+        "parent": "当月个税（个人）",
+        "header": "3469.09"
+      },
+      {
+        "col": 51,
+        "letter": "AY",
+        "parent": "公司负税项",
+        "header": "公司负税项"
+      },
+      {
+        "col": 52,
+        "letter": "AZ",
+        "parent": "当月公司负税合计",
+        "header": "当月公司负税合计"
+      },
+      {
+        "col": 53,
+        "letter": "BA",
+        "parent": "累计税后计税收入",
+        "header": "113205.571969072"
+      },
+      {
+        "col": 54,
+        "letter": "BB",
+        "parent": "累计税前收入",
+        "header": "118650.635521191"
+      },
+      {
+        "col": 55,
+        "letter": "BC",
+        "parent": "导算当月应发工资",
+        "header": "54881.09"
+      },
+      {
+        "col": 56,
+        "letter": "BD",
+        "parent": "累计个税（公司+个人）",
+        "header": "5445.06355211913"
+      },
+      {
+        "col": 57,
+        "letter": "BE",
+        "parent": "当月个税（公司）",
+        "header": "当月个税（公司）"
+      },
+      {
+        "col": 58,
+        "letter": "BF",
+        "parent": "独生子女费",
+        "header": "独生子女费"
+      },
+      {
+        "col": 59,
+        "letter": "BG",
+        "parent": "缴补充公积金（不免税）",
+        "header": "缴补充公积金（不免税）"
+      },
+      {
+        "col": 60,
+        "letter": "BH",
+        "parent": "报销款",
+        "header": "290.7"
+      },
+      {
+        "col": 61,
+        "letter": "BI",
+        "parent": "报销款25%",
+        "header": "报销款25%"
+      },
+      {
+        "col": 62,
+        "letter": "BJ",
+        "parent": "外籍生活津贴",
+        "header": "外籍生活津贴"
+      },
+      {
+        "col": 63,
+        "letter": "BK",
+        "parent": "税后补",
+        "header": "税后补"
+      },
+      {
+        "col": 64,
+        "letter": "BL",
+        "parent": "税后扣",
+        "header": "税后扣"
+      },
+      {
+        "col": 65,
+        "letter": "BM",
+        "parent": "13薪/年终奖",
+        "header": "13薪/年终奖"
+      },
+      {
+        "col": 66,
+        "letter": "BN",
+        "parent": "13薪/年终奖税",
+        "header": "13薪/年终奖税"
+      },
+      {
+        "col": 67,
+        "letter": "BO",
+        "parent": "离职补偿金/赔偿金",
+        "header": "离职补偿金/赔偿金"
+      },
+      {
+        "col": 68,
+        "letter": "BP",
+        "parent": "离职补偿金税/赔偿金税",
+        "header": "离职补偿金税/赔偿金税"
+      },
+      {
+        "col": 69,
+        "letter": "BQ",
+        "parent": "股权激励",
+        "header": "股权激励"
+      },
+      {
+        "col": 70,
+        "letter": "BR",
+        "parent": "股权激励税",
+        "header": "股权激励税"
+      },
+      {
+        "col": 71,
+        "letter": "BS",
+        "parent": "应发",
+        "header": "55171.79"
+      },
+      {
+        "col": 72,
+        "letter": "BT",
+        "parent": "应扣",
+        "header": "10659.25"
+      },
+      {
+        "col": 73,
+        "letter": "BU",
+        "parent": "实发",
+        "header": "44512.54"
+      },
+      {
+        "col": 74,
+        "letter": "BV",
+        "parent": "公司养老",
+        "header": "4683.33"
+      },
+      {
+        "col": 75,
+        "letter": "BW",
+        "parent": "公司医疗",
+        "header": "2017.98"
+      },
+      {
+        "col": 76,
+        "letter": "BX",
+        "parent": "公司失业",
+        "header": "338.32"
+      },
+      {
+        "col": 77,
+        "letter": "BY",
+        "parent": "生育",
+        "header": "168.17"
+      },
+      {
+        "col": 78,
+        "letter": "BZ",
+        "parent": "工伤",
+        "header": "169.16"
+      },
+      {
+        "col": 79,
+        "letter": "CA",
+        "parent": "残保金",
+        "header": "56"
+      },
+      {
+        "col": 80,
+        "letter": "CB",
+        "parent": "公积金",
+        "header": "4229"
+      }
+    ],
+    "row3_values": {}
+  },
+  "china": {
+    "headers": [
+      {
+        "col": 1,
+        "letter": "A",
+        "parent": "=MID(CELL(\"filename\",A1),FIND(\"]\",CELL(\"filename\",A1))+1,256)",
+        "header": "Pay Period"
+      },
+      {
+        "col": 2,
+        "letter": "B",
+        "parent": null,
+        "header": "=EOMONTH(TODAY(),-1)+1"
+      },
+      {
+        "col": 3,
+        "letter": "C",
+        "parent": null,
+        "header": "=EOMONTH(TODAY(),0)"
+      },
+      {
+        "col": 5,
+        "letter": "E",
+        "parent": null,
+        "header": "ER"
+      }
+    ],
+    "specials_row3": {}
+  },
+  "pn_B29": {
+    "value": 6.91,
+    "formula": null
+  },
+  "china_ee": {
+    "sheet": "China EE",
+    "rows": [
+      {
+        "row": 1,
+        "A-G": [
+          "=MID(CELL(\"filename\",A1),FIND(\"]\",CELL(\"filename\",A1))+1,256)",
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ]
+      },
+      {
+        "row": 3,
+        "A-G": [
+          null,
+          "Client Code",
+          "Client Name",
+          "EE Code",
+          "EE Name",
+          "Pay Period",
+          null
+        ]
+      },
+      {
+        "row": 4,
+        "A-G": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          "From",
+          "To"
+        ]
+      },
+      {
+        "row": 6,
+        "A-G": [
+          "EOR/PEO(CNY)",
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ]
+      },
+      {
+        "row": 10,
+        "A-G": [
+          null,
+          "CUS1525",
+          "=PN!B8",
+          "=China!C9",
+          "=China!B9",
+          "=China!B2",
+          "=China!C2"
+        ]
+      }
+    ],
+    "max_row": 19
+  },
+  "match": {
+    "calc_count": 80,
+    "china_l_count": 77,
+    "matched": [
+      "13薪/年终奖",
+      "13薪/年终奖税",
+      "中班费",
+      "入离职缺勤扣",
+      "公司负税项",
+      "公积金调整",
+      "其他津贴",
+      "加班工资150",
+      "加班工资200",
+      "加班工资300",
+      "外籍生活津贴",
+      "夜班费",
+      "季奖",
+      "工会费",
+      "年金",
+      "当月个税（公司）",
+      "当月公司负税合计",
+      "扣事假",
+      "扣旷工",
+      "扣病假",
+      "报销款25%",
+      "月奖",
+      "有毒有害作业费",
+      "浮动工资",
+      "独生子女费",
+      "社保调整",
+      "离职补偿金/赔偿金",
+      "离职补偿金税/赔偿金税",
+      "税前调整",
+      "税后扣",
+      "税后补",
+      "累计住房租金",
+      "累计其他税前扣除",
+      "累计继续教育",
+      "缴补充公积金（不免税）",
+      "缴补充公积金（免税）",
+      "股权激励",
+      "股权激励税",
+      "补发",
+      "补扣",
+      "计税不发",
+      "通讯费",
+      "高温作业费",
+      "高温费"
+    ],
+    "calc_only": [
+      "交通费",
+      "公司养老",
+      "公司医疗",
+      "公司失业",
+      "公积金",
+      "其他奖金",
+      "基本工资",
+      "姓名",
+      "实发",
+      "导算当月应发工资",
+      "工伤",
+      "工号",
+      "应发",
+      "应扣",
+      "当月个税（个人）",
+      "当月基本扣除",
+      "当月税前收入额",
+      "报销款",
+      "残保金",
+      "生育"
+    ],
+    "china_l_only": [
+      "10659.25",
+      "113205.571969072",
+      "1171.3",
+      "118650.635521191",
+      "12000",
+      "140221.115521191",
+      "15000",
+      "16372.29",
+      "168.17",
+      "169.16",
+      "2017.98",
+      "21570.48",
+      "2203.92",
+      "290.7",
+      "3000",
+      "338.32",
+      "3469.09",
+      "37337.5",
+      "39000",
+      "4229"
+    ]
+  }
+}

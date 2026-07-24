@@ -1,0 +1,42 @@
+==== taiwan
+shared idx 817
+or rgb="FF8DC63F"/><rFont val="等线"/><charset val="134"/><scheme val="minor"/></rPr><t>N</t></r><r><rPr><b/><sz val="12"/><color rgb="FF0066B3"/><rFont val="等线"/><charset val="134"/><scheme val="minor"/></rPr><t>Road</t></r><r><rPr><b/><sz val="12"/><color rgb="FF8DC63F"/><rFont val="等线"/><charset val="134"/><scheme val="minor"/></rPr><t> – Employer of Record, Payroll Worldwide</t></r></si><si><t>333 W San Carlos St., Suite 600, San Jose, CA 95113, USA</t></si><si><t>USA: +1 (669) 377-5080 | www.NNRoad.com</t></si><si><t>INVOICE</t></si><si><t>Bill to:</t></si><si><t>Company name:</t></si><si><t>Coral Sea</t></si><si><t>Currency</t></si><si><t>USD</t></si><si><t>Client ID:</t></si><si><t>CUS1516</t></si><si><t>Invoice number</t></si><si><t>PN-CUS1516-031120261</t></si><si><t>Address:</t></si><si><t>4205/41 Williams Esplanade, PALM COVE, QLD, Australia</t></si><si><t>Invoice date</t></si><si><t>Due date</t></si><si><t>Description</t></si><si><t>Approx. In USD*</t></si><si><t>EOR/PEO Cost</t></si><si><t>Service Fee</t></si><si><t xml:space="preserve">EOR/PEO Service Cost		</t></si><si><
+has <rPr> near: True
+color count in snippet: 2
+B1 CellRichText CellRichText([TextBlock text=N, font=<openpyxl.cell.text.InlineFont object>
+Parameters:
+rFont='等线', charset=134, family=None, b=True, i=False, strike=None, outl
+  part='N' color=FF0066B3
+  part='N' color=FF8DC63F
+  part='Road' color=FF0066B3
+  part='\xa0– Employer of Record, Payroll Worldwide' color=FF8DC63F
+B2 str '333 W San Carlos St., Suite 600, San Jose, CA 95113, USA'
+  cell.font.color=None
+==== china
+shared idx 817
+or rgb="FF8DC63F"/><rFont val="等线"/><charset val="134"/><scheme val="minor"/></rPr><t>N</t></r><r><rPr><b/><sz val="12"/><color rgb="FF0066B3"/><rFont val="等线"/><charset val="134"/><scheme val="minor"/></rPr><t>Road</t></r><r><rPr><b/><sz val="12"/><color rgb="FF8DC63F"/><rFont val="等线"/><charset val="134"/><scheme val="minor"/></rPr><t> – Employer of Record, Payroll Worldwide</t></r></si><si><t>333 W San Carlos St., Suite 600, San Jose, CA 95113, USA</t></si><si><t>USA: +1 (669) 377-5080 | www.NNRoad.com</t></si><si><t>INVOICE</t></si><si><t>Bill to:</t></si><si><t>Company name:</t></si><si><t>Hermetic Solutions Group, Inc</t></si><si><t>Currency</t></si><si><t>USD</t></si><si><t>Client ID:</t></si><si><t>CUS15253</t></si><si><t>Invoice number</t></si><si><t>PN-CUS15253-031820261</t></si><si><t>Address:</t></si><si><t>Eight Neshaminy Interplex,Suite 221, Trevose. PA 19053</t></si><si><t>Invoice date</t></si><si><t>Due date</t></si><si><t>Description</t></si><si><t>Approx. In USD*</t></si><si><t>EOR/PEO Cost</t></si><si><t>Service Fee</t></si><si><t>Recurring Deposit</t></si><si><t x
+has <rPr> near: True
+color count in snippet: 2
+B1 CellRichText CellRichText([TextBlock text=N, font=<openpyxl.cell.text.InlineFont object>
+Parameters:
+rFont='等线', charset=134, family=None, b=True, i=False, strike=None, outl
+  part='N' color=FF0066B3
+  part='N' color=FF8DC63F
+  part='Road' color=FF0066B3
+  part='\xa0– Employer of Record, Payroll Worldwide' color=FF8DC63F
+B2 str '333 W San Carlos St., Suite 600, San Jose, CA 95113, USA'
+  cell.font.color=None
+==== hongkong
+shared idx 816
+or rgb="FF8DC63F"/><rFont val="等线"/><charset val="134"/><scheme val="minor"/></rPr><t>N</t></r><r><rPr><b/><sz val="12"/><color rgb="FF0066B3"/><rFont val="等线"/><charset val="134"/><scheme val="minor"/></rPr><t>Road</t></r><r><rPr><b/><sz val="12"/><color rgb="FF8DC63F"/><rFont val="等线"/><charset val="134"/><scheme val="minor"/></rPr><t> – Employer of Record, Payroll Worldwide</t></r></si><si><t>333 W San Carlos St., Suite 600, San Jose, CA 95113, USA</t></si><si><t>USA: +1 (669) 377-5080 | www.NNRoad.com</t></si><si><t>INVOICE</t></si><si><t>Bill to:</t></si><si><t>Company name:</t></si><si><t>UE Corp</t></si><si><t>Currency</t></si><si><t>USD</t></si><si><t>Client ID:</t></si><si><t>CUS1503</t></si><si><t>Invoice number</t></si><si><t>PN-CUS1503-031820261</t></si><si><t>Address:</t></si><si><t>168 Georgetown Rd., Canonsburg, Pennsylvanis, USA</t></si><si><t>Invoice date</t></si><si><t>Due date</t></si><si><t>Description</t></si><si><t>Approx. In USD*</t></si><si><t>EOR/PEO Cost</t></si><si><t>Service Fee</t></si><si><t xml:space="preserve"> </t></si><si><t xml:space="preserve">EOR/
+has <rPr> near: True
+color count in snippet: 2
+B1 CellRichText CellRichText([TextBlock text=N, font=<openpyxl.cell.text.InlineFont object>
+Parameters:
+rFont='等线', charset=134, family=None, b=True, i=False, strike=None, outl
+  part='N' color=FF0066B3
+  part='N' color=FF8DC63F
+  part='Road' color=FF0066B3
+  part='\xa0– Employer of Record, Payroll Worldwide' color=FF8DC63F
+B2 str '333 W San Carlos St., Suite 600, San Jose, CA 95113, USA'
+  cell.font.color=None

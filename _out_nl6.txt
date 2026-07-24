@@ -1,0 +1,106 @@
+= void 0;
+
+var ReadXml_1 = require("./ReadXml");
+
+var method_1 = require("../common/method");
+
+var constant_1 = require("../common/constant");
+
+var LuckyBase_1 = require("./LuckyBase");
+
+var LuckySheetCelldata =
+/** @class */
+function (_super) {
+  __extends(LuckySheetCelldata, _super);
+
+  function LuckySheetCelldata(cell, styles, sharedStrings, mergeCells, sheetFile, ReadXml) {
+    var _this = //Private
+    _super.call(this) || this;
+
+    _this.cell = cell;
+    _this.sheetFile = sheetFile;
+    _this.styles = styles;
+    _this.sharedStrings = sharedStrings;
+    _this.readXml = ReadXml;
+    _this.mergeCells = mergeCells;
+    var attrList = cell.attributeList;
+    var r = attrList.r,
+        s = attrList.s,
+        t = attrList.t;
+    var range = method_1.getcellrange(r);
+    _this.r = range.row[0];
+    _this.c = range.column[0];
+    _this.v = _this.generateValue(s, t);
+    return _this;
+  }
+  /**
+  * @param s Style index ,start 1
+  * @param t Cell type, Optional value is ST_CellType, it's found at constat.ts
+  */
+
+
+  LuckySheetCelldata.prototype.generateValue = function (s, t) {
+    var _this = this;
+
+    var v = this.cell.getInnerElements("v");
+    var f = this.cell.getInnerElements("f");
+
+    if (v == null) {
+      v = this.cell.getInnerElements("t");
+    }
+
+    var cellXfs = this.styles["cellXfs"];
+    var cellStyleXfs = this.styles["cellStyleXfs"];
+    var cellStyles = this.styles["cellStyles"];
+    var fonts = this.styles["fonts"];
+    var fills = this.styles["fills"];
+    var borders = this.styles["borders"];
+    var numfmts = this.styles["numfmts"];
+    var clrScheme = this.styles["clrScheme"];
+    var sharedStrings = this.sharedStrings;
+    var cellValue = new LuckyBase_1.LuckySheetCelldataValue();
+
+    if (f != null) {
+      var formula = f[0],
+          attrList = formula.attributeList;
+      var t_1 = attrList.t,
+          ref = attrList.ref,
+          si = attrList.si;
+      var formulaValue = f[0].value;
+
+      if (t_1 == "shared") {
+        this._fomulaRef = ref;
+        this._formulaType = t_1;
+        this._formulaSi = si;
+      } // console.log(ref, t, si);
+
+
+      if (ref != null || formulaValue != null && formulaValue.length > 0) {
+        formulaValue = method_1.escapeCharacter(formulaValue);
+        cellValue.f = "=" + formulaValue;
+      }
+    }
+
+    var familyFont = null;
+    var quotePrefix;
+
+    if (s != null) {
+      var sNum = parseInt(s);
+      var cellXf = cellXfs[sNum];
+      var xfId = cellXf.attributeList.xfId;
+      var numFmtId = void 0,
+          fontId = void 0,
+          fillId = void 0,
+          borderId = void 0;
+      var horizontal = void 0,
+          vertical = void 0,
+          wrapText = void 0,
+          textRotation = void 0,
+          shrinkToFit = void 0,
+          indent = void 0,
+          applyProtection = void 0;
+
+      if (xfId != null) {
+        var cellStyleXf = cellStyleXfs[parseInt(xfId)];
+        var attrList = cellStyleXf.attributeList;
+        var applyNumberFormat_1 = attrList.applyNumbe

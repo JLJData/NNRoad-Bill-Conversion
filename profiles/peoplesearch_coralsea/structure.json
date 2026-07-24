@@ -1,0 +1,2521 @@
+{
+  "src_sheets": [
+    "Summary",
+    "Payroll calculation",
+    "2026 PST HILI對照表",
+    "2026 PST HILI對照表(外國)"
+  ],
+  "out_sheets": [
+    "PN",
+    "TW",
+    "TW EE",
+    "TW-L",
+    "FI Report"
+  ],
+  "payroll_calc_sheet": "Payroll calculation",
+  "pc_header_row": 2,
+  "pc_headers": [
+    {
+      "col": "A",
+      "col_idx": 1,
+      "header": "BU"
+    },
+    {
+      "col": "B",
+      "col_idx": 2,
+      "header": "CN Name"
+    },
+    {
+      "col": "C",
+      "col_idx": 3,
+      "header": "EN Name"
+    },
+    {
+      "col": "D",
+      "col_idx": 4,
+      "header": "Position"
+    },
+    {
+      "col": "E",
+      "col_idx": 5,
+      "header": "Start Date"
+    },
+    {
+      "col": "F",
+      "col_idx": 6,
+      "header": "End Date"
+    },
+    {
+      "col": "G",
+      "col_idx": 7,
+      "header": "FT/PT"
+    },
+    {
+      "col": "H",
+      "col_idx": 8,
+      "header": "時薪 Hourly Rate"
+    },
+    {
+      "col": "I",
+      "col_idx": 9,
+      "header": "時數\nHours Worked"
+    },
+    {
+      "col": "J",
+      "col_idx": 10,
+      "header": "薪資\nBasic Salary"
+    },
+    {
+      "col": "K",
+      "col_idx": 11,
+      "header": "Allw- Phone/ Communication"
+    },
+    {
+      "col": "L",
+      "col_idx": 12,
+      "header": "Allw \nTransportation"
+    },
+    {
+      "col": "M",
+      "col_idx": 13,
+      "header": "Back Pay"
+    },
+    {
+      "col": "N",
+      "col_idx": 14,
+      "header": "伙食津貼Allw Meal"
+    },
+    {
+      "col": "O",
+      "col_idx": 15,
+      "header": "病假時數 Sick Leave Hours"
+    },
+    {
+      "col": "P",
+      "col_idx": 16,
+      "header": "病假扣薪\nSick Leave\n(half pay)"
+    },
+    {
+      "col": "Q",
+      "col_idx": 17,
+      "header": "Bonus VB"
+    },
+    {
+      "col": "R",
+      "col_idx": 18,
+      "header": "Incentives"
+    },
+    {
+      "col": "S",
+      "col_idx": 19,
+      "header": "報帳\nReimb Claim"
+    },
+    {
+      "col": "T",
+      "col_idx": 20,
+      "header": "特休結算\nUntaken AL"
+    },
+    {
+      "col": "U",
+      "col_idx": 21,
+      "header": "資遣費\nSeverance"
+    },
+    {
+      "col": "V",
+      "col_idx": 22,
+      "header": "加班費\nOvertime Payment"
+    },
+    {
+      "col": "W",
+      "col_idx": 23,
+      "header": "Hr (1.34x)"
+    },
+    {
+      "col": "X",
+      "col_idx": 24,
+      "header": "OT Payment (1.34x)"
+    },
+    {
+      "col": "Y",
+      "col_idx": 25,
+      "header": "Hr (1.67x)"
+    },
+    {
+      "col": "Z",
+      "col_idx": 26,
+      "header": "OT Payment (1.67x)"
+    },
+    {
+      "col": "AA",
+      "col_idx": 27,
+      "header": "Hr (1x)"
+    },
+    {
+      "col": "AB",
+      "col_idx": 28,
+      "header": "OT Payment (1x)"
+    },
+    {
+      "col": "AC",
+      "col_idx": 29,
+      "header": "Hr (2.67x)"
+    },
+    {
+      "col": "AD",
+      "col_idx": 30,
+      "header": "OT Payment (2.67x)"
+    },
+    {
+      "col": "AE",
+      "col_idx": 31,
+      "header": "勞保級距\nInsured Salary Grading - LI"
+    },
+    {
+      "col": "AF",
+      "col_idx": 32,
+      "header": "勞退級距 Pension Salary Grading"
+    },
+    {
+      "col": "AG",
+      "col_idx": 33,
+      "header": "健保級距\nInsured Salary Grading - HI"
+    },
+    {
+      "col": "AH",
+      "col_idx": 34,
+      "header": "健保眷屬\nHI Dependent (person)"
+    },
+    {
+      "col": "AI",
+      "col_idx": 35,
+      "header": "勞保投保天數\nLI Days"
+    },
+    {
+      "col": "AJ",
+      "col_idx": 36,
+      "header": "所得稅代扣\nWithholding Tax"
+    },
+    {
+      "col": "AK",
+      "col_idx": 37,
+      "header": "勞保自付\nLI EE"
+    },
+    {
+      "col": "AL",
+      "col_idx": 38,
+      "header": "勞保自付(調整)\nLI EE 1T"
+    },
+    {
+      "col": "AM",
+      "col_idx": 39,
+      "header": "勞退自提\nPension EE"
+    },
+    {
+      "col": "AN",
+      "col_idx": 40,
+      "header": "勞退自提 (調整)\nPension EE 1T"
+    },
+    {
+      "col": "AO",
+      "col_idx": 41,
+      "header": "健保自付\nHI EE"
+    },
+    {
+      "col": "AP",
+      "col_idx": 42,
+      "header": "健保自付(調整)\nHI EE 1T"
+    },
+    {
+      "col": "AQ",
+      "col_idx": 43,
+      "header": "健保眷屬\nHI\nDep"
+    },
+    {
+      "col": "AR",
+      "col_idx": 44,
+      "header": "二代健保\n自付\n2G HI EE"
+    },
+    {
+      "col": "AS",
+      "col_idx": 45,
+      "header": "Gross Taxable Income"
+    },
+    {
+      "col": "AT",
+      "col_idx": 46,
+      "header": "Net Salary"
+    },
+    {
+      "col": "AU",
+      "col_idx": 47,
+      "header": "勞保雇主 \nLI ER"
+    },
+    {
+      "col": "AV",
+      "col_idx": 48,
+      "header": "勞保雇主\nLI ER\n1T"
+    },
+    {
+      "col": "AW",
+      "col_idx": 49,
+      "header": "勞退雇主\nPension ER 6%"
+    },
+    {
+      "col": "AX",
+      "col_idx": 50,
+      "header": "勞退雇主\nPension \nER 1T"
+    },
+    {
+      "col": "AY",
+      "col_idx": 51,
+      "header": "健保雇主\nHI ER"
+    },
+    {
+      "col": "AZ",
+      "col_idx": 52,
+      "header": "健保雇主\nHI ER\n1T"
+    },
+    {
+      "col": "BA",
+      "col_idx": 53,
+      "header": "二代健保\n雇主\n2G HI ER"
+    },
+    {
+      "col": "BB",
+      "col_idx": 54,
+      "header": "二代健保\n雇主\n2G HI ER \n1T"
+    },
+    {
+      "col": "BC",
+      "col_idx": 55,
+      "header": "團保\nGI"
+    },
+    {
+      "col": "BD",
+      "col_idx": 56,
+      "header": "Gross Salary\n(payable)"
+    },
+    {
+      "col": "BE",
+      "col_idx": 57,
+      "header": "ER Insurance"
+    },
+    {
+      "col": "BF",
+      "col_idx": 58,
+      "header": "Service Fee"
+    },
+    {
+      "col": "BG",
+      "col_idx": 59,
+      "header": "Operation \nFee"
+    },
+    {
+      "col": "BH",
+      "col_idx": 60,
+      "header": "Total"
+    }
+  ],
+  "pc_data_rows": [
+    {
+      "row": 3,
+      "preview": {
+        "時薪 Hourly Rate": 1261,
+        "時數\nHours Worked": 87,
+        "薪資\nBasic Salary": 38155,
+        "Allw- Phone/ Communication": 0,
+        "Allw \nTransportation": 0,
+        "Back Pay": 0,
+        "伙食津貼Allw Meal": 0,
+        "病假時數 Sick Leave Hours": 5
+      }
+    },
+    {
+      "row": 4,
+      "preview": {
+        "BU": "Coral Sea",
+        "CN Name": "王品涵",
+        "EN Name": "Pin Han",
+        "Position": "Aquarist",
+        "Start Date": "2020-11-02 00:00:00",
+        "FT/PT": "PT",
+        "時薪 Hourly Rate": 461,
+        "時數\nHours Worked": 55,
+        "薪資\nBasic Salary": 25355,
+        "Allw- Phone/ Communication": 0,
+        "Allw \nTransportation": 0,
+        "Back Pay": 0,
+        "伙食津貼Allw Meal": 0,
+        "病假時數 Sick Leave Hours": 5
+      }
+    },
+    {
+      "row": 5,
+      "preview": {
+        "BU": "Coral Sea",
+        "CN Name": "洪民翰",
+        "EN Name": "Min Han",
+        "Position": "Diver",
+        "Start Date": "2025-08-02 00:00:00",
+        "FT/PT": "PT",
+        "時薪 Hourly Rate": 400,
+        "時數\nHours Worked": 15,
+        "薪資\nBasic Salary": 6000,
+        "Allw- Phone/ Communication": 0,
+        "Allw \nTransportation": 0,
+        "Back Pay": 0,
+        "伙食津貼Allw Meal": 0,
+        "病假時數 Sick Leave Hours": 0
+      }
+    },
+    {
+      "row": 6,
+      "preview": {
+        "BU": "Coral Sea",
+        "CN Name": "楊文凱",
+        "EN Name": "Wen kai",
+        "Position": "Diver",
+        "Start Date": "2025-11-01 00:00:00",
+        "FT/PT": "PT",
+        "時薪 Hourly Rate": 400,
+        "時數\nHours Worked": 17,
+        "薪資\nBasic Salary": 6800,
+        "Allw- Phone/ Communication": 0,
+        "Allw \nTransportation": 0,
+        "Back Pay": 0,
+        "伙食津貼Allw Meal": 0,
+        "病假時數 Sick Leave Hours": 0
+      }
+    },
+    {
+      "row": 7,
+      "preview": {}
+    },
+    {
+      "row": 8,
+      "preview": {}
+    },
+    {
+      "row": 9,
+      "preview": {}
+    },
+    {
+      "row": 10,
+      "preview": {}
+    },
+    {
+      "row": 11,
+      "preview": {}
+    },
+    {
+      "row": 12,
+      "preview": {}
+    },
+    {
+      "row": 13,
+      "preview": {}
+    },
+    {
+      "row": 14,
+      "preview": {}
+    },
+    {
+      "row": 15,
+      "preview": {}
+    },
+    {
+      "row": 16,
+      "preview": {}
+    },
+    {
+      "row": 17,
+      "preview": {}
+    },
+    {
+      "row": 18,
+      "preview": {}
+    },
+    {
+      "row": 19,
+      "preview": {}
+    },
+    {
+      "row": 20,
+      "preview": {}
+    },
+    {
+      "row": 21,
+      "preview": {}
+    },
+    {
+      "row": 22,
+      "preview": {}
+    }
+  ],
+  "pc_meta": [
+    {
+      "cell": "I1",
+      "value": "Pay Items"
+    },
+    {
+      "cell": "A2",
+      "value": "BU"
+    },
+    {
+      "cell": "B2",
+      "value": "CN Name"
+    },
+    {
+      "cell": "C2",
+      "value": "EN Name"
+    },
+    {
+      "cell": "D2",
+      "value": "Position "
+    },
+    {
+      "cell": "E2",
+      "value": "Start Date"
+    },
+    {
+      "cell": "F2",
+      "value": "End Date"
+    },
+    {
+      "cell": "G2",
+      "value": "FT/PT"
+    },
+    {
+      "cell": "H2",
+      "value": "時薪 Hourly Rate"
+    },
+    {
+      "cell": "I2",
+      "value": "時數\nHours Worked"
+    },
+    {
+      "cell": "J2",
+      "value": "薪資\nBasic Salary"
+    },
+    {
+      "cell": "H3",
+      "value": 1261
+    },
+    {
+      "cell": "I3",
+      "value": 87
+    },
+    {
+      "cell": "J3",
+      "value": 38155
+    },
+    {
+      "cell": "A4",
+      "value": "Coral Sea"
+    },
+    {
+      "cell": "B4",
+      "value": "王品涵"
+    },
+    {
+      "cell": "C4",
+      "value": "Pin Han"
+    },
+    {
+      "cell": "D4",
+      "value": "Aquarist"
+    },
+    {
+      "cell": "E4",
+      "value": "2020-11-02 00:00:00"
+    },
+    {
+      "cell": "G4",
+      "value": "PT"
+    },
+    {
+      "cell": "H4",
+      "value": 461
+    },
+    {
+      "cell": "I4",
+      "value": 55
+    },
+    {
+      "cell": "J4",
+      "value": 25355
+    },
+    {
+      "cell": "A5",
+      "value": "Coral Sea"
+    },
+    {
+      "cell": "B5",
+      "value": "洪民翰"
+    },
+    {
+      "cell": "C5",
+      "value": "Min Han"
+    },
+    {
+      "cell": "D5",
+      "value": "Diver"
+    },
+    {
+      "cell": "E5",
+      "value": "2025-08-02 00:00:00"
+    },
+    {
+      "cell": "G5",
+      "value": "PT"
+    },
+    {
+      "cell": "H5",
+      "value": 400
+    },
+    {
+      "cell": "I5",
+      "value": 15
+    },
+    {
+      "cell": "J5",
+      "value": 6000
+    },
+    {
+      "cell": "A6",
+      "value": "Coral Sea"
+    },
+    {
+      "cell": "B6",
+      "value": "楊文凱"
+    },
+    {
+      "cell": "C6",
+      "value": "Wen kai"
+    },
+    {
+      "cell": "D6",
+      "value": "Diver"
+    },
+    {
+      "cell": "E6",
+      "value": "2025-11-01 00:00:00"
+    },
+    {
+      "cell": "G6",
+      "value": "PT"
+    },
+    {
+      "cell": "H6",
+      "value": 400
+    },
+    {
+      "cell": "I6",
+      "value": 17
+    },
+    {
+      "cell": "J6",
+      "value": 6800
+    }
+  ],
+  "tw_l_sheet": null,
+  "out_tw_l_header_row": 7,
+  "out_tw_l_headers": [
+    {
+      "col": "A",
+      "col_idx": 1,
+      "header": "BU"
+    },
+    {
+      "col": "B",
+      "col_idx": 2,
+      "header": "CN Name"
+    },
+    {
+      "col": "C",
+      "col_idx": 3,
+      "header": "EN Name"
+    },
+    {
+      "col": "D",
+      "col_idx": 4,
+      "header": "Position"
+    },
+    {
+      "col": "E",
+      "col_idx": 5,
+      "header": "Start Date"
+    },
+    {
+      "col": "F",
+      "col_idx": 6,
+      "header": "End Date"
+    },
+    {
+      "col": "G",
+      "col_idx": 7,
+      "header": "FT/PT"
+    },
+    {
+      "col": "H",
+      "col_idx": 8,
+      "header": "Full Pay/Hourly Rate"
+    },
+    {
+      "col": "I",
+      "col_idx": 9,
+      "header": "Monthly\nBasic Salary"
+    },
+    {
+      "col": "J",
+      "col_idx": 10,
+      "header": "Allw- Phone/ Communication"
+    },
+    {
+      "col": "K",
+      "col_idx": 11,
+      "header": "Allw \nTransportation"
+    },
+    {
+      "col": "L",
+      "col_idx": 12,
+      "header": "Allw Meal"
+    },
+    {
+      "col": "M",
+      "col_idx": 13,
+      "header": "Employment day/Hours Worked"
+    },
+    {
+      "col": "N",
+      "col_idx": 14,
+      "header": "薪資\nBasic Salary"
+    },
+    {
+      "col": "O",
+      "col_idx": 15,
+      "header": "Allw- Phone/ Communication"
+    },
+    {
+      "col": "P",
+      "col_idx": 16,
+      "header": "Allw \nTransportation"
+    },
+    {
+      "col": "Q",
+      "col_idx": 17,
+      "header": "Back Pay"
+    },
+    {
+      "col": "R",
+      "col_idx": 18,
+      "header": "伙食津貼Allw Meal"
+    },
+    {
+      "col": "S",
+      "col_idx": 19,
+      "header": "Remote Stipend"
+    },
+    {
+      "col": "T",
+      "col_idx": 20,
+      "header": "病假時數 Sick Leave Hours"
+    },
+    {
+      "col": "U",
+      "col_idx": 21,
+      "header": "病假扣薪\nSick Leave\n(half pay)"
+    },
+    {
+      "col": "V",
+      "col_idx": 22,
+      "header": "NPL Hours"
+    },
+    {
+      "col": "W",
+      "col_idx": 23,
+      "header": "No Pay Leave"
+    },
+    {
+      "col": "X",
+      "col_idx": 24,
+      "header": "Bonus VB"
+    },
+    {
+      "col": "Y",
+      "col_idx": 25,
+      "header": "Incentives"
+    },
+    {
+      "col": "Z",
+      "col_idx": 26,
+      "header": "報帳\nReimb Claim"
+    },
+    {
+      "col": "AA",
+      "col_idx": 27,
+      "header": "特休結算\nUntaken AL"
+    },
+    {
+      "col": "AB",
+      "col_idx": 28,
+      "header": "資遣費\nSeverance"
+    },
+    {
+      "col": "AC",
+      "col_idx": 29,
+      "header": "加班費\nOvertime Payment"
+    },
+    {
+      "col": "AD",
+      "col_idx": 30,
+      "header": "Hr (1.34x)"
+    },
+    {
+      "col": "AE",
+      "col_idx": 31,
+      "header": "OT Payment (1.34x)"
+    },
+    {
+      "col": "AF",
+      "col_idx": 32,
+      "header": "Hr (1.67x)"
+    },
+    {
+      "col": "AG",
+      "col_idx": 33,
+      "header": "OT Payment (1.67x)"
+    },
+    {
+      "col": "AH",
+      "col_idx": 34,
+      "header": "Hr (1x)"
+    },
+    {
+      "col": "AI",
+      "col_idx": 35,
+      "header": "OT Payment (1x)"
+    },
+    {
+      "col": "AJ",
+      "col_idx": 36,
+      "header": "Hr (2.67x)"
+    },
+    {
+      "col": "AK",
+      "col_idx": 37,
+      "header": "OT Payment (2.67x)"
+    },
+    {
+      "col": "AL",
+      "col_idx": 38,
+      "header": "勞保級距\nInsured Salary Grading - LI"
+    },
+    {
+      "col": "AM",
+      "col_idx": 39,
+      "header": "勞退級距 Pension Salary Grading"
+    },
+    {
+      "col": "AN",
+      "col_idx": 40,
+      "header": "健保投保級距Insured Salary Grading - HI"
+    },
+    {
+      "col": "AO",
+      "col_idx": 41,
+      "header": "健保眷屬\nHI Dependent (person)"
+    },
+    {
+      "col": "AP",
+      "col_idx": 42,
+      "header": "勞保投保天數\nLI Days"
+    },
+    {
+      "col": "AQ",
+      "col_idx": 43,
+      "header": "所得稅代扣\nWithholding Tax"
+    },
+    {
+      "col": "AR",
+      "col_idx": 44,
+      "header": "勞保自付\nLI EE"
+    },
+    {
+      "col": "AS",
+      "col_idx": 45,
+      "header": "勞保自付(調整)\nLI EE 1T"
+    },
+    {
+      "col": "AT",
+      "col_idx": 46,
+      "header": "勞退自提\nPension EE"
+    },
+    {
+      "col": "AU",
+      "col_idx": 47,
+      "header": "勞退自提 (調整)\nPension EE 1T"
+    },
+    {
+      "col": "AV",
+      "col_idx": 48,
+      "header": "健保自付\nHI EE"
+    },
+    {
+      "col": "AW",
+      "col_idx": 49,
+      "header": "健保自付(調整)\nHI EE 1T"
+    },
+    {
+      "col": "AX",
+      "col_idx": 50,
+      "header": "健保眷屬\nHI\nDep"
+    },
+    {
+      "col": "AY",
+      "col_idx": 51,
+      "header": "二代健保\n自付\n2G HI EE"
+    },
+    {
+      "col": "AZ",
+      "col_idx": 52,
+      "header": "Gross Taxable Income"
+    },
+    {
+      "col": "BA",
+      "col_idx": 53,
+      "header": "Net Salary"
+    },
+    {
+      "col": "BB",
+      "col_idx": 54,
+      "header": "勞保雇主 \nLI ER"
+    },
+    {
+      "col": "BC",
+      "col_idx": 55,
+      "header": "勞保雇主\nLI ER\n1T"
+    },
+    {
+      "col": "BD",
+      "col_idx": 56,
+      "header": "勞退雇主\nPension ER 6%"
+    },
+    {
+      "col": "BE",
+      "col_idx": 57,
+      "header": "勞退雇主\nPension \nER 1T"
+    },
+    {
+      "col": "BF",
+      "col_idx": 58,
+      "header": "健保雇主\nHI ER"
+    },
+    {
+      "col": "BG",
+      "col_idx": 59,
+      "header": "健保雇主\nHI ER\n1T"
+    },
+    {
+      "col": "BH",
+      "col_idx": 60,
+      "header": "二代健保\n雇主\n2G HI ER"
+    },
+    {
+      "col": "BI",
+      "col_idx": 61,
+      "header": "二代健保\n雇主\n2G HI ER \n1T"
+    },
+    {
+      "col": "BJ",
+      "col_idx": 62,
+      "header": "團保\nGI"
+    },
+    {
+      "col": "BK",
+      "col_idx": 63,
+      "header": "Gross Salary\n(payable)"
+    },
+    {
+      "col": "BL",
+      "col_idx": 64,
+      "header": "ER Insurance"
+    },
+    {
+      "col": "BM",
+      "col_idx": 65,
+      "header": "Service Fee"
+    },
+    {
+      "col": "BN",
+      "col_idx": 66,
+      "header": "Operation \nFee"
+    },
+    {
+      "col": "BO",
+      "col_idx": 67,
+      "header": "Total"
+    }
+  ],
+  "out_tw_l_data": [
+    {
+      "row": 8,
+      "preview": {
+        "Full Pay/Hourly Rate": 1261,
+        "Monthly\nBasic Salary": 0,
+        "Allw- Phone/ Communication": 0,
+        "Allw \nTransportation": 0,
+        "Allw Meal": 0,
+        "Employment day/Hours Worked": 87,
+        "薪資\nBasic Salary": 38155,
+        "Back Pay": 0
+      }
+    },
+    {
+      "row": 9,
+      "preview": {
+        "BU": "Coral Sea",
+        "CN Name": "王品涵",
+        "EN Name": "Pin Han",
+        "Position": "Aquarist",
+        "Start Date": "2020-11-02 00:00:00",
+        "FT/PT": "PT",
+        "Full Pay/Hourly Rate": 461,
+        "Employment day/Hours Worked": 55,
+        "薪資\nBasic Salary": 25355,
+        "Back Pay": 0
+      }
+    },
+    {
+      "row": 10,
+      "preview": {
+        "BU": "Coral Sea",
+        "CN Name": "洪民翰",
+        "EN Name": "Min Han",
+        "Position": "Diver",
+        "Start Date": "2025-08-02 00:00:00",
+        "FT/PT": "PT",
+        "Full Pay/Hourly Rate": 400,
+        "Employment day/Hours Worked": 15,
+        "薪資\nBasic Salary": 6000,
+        "Back Pay": 0
+      }
+    },
+    {
+      "row": 11,
+      "preview": {
+        "BU": "Coral Sea",
+        "CN Name": "楊文凱",
+        "EN Name": "Wen kai",
+        "Position": "Diver",
+        "Start Date": "2025-11-01 00:00:00",
+        "FT/PT": "PT",
+        "Full Pay/Hourly Rate": 400,
+        "Employment day/Hours Worked": 17,
+        "薪資\nBasic Salary": 6800
+      }
+    },
+    {
+      "row": 12,
+      "preview": {}
+    },
+    {
+      "row": 13,
+      "preview": {}
+    },
+    {
+      "row": 14,
+      "preview": {}
+    },
+    {
+      "row": 15,
+      "preview": {}
+    },
+    {
+      "row": 16,
+      "preview": {}
+    },
+    {
+      "row": 17,
+      "preview": {}
+    },
+    {
+      "row": 18,
+      "preview": {}
+    },
+    {
+      "row": 19,
+      "preview": {}
+    },
+    {
+      "row": 20,
+      "preview": {}
+    },
+    {
+      "row": 21,
+      "preview": {}
+    },
+    {
+      "row": 22,
+      "preview": {}
+    },
+    {
+      "row": 23,
+      "preview": {}
+    },
+    {
+      "row": 24,
+      "preview": {}
+    },
+    {
+      "row": 25,
+      "preview": {}
+    },
+    {
+      "row": 26,
+      "preview": {}
+    },
+    {
+      "row": 27,
+      "preview": {}
+    }
+  ],
+  "out_tw_l_meta": [
+    {
+      "cell": "A2",
+      "value": "NNRoad"
+    },
+    {
+      "cell": "A3",
+      "value": "Payroll for the month of"
+    },
+    {
+      "cell": "C3",
+      "value": "2026-03-01 00:00:00"
+    },
+    {
+      "cell": "B4",
+      "value": "Start Date>"
+    },
+    {
+      "cell": "C4",
+      "value": "2026/3/1"
+    },
+    {
+      "cell": "B5",
+      "value": "End Date>"
+    },
+    {
+      "cell": "C5",
+      "value": "2026/3/31"
+    }
+  ],
+  "tw_header_row": null,
+  "tw_headers": [],
+  "tw_data_row_formulas": [],
+  "tw_ee_header_row": 3,
+  "tw_ee_data_row_formulas": [
+    {
+      "col": "F",
+      "v": "From"
+    },
+    {
+      "col": "G",
+      "v": "To"
+    },
+    {
+      "col": "I",
+      "v": "Subtotal"
+    },
+    {
+      "col": "J",
+      "v": "Basic\nSalary"
+    },
+    {
+      "col": "K",
+      "v": "Salary\nAdjustment"
+    },
+    {
+      "col": "L",
+      "v": "OT"
+    },
+    {
+      "col": "M",
+      "v": "Allw- Phone/ Communication"
+    },
+    {
+      "col": "N",
+      "v": "Allw \nTransportation"
+    },
+    {
+      "col": "O",
+      "v": "Back Pay"
+    },
+    {
+      "col": "P",
+      "v": "伙食津貼  Allw Meal"
+    },
+    {
+      "col": "Q",
+      "v": "Remote Stipend"
+    },
+    {
+      "col": "R",
+      "v": "病假扣薪\nSick Leave\n(half pay)"
+    },
+    {
+      "col": "S",
+      "v": "NPL Hours"
+    },
+    {
+      "col": "T",
+      "v": "No Pay Leave"
+    },
+    {
+      "col": "U",
+      "v": "Bonus VB"
+    },
+    {
+      "col": "V",
+      "v": "Incentives"
+    },
+    {
+      "col": "W",
+      "v": "特休結算\nUntaken AL"
+    },
+    {
+      "col": "X",
+      "v": "資遣費\nSeverance"
+    },
+    {
+      "col": "Y",
+      "v": "Subtotal"
+    },
+    {
+      "col": "Z",
+      "v": "Expense\nClaim"
+    },
+    {
+      "col": "AA",
+      "v": "Subtotal"
+    },
+    {
+      "col": "AB",
+      "v": "LI"
+    },
+    {
+      "col": "AC",
+      "v": "Pension"
+    },
+    {
+      "col": "AD",
+      "v": "HI"
+    },
+    {
+      "col": "AE",
+      "v": "2G HI"
+    }
+  ],
+  "out_pn_B8": "Coral Sea",
+  "out_pn_B28": null,
+  "out_pn_B29": null,
+  "out_pn_C49": null,
+  "pn_fx_cells": [
+    {
+      "cell": "A31",
+      "label": "=\"*FX rate  USD:  \"&TW!C6",
+      "value": 31.2977
+    },
+    {
+      "cell": "D33",
+      "label": "FX difference ",
+      "value": null
+    }
+  ],
+  "pc_to_out_same_name": [
+    {
+      "out_header": "BU",
+      "pc_col": "A",
+      "out_col": "A",
+      "match": "same_name"
+    },
+    {
+      "out_header": "CN Name",
+      "pc_col": "B",
+      "out_col": "B",
+      "match": "same_name"
+    },
+    {
+      "out_header": "EN Name",
+      "pc_col": "C",
+      "out_col": "C",
+      "match": "same_name"
+    },
+    {
+      "out_header": "Position",
+      "pc_col": "D",
+      "out_col": "D",
+      "match": "same_name"
+    },
+    {
+      "out_header": "Start Date",
+      "pc_col": "E",
+      "out_col": "E",
+      "match": "same_name"
+    },
+    {
+      "out_header": "End Date",
+      "pc_col": "F",
+      "out_col": "F",
+      "match": "same_name"
+    },
+    {
+      "out_header": "FT/PT",
+      "pc_col": "G",
+      "out_col": "G",
+      "match": "same_name"
+    },
+    {
+      "out_header": "Allw- Phone/ Communication",
+      "pc_col": "K",
+      "out_col": "O",
+      "match": "same_name"
+    },
+    {
+      "out_header": "Allw \nTransportation",
+      "pc_col": "L",
+      "out_col": "P",
+      "match": "same_name"
+    },
+    {
+      "out_header": "薪資\nBasic Salary",
+      "pc_col": "J",
+      "out_col": "N",
+      "match": "same_name"
+    },
+    {
+      "out_header": "Back Pay",
+      "pc_col": "M",
+      "out_col": "Q",
+      "match": "same_name"
+    },
+    {
+      "out_header": "伙食津貼Allw Meal",
+      "pc_col": "N",
+      "out_col": "R",
+      "match": "same_name"
+    },
+    {
+      "out_header": "病假時數 Sick Leave Hours",
+      "pc_col": "O",
+      "out_col": "T",
+      "match": "same_name"
+    },
+    {
+      "out_header": "病假扣薪\nSick Leave\n(half pay)",
+      "pc_col": "P",
+      "out_col": "U",
+      "match": "same_name"
+    },
+    {
+      "out_header": "Bonus VB",
+      "pc_col": "Q",
+      "out_col": "X",
+      "match": "same_name"
+    },
+    {
+      "out_header": "Incentives",
+      "pc_col": "R",
+      "out_col": "Y",
+      "match": "same_name"
+    },
+    {
+      "out_header": "報帳\nReimb Claim",
+      "pc_col": "S",
+      "out_col": "Z",
+      "match": "same_name"
+    },
+    {
+      "out_header": "特休結算\nUntaken AL",
+      "pc_col": "T",
+      "out_col": "AA",
+      "match": "same_name"
+    },
+    {
+      "out_header": "資遣費\nSeverance",
+      "pc_col": "U",
+      "out_col": "AB",
+      "match": "same_name"
+    },
+    {
+      "out_header": "加班費\nOvertime Payment",
+      "pc_col": "V",
+      "out_col": "AC",
+      "match": "same_name"
+    },
+    {
+      "out_header": "Hr (1.34x)",
+      "pc_col": "W",
+      "out_col": "AD",
+      "match": "same_name"
+    },
+    {
+      "out_header": "OT Payment (1.34x)",
+      "pc_col": "X",
+      "out_col": "AE",
+      "match": "same_name"
+    },
+    {
+      "out_header": "Hr (1.67x)",
+      "pc_col": "Y",
+      "out_col": "AF",
+      "match": "same_name"
+    },
+    {
+      "out_header": "OT Payment (1.67x)",
+      "pc_col": "Z",
+      "out_col": "AG",
+      "match": "same_name"
+    },
+    {
+      "out_header": "Hr (1x)",
+      "pc_col": "AA",
+      "out_col": "AH",
+      "match": "same_name"
+    },
+    {
+      "out_header": "OT Payment (1x)",
+      "pc_col": "AB",
+      "out_col": "AI",
+      "match": "same_name"
+    },
+    {
+      "out_header": "Hr (2.67x)",
+      "pc_col": "AC",
+      "out_col": "AJ",
+      "match": "same_name"
+    },
+    {
+      "out_header": "OT Payment (2.67x)",
+      "pc_col": "AD",
+      "out_col": "AK",
+      "match": "same_name"
+    },
+    {
+      "out_header": "勞保級距\nInsured Salary Grading - LI",
+      "pc_col": "AE",
+      "out_col": "AL",
+      "match": "same_name"
+    },
+    {
+      "out_header": "勞退級距 Pension Salary Grading",
+      "pc_col": "AF",
+      "out_col": "AM",
+      "match": "same_name"
+    },
+    {
+      "out_header": "健保眷屬\nHI Dependent (person)",
+      "pc_col": "AH",
+      "out_col": "AO",
+      "match": "same_name"
+    },
+    {
+      "out_header": "勞保投保天數\nLI Days",
+      "pc_col": "AI",
+      "out_col": "AP",
+      "match": "same_name"
+    },
+    {
+      "out_header": "所得稅代扣\nWithholding Tax",
+      "pc_col": "AJ",
+      "out_col": "AQ",
+      "match": "same_name"
+    },
+    {
+      "out_header": "勞保自付\nLI EE",
+      "pc_col": "AK",
+      "out_col": "AR",
+      "match": "same_name"
+    },
+    {
+      "out_header": "勞保自付(調整)\nLI EE 1T",
+      "pc_col": "AL",
+      "out_col": "AS",
+      "match": "same_name"
+    },
+    {
+      "out_header": "勞退自提\nPension EE",
+      "pc_col": "AM",
+      "out_col": "AT",
+      "match": "same_name"
+    },
+    {
+      "out_header": "勞退自提 (調整)\nPension EE 1T",
+      "pc_col": "AN",
+      "out_col": "AU",
+      "match": "same_name"
+    },
+    {
+      "out_header": "健保自付\nHI EE",
+      "pc_col": "AO",
+      "out_col": "AV",
+      "match": "same_name"
+    },
+    {
+      "out_header": "健保自付(調整)\nHI EE 1T",
+      "pc_col": "AP",
+      "out_col": "AW",
+      "match": "same_name"
+    },
+    {
+      "out_header": "健保眷屬\nHI\nDep",
+      "pc_col": "AQ",
+      "out_col": "AX",
+      "match": "same_name"
+    },
+    {
+      "out_header": "二代健保\n自付\n2G HI EE",
+      "pc_col": "AR",
+      "out_col": "AY",
+      "match": "same_name"
+    },
+    {
+      "out_header": "Gross Taxable Income",
+      "pc_col": "AS",
+      "out_col": "AZ",
+      "match": "same_name"
+    },
+    {
+      "out_header": "Net Salary",
+      "pc_col": "AT",
+      "out_col": "BA",
+      "match": "same_name"
+    },
+    {
+      "out_header": "勞保雇主 \nLI ER",
+      "pc_col": "AU",
+      "out_col": "BB",
+      "match": "same_name"
+    },
+    {
+      "out_header": "勞保雇主\nLI ER\n1T",
+      "pc_col": "AV",
+      "out_col": "BC",
+      "match": "same_name"
+    },
+    {
+      "out_header": "勞退雇主\nPension ER 6%",
+      "pc_col": "AW",
+      "out_col": "BD",
+      "match": "same_name"
+    },
+    {
+      "out_header": "勞退雇主\nPension \nER 1T",
+      "pc_col": "AX",
+      "out_col": "BE",
+      "match": "same_name"
+    },
+    {
+      "out_header": "健保雇主\nHI ER",
+      "pc_col": "AY",
+      "out_col": "BF",
+      "match": "same_name"
+    },
+    {
+      "out_header": "健保雇主\nHI ER\n1T",
+      "pc_col": "AZ",
+      "out_col": "BG",
+      "match": "same_name"
+    },
+    {
+      "out_header": "二代健保\n雇主\n2G HI ER",
+      "pc_col": "BA",
+      "out_col": "BH",
+      "match": "same_name"
+    },
+    {
+      "out_header": "二代健保\n雇主\n2G HI ER \n1T",
+      "pc_col": "BB",
+      "out_col": "BI",
+      "match": "same_name"
+    },
+    {
+      "out_header": "團保\nGI",
+      "pc_col": "BC",
+      "out_col": "BJ",
+      "match": "same_name"
+    },
+    {
+      "out_header": "Gross Salary\n(payable)",
+      "pc_col": "BD",
+      "out_col": "BK",
+      "match": "same_name"
+    },
+    {
+      "out_header": "ER Insurance",
+      "pc_col": "BE",
+      "out_col": "BL",
+      "match": "same_name"
+    },
+    {
+      "out_header": "Service Fee",
+      "pc_col": "BF",
+      "out_col": "BM",
+      "match": "same_name"
+    },
+    {
+      "out_header": "Operation \nFee",
+      "pc_col": "BG",
+      "out_col": "BN",
+      "match": "same_name"
+    },
+    {
+      "out_header": "Total",
+      "pc_col": "BH",
+      "out_col": "BO",
+      "match": "same_name"
+    }
+  ],
+  "rename_candidates": [
+    {
+      "out_header": "Full Pay/Hourly Rate",
+      "pc_header": "時薪 Hourly Rate",
+      "value": 1261
+    },
+    {
+      "out_header": "Monthly\nBasic Salary",
+      "pc_header": "Allw- Phone/ Communication",
+      "value": 0
+    },
+    {
+      "out_header": "Monthly\nBasic Salary",
+      "pc_header": "Allw \nTransportation",
+      "value": 0
+    },
+    {
+      "out_header": "Monthly\nBasic Salary",
+      "pc_header": "Back Pay",
+      "value": 0
+    },
+    {
+      "out_header": "Monthly\nBasic Salary",
+      "pc_header": "伙食津貼Allw Meal",
+      "value": 0
+    },
+    {
+      "out_header": "Monthly\nBasic Salary",
+      "pc_header": "Bonus VB",
+      "value": 0
+    },
+    {
+      "out_header": "Monthly\nBasic Salary",
+      "pc_header": "Incentives",
+      "value": 0
+    },
+    {
+      "out_header": "Monthly\nBasic Salary",
+      "pc_header": "報帳\nReimb Claim",
+      "value": 0
+    },
+    {
+      "out_header": "Monthly\nBasic Salary",
+      "pc_header": "特休結算\nUntaken AL",
+      "value": 0
+    },
+    {
+      "out_header": "Monthly\nBasic Salary",
+      "pc_header": "資遣費\nSeverance",
+      "value": 0
+    },
+    {
+      "out_header": "Monthly\nBasic Salary",
+      "pc_header": "Hr (1.34x)",
+      "value": 0
+    },
+    {
+      "out_header": "Monthly\nBasic Salary",
+      "pc_header": "OT Payment (1.34x)",
+      "value": 0
+    },
+    {
+      "out_header": "Monthly\nBasic Salary",
+      "pc_header": "Hr (1.67x)",
+      "value": 0
+    },
+    {
+      "out_header": "Monthly\nBasic Salary",
+      "pc_header": "OT Payment (1.67x)",
+      "value": 0
+    },
+    {
+      "out_header": "Monthly\nBasic Salary",
+      "pc_header": "Hr (2.67x)",
+      "value": 0
+    },
+    {
+      "out_header": "Monthly\nBasic Salary",
+      "pc_header": "OT Payment (2.67x)",
+      "value": 0
+    },
+    {
+      "out_header": "Monthly\nBasic Salary",
+      "pc_header": "健保級距\nInsured Salary Grading - HI",
+      "value": 0
+    },
+    {
+      "out_header": "Monthly\nBasic Salary",
+      "pc_header": "健保眷屬\nHI Dependent (person)",
+      "value": 0
+    },
+    {
+      "out_header": "Monthly\nBasic Salary",
+      "pc_header": "所得稅代扣\nWithholding Tax",
+      "value": 0
+    },
+    {
+      "out_header": "Monthly\nBasic Salary",
+      "pc_header": "勞保自付(調整)\nLI EE 1T",
+      "value": 0
+    },
+    {
+      "out_header": "Monthly\nBasic Salary",
+      "pc_header": "勞退自提\nPension EE",
+      "value": 0
+    },
+    {
+      "out_header": "Monthly\nBasic Salary",
+      "pc_header": "勞退自提 (調整)\nPension EE 1T",
+      "value": 0
+    },
+    {
+      "out_header": "Monthly\nBasic Salary",
+      "pc_header": "健保自付\nHI EE",
+      "value": 0
+    },
+    {
+      "out_header": "Monthly\nBasic Salary",
+      "pc_header": "健保自付(調整)\nHI EE 1T",
+      "value": 0
+    },
+    {
+      "out_header": "Monthly\nBasic Salary",
+      "pc_header": "健保眷屬\nHI\nDep",
+      "value": 0
+    },
+    {
+      "out_header": "Monthly\nBasic Salary",
+      "pc_header": "二代健保\n自付\n2G HI EE",
+      "value": 0
+    },
+    {
+      "out_header": "Monthly\nBasic Salary",
+      "pc_header": "勞保雇主\nLI ER\n1T",
+      "value": 0
+    },
+    {
+      "out_header": "Monthly\nBasic Salary",
+      "pc_header": "勞退雇主\nPension \nER 1T",
+      "value": 0
+    },
+    {
+      "out_header": "Monthly\nBasic Salary",
+      "pc_header": "健保雇主\nHI ER",
+      "value": 0
+    },
+    {
+      "out_header": "Monthly\nBasic Salary",
+      "pc_header": "健保雇主\nHI ER\n1T",
+      "value": 0
+    },
+    {
+      "out_header": "Monthly\nBasic Salary",
+      "pc_header": "二代健保\n雇主\n2G HI ER \n1T",
+      "value": 0
+    },
+    {
+      "out_header": "Monthly\nBasic Salary",
+      "pc_header": "Operation \nFee",
+      "value": 0
+    },
+    {
+      "out_header": "Allw Meal",
+      "pc_header": "Allw- Phone/ Communication",
+      "value": 0
+    },
+    {
+      "out_header": "Allw Meal",
+      "pc_header": "Allw \nTransportation",
+      "value": 0
+    },
+    {
+      "out_header": "Allw Meal",
+      "pc_header": "Back Pay",
+      "value": 0
+    },
+    {
+      "out_header": "Allw Meal",
+      "pc_header": "伙食津貼Allw Meal",
+      "value": 0
+    },
+    {
+      "out_header": "Allw Meal",
+      "pc_header": "Bonus VB",
+      "value": 0
+    },
+    {
+      "out_header": "Allw Meal",
+      "pc_header": "Incentives",
+      "value": 0
+    },
+    {
+      "out_header": "Allw Meal",
+      "pc_header": "報帳\nReimb Claim",
+      "value": 0
+    },
+    {
+      "out_header": "Allw Meal",
+      "pc_header": "特休結算\nUntaken AL",
+      "value": 0
+    },
+    {
+      "out_header": "Allw Meal",
+      "pc_header": "資遣費\nSeverance",
+      "value": 0
+    },
+    {
+      "out_header": "Allw Meal",
+      "pc_header": "Hr (1.34x)",
+      "value": 0
+    },
+    {
+      "out_header": "Allw Meal",
+      "pc_header": "OT Payment (1.34x)",
+      "value": 0
+    },
+    {
+      "out_header": "Allw Meal",
+      "pc_header": "Hr (1.67x)",
+      "value": 0
+    },
+    {
+      "out_header": "Allw Meal",
+      "pc_header": "OT Payment (1.67x)",
+      "value": 0
+    },
+    {
+      "out_header": "Allw Meal",
+      "pc_header": "Hr (2.67x)",
+      "value": 0
+    },
+    {
+      "out_header": "Allw Meal",
+      "pc_header": "OT Payment (2.67x)",
+      "value": 0
+    },
+    {
+      "out_header": "Allw Meal",
+      "pc_header": "健保級距\nInsured Salary Grading - HI",
+      "value": 0
+    },
+    {
+      "out_header": "Allw Meal",
+      "pc_header": "健保眷屬\nHI Dependent (person)",
+      "value": 0
+    },
+    {
+      "out_header": "Allw Meal",
+      "pc_header": "所得稅代扣\nWithholding Tax",
+      "value": 0
+    },
+    {
+      "out_header": "Allw Meal",
+      "pc_header": "勞保自付(調整)\nLI EE 1T",
+      "value": 0
+    },
+    {
+      "out_header": "Allw Meal",
+      "pc_header": "勞退自提\nPension EE",
+      "value": 0
+    },
+    {
+      "out_header": "Allw Meal",
+      "pc_header": "勞退自提 (調整)\nPension EE 1T",
+      "value": 0
+    },
+    {
+      "out_header": "Allw Meal",
+      "pc_header": "健保自付\nHI EE",
+      "value": 0
+    },
+    {
+      "out_header": "Allw Meal",
+      "pc_header": "健保自付(調整)\nHI EE 1T",
+      "value": 0
+    },
+    {
+      "out_header": "Allw Meal",
+      "pc_header": "健保眷屬\nHI\nDep",
+      "value": 0
+    },
+    {
+      "out_header": "Allw Meal",
+      "pc_header": "二代健保\n自付\n2G HI EE",
+      "value": 0
+    },
+    {
+      "out_header": "Allw Meal",
+      "pc_header": "勞保雇主\nLI ER\n1T",
+      "value": 0
+    },
+    {
+      "out_header": "Allw Meal",
+      "pc_header": "勞退雇主\nPension \nER 1T",
+      "value": 0
+    },
+    {
+      "out_header": "Allw Meal",
+      "pc_header": "健保雇主\nHI ER",
+      "value": 0
+    },
+    {
+      "out_header": "Allw Meal",
+      "pc_header": "健保雇主\nHI ER\n1T",
+      "value": 0
+    },
+    {
+      "out_header": "Allw Meal",
+      "pc_header": "二代健保\n雇主\n2G HI ER \n1T",
+      "value": 0
+    },
+    {
+      "out_header": "Allw Meal",
+      "pc_header": "Operation \nFee",
+      "value": 0
+    },
+    {
+      "out_header": "Employment day/Hours Worked",
+      "pc_header": "時數\nHours Worked",
+      "value": 87
+    },
+    {
+      "out_header": "Remote Stipend",
+      "pc_header": "Allw- Phone/ Communication",
+      "value": 0
+    },
+    {
+      "out_header": "Remote Stipend",
+      "pc_header": "Allw \nTransportation",
+      "value": 0
+    },
+    {
+      "out_header": "Remote Stipend",
+      "pc_header": "Back Pay",
+      "value": 0
+    },
+    {
+      "out_header": "Remote Stipend",
+      "pc_header": "伙食津貼Allw Meal",
+      "value": 0
+    },
+    {
+      "out_header": "Remote Stipend",
+      "pc_header": "Bonus VB",
+      "value": 0
+    },
+    {
+      "out_header": "Remote Stipend",
+      "pc_header": "Incentives",
+      "value": 0
+    },
+    {
+      "out_header": "Remote Stipend",
+      "pc_header": "報帳\nReimb Claim",
+      "value": 0
+    },
+    {
+      "out_header": "Remote Stipend",
+      "pc_header": "特休結算\nUntaken AL",
+      "value": 0
+    },
+    {
+      "out_header": "Remote Stipend",
+      "pc_header": "資遣費\nSeverance",
+      "value": 0
+    },
+    {
+      "out_header": "Remote Stipend",
+      "pc_header": "Hr (1.34x)",
+      "value": 0
+    },
+    {
+      "out_header": "Remote Stipend",
+      "pc_header": "OT Payment (1.34x)",
+      "value": 0
+    },
+    {
+      "out_header": "Remote Stipend",
+      "pc_header": "Hr (1.67x)",
+      "value": 0
+    },
+    {
+      "out_header": "Remote Stipend",
+      "pc_header": "OT Payment (1.67x)",
+      "value": 0
+    },
+    {
+      "out_header": "Remote Stipend",
+      "pc_header": "Hr (2.67x)",
+      "value": 0
+    },
+    {
+      "out_header": "Remote Stipend",
+      "pc_header": "OT Payment (2.67x)",
+      "value": 0
+    },
+    {
+      "out_header": "Remote Stipend",
+      "pc_header": "健保級距\nInsured Salary Grading - HI",
+      "value": 0
+    },
+    {
+      "out_header": "Remote Stipend",
+      "pc_header": "健保眷屬\nHI Dependent (person)",
+      "value": 0
+    },
+    {
+      "out_header": "Remote Stipend",
+      "pc_header": "所得稅代扣\nWithholding Tax",
+      "value": 0
+    },
+    {
+      "out_header": "Remote Stipend",
+      "pc_header": "勞保自付(調整)\nLI EE 1T",
+      "value": 0
+    },
+    {
+      "out_header": "Remote Stipend",
+      "pc_header": "勞退自提\nPension EE",
+      "value": 0
+    },
+    {
+      "out_header": "Remote Stipend",
+      "pc_header": "勞退自提 (調整)\nPension EE 1T",
+      "value": 0
+    },
+    {
+      "out_header": "Remote Stipend",
+      "pc_header": "健保自付\nHI EE",
+      "value": 0
+    },
+    {
+      "out_header": "Remote Stipend",
+      "pc_header": "健保自付(調整)\nHI EE 1T",
+      "value": 0
+    },
+    {
+      "out_header": "Remote Stipend",
+      "pc_header": "健保眷屬\nHI\nDep",
+      "value": 0
+    },
+    {
+      "out_header": "Remote Stipend",
+      "pc_header": "二代健保\n自付\n2G HI EE",
+      "value": 0
+    },
+    {
+      "out_header": "Remote Stipend",
+      "pc_header": "勞保雇主\nLI ER\n1T",
+      "value": 0
+    },
+    {
+      "out_header": "Remote Stipend",
+      "pc_header": "勞退雇主\nPension \nER 1T",
+      "value": 0
+    },
+    {
+      "out_header": "Remote Stipend",
+      "pc_header": "健保雇主\nHI ER",
+      "value": 0
+    },
+    {
+      "out_header": "Remote Stipend",
+      "pc_header": "健保雇主\nHI ER\n1T",
+      "value": 0
+    },
+    {
+      "out_header": "Remote Stipend",
+      "pc_header": "二代健保\n雇主\n2G HI ER \n1T",
+      "value": 0
+    },
+    {
+      "out_header": "Remote Stipend",
+      "pc_header": "Operation \nFee",
+      "value": 0
+    },
+    {
+      "out_header": "NPL Hours",
+      "pc_header": "Allw- Phone/ Communication",
+      "value": 0
+    },
+    {
+      "out_header": "NPL Hours",
+      "pc_header": "Allw \nTransportation",
+      "value": 0
+    },
+    {
+      "out_header": "NPL Hours",
+      "pc_header": "Back Pay",
+      "value": 0
+    },
+    {
+      "out_header": "NPL Hours",
+      "pc_header": "伙食津貼Allw Meal",
+      "value": 0
+    },
+    {
+      "out_header": "NPL Hours",
+      "pc_header": "Bonus VB",
+      "value": 0
+    },
+    {
+      "out_header": "NPL Hours",
+      "pc_header": "Incentives",
+      "value": 0
+    },
+    {
+      "out_header": "NPL Hours",
+      "pc_header": "報帳\nReimb Claim",
+      "value": 0
+    },
+    {
+      "out_header": "NPL Hours",
+      "pc_header": "特休結算\nUntaken AL",
+      "value": 0
+    },
+    {
+      "out_header": "NPL Hours",
+      "pc_header": "資遣費\nSeverance",
+      "value": 0
+    },
+    {
+      "out_header": "NPL Hours",
+      "pc_header": "Hr (1.34x)",
+      "value": 0
+    },
+    {
+      "out_header": "NPL Hours",
+      "pc_header": "OT Payment (1.34x)",
+      "value": 0
+    },
+    {
+      "out_header": "NPL Hours",
+      "pc_header": "Hr (1.67x)",
+      "value": 0
+    },
+    {
+      "out_header": "NPL Hours",
+      "pc_header": "OT Payment (1.67x)",
+      "value": 0
+    },
+    {
+      "out_header": "NPL Hours",
+      "pc_header": "Hr (2.67x)",
+      "value": 0
+    },
+    {
+      "out_header": "NPL Hours",
+      "pc_header": "OT Payment (2.67x)",
+      "value": 0
+    },
+    {
+      "out_header": "NPL Hours",
+      "pc_header": "健保級距\nInsured Salary Grading - HI",
+      "value": 0
+    },
+    {
+      "out_header": "NPL Hours",
+      "pc_header": "健保眷屬\nHI Dependent (person)",
+      "value": 0
+    },
+    {
+      "out_header": "NPL Hours",
+      "pc_header": "所得稅代扣\nWithholding Tax",
+      "value": 0
+    },
+    {
+      "out_header": "NPL Hours",
+      "pc_header": "勞保自付(調整)\nLI EE 1T",
+      "value": 0
+    },
+    {
+      "out_header": "NPL Hours",
+      "pc_header": "勞退自提\nPension EE",
+      "value": 0
+    },
+    {
+      "out_header": "NPL Hours",
+      "pc_header": "勞退自提 (調整)\nPension EE 1T",
+      "value": 0
+    },
+    {
+      "out_header": "NPL Hours",
+      "pc_header": "健保自付\nHI EE",
+      "value": 0
+    },
+    {
+      "out_header": "NPL Hours",
+      "pc_header": "健保自付(調整)\nHI EE 1T",
+      "value": 0
+    },
+    {
+      "out_header": "NPL Hours",
+      "pc_header": "健保眷屬\nHI\nDep",
+      "value": 0
+    },
+    {
+      "out_header": "NPL Hours",
+      "pc_header": "二代健保\n自付\n2G HI EE",
+      "value": 0
+    },
+    {
+      "out_header": "NPL Hours",
+      "pc_header": "勞保雇主\nLI ER\n1T",
+      "value": 0
+    },
+    {
+      "out_header": "NPL Hours",
+      "pc_header": "勞退雇主\nPension \nER 1T",
+      "value": 0
+    },
+    {
+      "out_header": "NPL Hours",
+      "pc_header": "健保雇主\nHI ER",
+      "value": 0
+    },
+    {
+      "out_header": "NPL Hours",
+      "pc_header": "健保雇主\nHI ER\n1T",
+      "value": 0
+    },
+    {
+      "out_header": "NPL Hours",
+      "pc_header": "二代健保\n雇主\n2G HI ER \n1T",
+      "value": 0
+    },
+    {
+      "out_header": "NPL Hours",
+      "pc_header": "Operation \nFee",
+      "value": 0
+    },
+    {
+      "out_header": "No Pay Leave",
+      "pc_header": "Allw- Phone/ Communication",
+      "value": 0
+    },
+    {
+      "out_header": "No Pay Leave",
+      "pc_header": "Allw \nTransportation",
+      "value": 0
+    },
+    {
+      "out_header": "No Pay Leave",
+      "pc_header": "Back Pay",
+      "value": 0
+    },
+    {
+      "out_header": "No Pay Leave",
+      "pc_header": "伙食津貼Allw Meal",
+      "value": 0
+    },
+    {
+      "out_header": "No Pay Leave",
+      "pc_header": "Bonus VB",
+      "value": 0
+    },
+    {
+      "out_header": "No Pay Leave",
+      "pc_header": "Incentives",
+      "value": 0
+    },
+    {
+      "out_header": "No Pay Leave",
+      "pc_header": "報帳\nReimb Claim",
+      "value": 0
+    },
+    {
+      "out_header": "No Pay Leave",
+      "pc_header": "特休結算\nUntaken AL",
+      "value": 0
+    },
+    {
+      "out_header": "No Pay Leave",
+      "pc_header": "資遣費\nSeverance",
+      "value": 0
+    },
+    {
+      "out_header": "No Pay Leave",
+      "pc_header": "Hr (1.34x)",
+      "value": 0
+    },
+    {
+      "out_header": "No Pay Leave",
+      "pc_header": "OT Payment (1.34x)",
+      "value": 0
+    },
+    {
+      "out_header": "No Pay Leave",
+      "pc_header": "Hr (1.67x)",
+      "value": 0
+    },
+    {
+      "out_header": "No Pay Leave",
+      "pc_header": "OT Payment (1.67x)",
+      "value": 0
+    },
+    {
+      "out_header": "No Pay Leave",
+      "pc_header": "Hr (2.67x)",
+      "value": 0
+    },
+    {
+      "out_header": "No Pay Leave",
+      "pc_header": "OT Payment (2.67x)",
+      "value": 0
+    },
+    {
+      "out_header": "No Pay Leave",
+      "pc_header": "健保級距\nInsured Salary Grading - HI",
+      "value": 0
+    },
+    {
+      "out_header": "No Pay Leave",
+      "pc_header": "健保眷屬\nHI Dependent (person)",
+      "value": 0
+    },
+    {
+      "out_header": "No Pay Leave",
+      "pc_header": "所得稅代扣\nWithholding Tax",
+      "value": 0
+    },
+    {
+      "out_header": "No Pay Leave",
+      "pc_header": "勞保自付(調整)\nLI EE 1T",
+      "value": 0
+    },
+    {
+      "out_header": "No Pay Leave",
+      "pc_header": "勞退自提\nPension EE",
+      "value": 0
+    },
+    {
+      "out_header": "No Pay Leave",
+      "pc_header": "勞退自提 (調整)\nPension EE 1T",
+      "value": 0
+    },
+    {
+      "out_header": "No Pay Leave",
+      "pc_header": "健保自付\nHI EE",
+      "value": 0
+    },
+    {
+      "out_header": "No Pay Leave",
+      "pc_header": "健保自付(調整)\nHI EE 1T",
+      "value": 0
+    },
+    {
+      "out_header": "No Pay Leave",
+      "pc_header": "健保眷屬\nHI\nDep",
+      "value": 0
+    },
+    {
+      "out_header": "No Pay Leave",
+      "pc_header": "二代健保\n自付\n2G HI EE",
+      "value": 0
+    },
+    {
+      "out_header": "No Pay Leave",
+      "pc_header": "勞保雇主\nLI ER\n1T",
+      "value": 0
+    },
+    {
+      "out_header": "No Pay Leave",
+      "pc_header": "勞退雇主\nPension \nER 1T",
+      "value": 0
+    },
+    {
+      "out_header": "No Pay Leave",
+      "pc_header": "健保雇主\nHI ER",
+      "value": 0
+    },
+    {
+      "out_header": "No Pay Leave",
+      "pc_header": "健保雇主\nHI ER\n1T",
+      "value": 0
+    },
+    {
+      "out_header": "No Pay Leave",
+      "pc_header": "二代健保\n雇主\n2G HI ER \n1T",
+      "value": 0
+    },
+    {
+      "out_header": "No Pay Leave",
+      "pc_header": "Operation \nFee",
+      "value": 0
+    },
+    {
+      "out_header": "健保投保級距Insured Salary Grading - HI",
+      "pc_header": "Allw- Phone/ Communication",
+      "value": 0
+    },
+    {
+      "out_header": "健保投保級距Insured Salary Grading - HI",
+      "pc_header": "Allw \nTransportation",
+      "value": 0
+    },
+    {
+      "out_header": "健保投保級距Insured Salary Grading - HI",
+      "pc_header": "Back Pay",
+      "value": 0
+    },
+    {
+      "out_header": "健保投保級距Insured Salary Grading - HI",
+      "pc_header": "伙食津貼Allw Meal",
+      "value": 0
+    },
+    {
+      "out_header": "健保投保級距Insured Salary Grading - HI",
+      "pc_header": "Bonus VB",
+      "value": 0
+    },
+    {
+      "out_header": "健保投保級距Insured Salary Grading - HI",
+      "pc_header": "Incentives",
+      "value": 0
+    },
+    {
+      "out_header": "健保投保級距Insured Salary Grading - HI",
+      "pc_header": "報帳\nReimb Claim",
+      "value": 0
+    },
+    {
+      "out_header": "健保投保級距Insured Salary Grading - HI",
+      "pc_header": "特休結算\nUntaken AL",
+      "value": 0
+    },
+    {
+      "out_header": "健保投保級距Insured Salary Grading - HI",
+      "pc_header": "資遣費\nSeverance",
+      "value": 0
+    },
+    {
+      "out_header": "健保投保級距Insured Salary Grading - HI",
+      "pc_header": "Hr (1.34x)",
+      "value": 0
+    },
+    {
+      "out_header": "健保投保級距Insured Salary Grading - HI",
+      "pc_header": "OT Payment (1.34x)",
+      "value": 0
+    },
+    {
+      "out_header": "健保投保級距Insured Salary Grading - HI",
+      "pc_header": "Hr (1.67x)",
+      "value": 0
+    },
+    {
+      "out_header": "健保投保級距Insured Salary Grading - HI",
+      "pc_header": "OT Payment (1.67x)",
+      "value": 0
+    },
+    {
+      "out_header": "健保投保級距Insured Salary Grading - HI",
+      "pc_header": "Hr (2.67x)",
+      "value": 0
+    },
+    {
+      "out_header": "健保投保級距Insured Salary Grading - HI",
+      "pc_header": "OT Payment (2.67x)",
+      "value": 0
+    },
+    {
+      "out_header": "健保投保級距Insured Salary Grading - HI",
+      "pc_header": "健保級距\nInsured Salary Grading - HI",
+      "value": 0
+    },
+    {
+      "out_header": "健保投保級距Insured Salary Grading - HI",
+      "pc_header": "健保眷屬\nHI Dependent (person)",
+      "value": 0
+    },
+    {
+      "out_header": "健保投保級距Insured Salary Grading - HI",
+      "pc_header": "所得稅代扣\nWithholding Tax",
+      "value": 0
+    },
+    {
+      "out_header": "健保投保級距Insured Salary Grading - HI",
+      "pc_header": "勞保自付(調整)\nLI EE 1T",
+      "value": 0
+    },
+    {
+      "out_header": "健保投保級距Insured Salary Grading - HI",
+      "pc_header": "勞退自提\nPension EE",
+      "value": 0
+    },
+    {
+      "out_header": "健保投保級距Insured Salary Grading - HI",
+      "pc_header": "勞退自提 (調整)\nPension EE 1T",
+      "value": 0
+    },
+    {
+      "out_header": "健保投保級距Insured Salary Grading - HI",
+      "pc_header": "健保自付\nHI EE",
+      "value": 0
+    },
+    {
+      "out_header": "健保投保級距Insured Salary Grading - HI",
+      "pc_header": "健保自付(調整)\nHI EE 1T",
+      "value": 0
+    },
+    {
+      "out_header": "健保投保級距Insured Salary Grading - HI",
+      "pc_header": "健保眷屬\nHI\nDep",
+      "value": 0
+    },
+    {
+      "out_header": "健保投保級距Insured Salary Grading - HI",
+      "pc_header": "二代健保\n自付\n2G HI EE",
+      "value": 0
+    },
+    {
+      "out_header": "健保投保級距Insured Salary Grading - HI",
+      "pc_header": "勞保雇主\nLI ER\n1T",
+      "value": 0
+    },
+    {
+      "out_header": "健保投保級距Insured Salary Grading - HI",
+      "pc_header": "勞退雇主\nPension \nER 1T",
+      "value": 0
+    },
+    {
+      "out_header": "健保投保級距Insured Salary Grading - HI",
+      "pc_header": "健保雇主\nHI ER",
+      "value": 0
+    },
+    {
+      "out_header": "健保投保級距Insured Salary Grading - HI",
+      "pc_header": "健保雇主\nHI ER\n1T",
+      "value": 0
+    },
+    {
+      "out_header": "健保投保級距Insured Salary Grading - HI",
+      "pc_header": "二代健保\n雇主\n2G HI ER \n1T",
+      "value": 0
+    },
+    {
+      "out_header": "健保投保級距Insured Salary Grading - HI",
+      "pc_header": "Operation \nFee",
+      "value": 0
+    }
+  ]
+}
