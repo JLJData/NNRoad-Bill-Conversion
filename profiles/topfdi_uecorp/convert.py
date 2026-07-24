@@ -38,6 +38,7 @@ HK_L_HEADER_ROW = 7
 HK_L_DATA_START_ROW = 8
 HK_DATA_START_ROW = 9
 HK_EE_DATA_START_ROW = 10
+_DATE_FMT = "yyyy/m/d"
 MAX_EMPLOYEES = 10
 
 # 源表头 → 目标表头（同名则省略）
@@ -159,6 +160,22 @@ def read_hk_l_meta(ws: Worksheet) -> dict[str, Any]:
     }
 
 
+def ensure_hk_period_date_formats(wb) -> None:
+    """Hong Kong!B2/C2 引用账期；强制日期格式，避免显示成金额。"""
+    try:
+        hkl = wb[HK_L_SHEET]
+        for row, col in ((2, 3), (2, 5)):  # C2 / E2
+            hkl.cell(row, col).number_format = _DATE_FMT
+    except KeyError:
+        pass
+    try:
+        hk = wb[HK_SHEET]
+        for row, col in ((2, 2), (2, 3)):  # B2 / C2
+            hk.cell(row, col).number_format = _DATE_FMT
+    except KeyError:
+        pass
+
+
 def clear_hk_l_data(ws: Worksheet, from_row: int = HK_L_DATA_START_ROW) -> None:
     max_row = max(ws.max_row or from_row, from_row + MAX_EMPLOYEES)
     max_col = ws.max_column or 1
@@ -175,9 +192,13 @@ def write_hk_l(ws: Worksheet, employees: list[dict[str, Any]], meta: dict[str, A
     if meta.get("company_name") is not None:
         ws.cell(1, 3).value = meta["company_name"]
     if meta.get("period_from") is not None:
-        ws.cell(2, 3).value = meta["period_from"]
+        cell = ws.cell(2, 3)
+        cell.value = meta["period_from"]
+        cell.number_format = _DATE_FMT
     if meta.get("period_to") is not None:
-        ws.cell(2, 5).value = meta["period_to"]
+        cell = ws.cell(2, 5)
+        cell.value = meta["period_to"]
+        cell.number_format = _DATE_FMT
     if meta.get("currency") is not None:
         ws.cell(3, 3).value = meta["currency"]
 
@@ -317,6 +338,7 @@ def convert(
     fx_rate = get_hk_pn_fx_rate(rates)
     wb[PN_SHEET]["B28"].value = fx_rate
 
+    ensure_hk_period_date_formats(wb)
     wb.save(output_path)
     wb.close()
     migrate_inlinestr_richtext_to_shared_strings(output_path)

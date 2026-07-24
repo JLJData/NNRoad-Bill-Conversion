@@ -47,6 +47,8 @@ TW_DATA_START_ROW = 9
 TW_EE_DATA_START_ROW = 10
 MAX_EMPLOYEES = 9
 PAYROLL_DUP_MIN_COL = 14
+# Pay Period / Start End：母版若误用金额格式会显示成 46,113.00，PN 的 MONTH/YEAR 仍可读序列，但页面很误导
+_DATE_FMT = "yyyy/m/d"
 
 # 源表有、但 TW-L 不直接写入的列（加班已汇总到「加班費」；Service Fee 由模板留空）
 SKIP_SOURCE_HEADERS = frozenset({
@@ -279,11 +281,17 @@ def write_tw_l(ws: Worksheet, employees: list[dict[str, Any]], meta: dict[str, A
         raise ValueError(f"「{TW_L_SHEET}」第 {TW_L_HEADER_ROW} 行表头为空")
 
     if meta.get("payroll_month_start") is not None:
-        ws.cell(3, 3).value = meta["payroll_month_start"]
+        cell = ws.cell(3, 3)
+        cell.value = meta["payroll_month_start"]
+        cell.number_format = _DATE_FMT
     if meta.get("period_from") is not None:
-        ws.cell(4, 3).value = meta["period_from"]
+        cell = ws.cell(4, 3)
+        cell.value = meta["period_from"]
+        cell.number_format = _DATE_FMT
     if meta.get("period_to") is not None:
-        ws.cell(5, 3).value = meta["period_to"]
+        cell = ws.cell(5, 3)
+        cell.value = meta["period_to"]
+        cell.number_format = _DATE_FMT
 
     clear_tw_l_data(ws, len(employees))
     for idx, emp in enumerate(employees):
@@ -360,6 +368,22 @@ def clear_employee_row(ws: Worksheet, row: int) -> None:
 # TW!F = Business Tax = TW-L!Total(BO) * 5%
 _TW_BUSINESS_TAX_COL = 6  # F
 _TW_L_TOTAL_COL = 67  # BO
+
+
+def ensure_tw_period_date_formats(wb) -> None:
+    """TW!B2/C2 引用 TW-L 账期；强制日期格式，避免网页显示成 46,113.00。"""
+    try:
+        tw_l = wb[TW_L_SHEET]
+        for row, col in ((3, 3), (4, 3), (5, 3)):
+            tw_l.cell(row, col).number_format = _DATE_FMT
+    except KeyError:
+        pass
+    try:
+        tw = wb[TW_SHEET]
+        for row, col in ((2, 2), (2, 3)):
+            tw.cell(row, col).number_format = _DATE_FMT
+    except KeyError:
+        pass
 
 
 def apply_tw_business_tax(ws_tw: Worksheet, employee_count: int) -> None:
@@ -1033,6 +1057,7 @@ def convert(
     fx_row = pn_layout.get("fx_row") or _find_pn_fx_row(wb[PN_SHEET])
     wb[PN_SHEET].cell(fx_row, 2).value = fx_rate
     pn_layout["fx_row"] = fx_row
+    ensure_tw_period_date_formats(wb)
     apply_luckysheet_compat(wb, pn_sheet=PN_SHEET)
 
     wb.save(output_path)
