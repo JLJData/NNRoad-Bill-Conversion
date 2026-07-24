@@ -26,9 +26,9 @@ from openpyxl.worksheet.worksheet import Worksheet
 from fx_rate import fetch_usd_rates, get_tw_pn_fx_rate
 from pn_meta import PnMeta, apply_pn_meta
 from region_templates import get_region_template
-from xlsx_formula_cache import inject_formula_cached_values
-from xlsx_richtext_fix import migrate_inlinestr_richtext_to_shared_strings
-from xlsx_theme_fill_fix import materialize_theme_fills
+from xlsx_convert_utils import clean_value, norm
+from xlsx_luckysheet_compat import apply_luckysheet_compat
+from xlsx_postprocess import postprocess_converted_xlsx
 
 DEFAULT_TEMPLATE = get_region_template("Taiwan")
 
@@ -76,12 +76,6 @@ NAME_HEADERS = ("CN Name", "EN Name")
 PC_HEADER_KEYS = frozenset({"BU", "CN Name", "EN Name"})
 
 
-def norm(text: Any) -> str:
-    if text is None:
-        return ""
-    return str(text).replace("\uFEFF", "").strip()
-
-
 def map_source_header(source_header: str) -> str | None:
     h = norm(source_header)
     if not h or h in SKIP_SOURCE_HEADERS:
@@ -127,24 +121,6 @@ def resolve_target_col(cols: list[int]) -> int | None:
         return cols[0]
     payroll = [c for c in cols if c >= PAYROLL_DUP_MIN_COL]
     return max(payroll) if payroll else max(cols)
-
-
-def clean_value(value: Any) -> Any:
-    if value is None:
-        return None
-    s = norm(value)
-    if s in ("", "#N/A", "#REF!", "#VALUE!", "-"):
-        return None
-    if isinstance(value, (int, float)) and not isinstance(value, bool):
-        return value
-    # 千分位逗号 / 中文逗号：4,149 → 4149（否则会写成文本，LuckySheet 公式算不动）
-    compact = s.replace(",", "").replace("，", "").replace(" ", "")
-    try:
-        if re.fullmatch(r"-?\d+(\.\d+)?", compact):
-            return float(compact) if "." in compact else int(compact)
-    except ValueError:
-        pass
-    return value
 
 
 def format_payroll_date(value: Any) -> Any:
@@ -501,21 +477,11 @@ def apply_tw_ee_codes(
     return warnings
 
 
-_AMP_PLUS_RE = re.compile(r"&\s*\+")
-_DASH_AMP_QUOTE_RE = re.compile(r'="-\s*"&"([^"]*)"')
-
-# PN!E16 = TW!J9+TW!Z9；J=SUM(K:Y) 对应 TW-L 列（R 在模板里被加两次）
-_PN_J_TW_L_COLS = ("N", "AC", "O", "P", "Q", "R", "R", "U", "V", "W", "X", "Y", "AA", "AB")
-_PN_Z_TW_L_COL = "BL"  # ER Insurance
-_PN_AB_TW_L_COL = "Z"  # Reimb Claim
 _PN_EOR_ROW = 15
 _PN_LABOR_START_ROW = 16
 # 母版默认 3 人：Labor 16-18 / Expense 19-21 / 空行 22 / Service 23 / Mgmt 24 / Total 28 / FX B31
 _PN_NTD_FMT = "#,##0.00"
 _PN_USD_FMT = '$#,##0.00'
-_MGMT_RATE = 0.12
-_MGMT_MIN = 4500.0
-_EXPENSE_OP_FEE = 1500.0
 
 
 def _pn_layout(employee_count: int) -> dict[str, int]:
@@ -915,161 +881,6 @@ def _rewrite_pn_settlement_block(ws: Worksheet, *, fx_row: int, total_row: int) 
     f_grand.number_format = _PN_USD_FMT
 
 
-def _cell_num(v: Any) -> float:
-    if v is None:
-        return 0.0
-    if isinstance(v, bool):
-        return float(v)
-    if isinstance(v, (int, float)):
-        return float(v)
-    if isinstance(v, str):
-        s = v.strip()
-        if not s or s.startswith("="):
-            return 0.0
-        try:
-            return float(s.replace(",", ""))
-        except ValueError:
-            return 0.0
-    return 0.0
-
-
-def _tw_l_sick_pay(ws_twl: Worksheet, row: int) -> float:
-    """TW-L!U 常为 =-H*T/2，openpyxl 不会算，需手算。"""
-    from openpyxl.utils import column_index_from_string as ci
-
-    u = ws_twl.cell(row, ci("U")).value
-    if isinstance(u, str) and u.startswith("="):
-        h = _cell_num(ws_twl.cell(row, ci("H")).value)
-        t = _cell_num(ws_twl.cell(row, ci("T")).value)
-        return (-h * t / 2.0) if t else 0.0
-    return _cell_num(u)
-
-
-def _tw_l_amount(ws_twl: Worksheet, row: int, letter: str) -> float:
-    from openpyxl.utils import column_index_from_string as ci
-
-    if letter == "U":
-        return _tw_l_sick_pay(ws_twl, row)
-    return _cell_num(ws_twl.cell(row, ci(letter)).value)
-
-
-def _compute_employee_pn_parts(ws_twl: Worksheet, row: int) -> tuple[float, float, float]:
-    """返回 (labor_ntd, expense_ntd, management_fee_ntd)。"""
-    j = sum(_tw_l_amount(ws_twl, row, c) for c in _PN_J_TW_L_COLS)
-    z = _tw_l_amount(ws_twl, row, _PN_Z_TW_L_COL)
-    ab = _tw_l_amount(ws_twl, row, _PN_AB_TW_L_COL)
-    labor = j + z
-    fee_h = max(_MGMT_MIN, labor * _MGMT_RATE)
-    fee_i = _EXPENSE_OP_FEE if ab > 0 else 0.0
-    return labor, ab, fee_h + fee_i
-
-
-def _write_pn_amount(ws_pn: Worksheet, row: int, ntd: float, fx: float) -> None:
-    e = ws_pn.cell(row, 5)
-    f = ws_pn.cell(row, 6)
-    e.value = float(ntd)
-    e.number_format = _PN_NTD_FMT
-    f.value = (float(ntd) / fx) if fx else 0.0
-    f.number_format = _PN_USD_FMT
-
-
-def compute_pn_amount_cache(
-    wb,
-    employee_count: int,
-    layout: dict[str, int] | None = None,
-) -> tuple[dict[str, dict[str, float]], dict[str, float]]:
-    """
-    按母版公式语义计算 PN!E/F 金额，用于写入 xlsx 公式缓存值。
-    不覆盖单元格公式：Excel 里改 TW-L / 汇率后仍可重算联动；
-    LuckySheet 则靠缓存 <v> 显示 NTD/USD。
-    """
-    ws_twl = wb[TW_L_SHEET]
-    ws_pn = wb[PN_SHEET]
-    lay = layout or _pn_layout(employee_count)
-    fx_row = int(lay.get("fx_row") or _find_pn_fx_row(ws_pn))
-    fx = _cell_num(ws_pn.cell(fx_row, 2).value) or 1.0
-
-    labor_total = 0.0
-    expense_total = 0.0
-    mgmt_total = 0.0
-    cell_cache: dict[str, float] = {}
-
-    def put(row: int, ntd: float) -> None:
-        usd = (float(ntd) / fx) if fx else 0.0
-        cell_cache[f"E{row}"] = float(ntd)
-        cell_cache[f"F{row}"] = usd
-
-    n = int(lay.get("n") or employee_count)
-    labor_start = int(lay["labor_start"])
-    expense_start = int(lay["expense_start"])
-    for i in range(n):
-        tw_row = TW_L_DATA_START_ROW + i
-        labor, expense, mgmt = _compute_employee_pn_parts(ws_twl, tw_row)
-        labor_total += labor
-        expense_total += expense
-        mgmt_total += mgmt
-        put(labor_start + i, labor)
-        put(expense_start + i, expense)
-
-    eor = labor_total + expense_total
-    eor_row = int(lay["eor_row"])
-    svc_row = int(lay["service_row"])
-    mgmt_row = int(lay["mgmt_row"])
-    total_row = int(lay.get("total_row") or (svc_row + 5))
-    put(eor_row, eor)
-    put(mgmt_row, mgmt_total)
-    put(svc_row, mgmt_total)
-    put(total_row, eor + mgmt_total)
-    put(mgmt_row + 1, 0.0)
-
-    summary = {
-        "fx": fx,
-        "eor_ntd": eor,
-        "mgmt_ntd": mgmt_total,
-        "total_ntd": eor + mgmt_total,
-        "layout": lay,
-    }
-    return {PN_SHEET: cell_cache}, summary
-
-
-def fix_pn_illegal_concat_formulas(ws: Worksheet) -> int:
-    """母版误写 `="- "&+"Expense...`：Excel 能算，LuckySheet/部分引擎会 #VALUE!。"""
-    n = 0
-    for row in ws.iter_rows():
-        for cell in row:
-            v = cell.value
-            if not (isinstance(v, str) and v.startswith("=") and _AMP_PLUS_RE.search(v)):
-                continue
-            nv = _AMP_PLUS_RE.sub("&", v)
-            nv = _DASH_AMP_QUOTE_RE.sub(r'="- \1"', nv)
-            if nv != v:
-                cell.value = nv
-                n += 1
-    return n
-
-
-_SHEET_TITLE_SELF_REF_RE = re.compile(
-    r'CELL\s*\(\s*"filename"\s*,\s*\$?A\$?1\s*\)',
-    re.IGNORECASE,
-)
-
-
-def flatten_sheet_title_self_refs(wb) -> int:
-    """
-    母版 TW / TW EE 的 A1 用 =MID(CELL(\"filename\",A1),...) 取表名。
-    Excel 允许这种自引用；LuckySheet 重算时会弹
-    「公式不可引用其本身的单元格，会导致计算结果不准确」。
-    转换时写成静态表名即可（缓存值本就是表名）。
-    """
-    n = 0
-    for name in wb.sheetnames:
-        cell = wb[name].cell(1, 1)
-        v = cell.value
-        if isinstance(v, str) and v.startswith("=") and _SHEET_TITLE_SELF_REF_RE.search(v):
-            cell.value = name
-            n += 1
-    return n
-
 
 def count_template_employee_slots(ws: Worksheet, data_start_row: int, marker_col: int = 2) -> int:
     n = 0
@@ -1222,18 +1033,12 @@ def convert(
     fx_row = pn_layout.get("fx_row") or _find_pn_fx_row(wb[PN_SHEET])
     wb[PN_SHEET].cell(fx_row, 2).value = fx_rate
     pn_layout["fx_row"] = fx_row
-    fix_pn_illegal_concat_formulas(wb[PN_SHEET])
-    flatten_sheet_title_self_refs(wb)
-    pn_cache, pn_amounts = compute_pn_amount_cache(wb, len(employees), pn_layout)
+    apply_luckysheet_compat(wb, pn_sheet=PN_SHEET)
 
     wb.save(output_path)
     wb.close()
-    # openpyxl rich_text 会把标题写成 inlineStr，LuckyExcel 预览只读首个 <t>；迁回 sharedStrings
-    migrate_inlinestr_richtext_to_shared_strings(output_path)
-    # 主题填充落地 RGB + 补 applyFill，避免预览/Excel 丢浅蓝底
-    materialize_theme_fills(output_path)
-    # 保留 PN 金额公式，只补缓存值：预览能显示，Excel 改 TW-L/汇率仍可重算
-    inject_formula_cached_values(output_path, pn_cache)
+    # 主题填充 / 富文本；金额由前端 HyperFormula 按公式重算，不再注入 PN 缓存
+    postprocess_converted_xlsx(output_path)
 
     return {
         "employee_count": len(employees),
@@ -1244,7 +1049,7 @@ def convert(
         "period": (parsed["meta"].get("period_from"), parsed["meta"].get("period_to")),
         "fx_rate": fx_rate,
         "fx_source": "api:TWD",
-        "pn_amounts": pn_amounts,
+        "fx_row": fx_row,
         "output": str(output_path),
         "pn_meta": applied_pn.to_dict() if applied_pn else None,
         "warnings": ee_warnings,
@@ -1272,8 +1077,7 @@ def main(argv: list[str] | None = None) -> int:
     print(f"  公司: {result['company_name']}")
     print(f"  账期: {result['period'][0]} ~ {result['period'][1]}")
     print(f"  员工: {result['employee_count']} 人 → {result['employee_names']}")
-    fx_row = (result.get("pn_amounts") or {}).get("layout", {}).get("fx_row", 31)
-    print(f"  汇率 PN!B{fx_row}: {result['fx_rate']} ({result.get('fx_source')})")
+    print(f"  汇率 PN!B{result.get('fx_row', 31)}: {result['fx_rate']} ({result.get('fx_source')})")
     return 0
 
 
