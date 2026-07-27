@@ -2,3 +2,5 @@ openpyxl>=3.1.0
 fastapi>=0.110.0
 uvicorn[standard]>=0.27.0
 python-multipart>=0.0.9
+# 本机 Excel COM 快照（模板三引擎验证，仅 Windows）
+pywin32>=306

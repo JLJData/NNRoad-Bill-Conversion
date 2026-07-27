@@ -11,6 +11,8 @@
   GET  /health
   GET  /engines
   POST /convert  multipart: file, engine_id, region, pn_meta(json可选), employee_directory(json数组可选)
+  POST /excel-snapshot  multipart: file, sheet(可选默认PN), max_cells(可选默认300)
+  POST /hf-snapshot     multipart: file, sheet(可选默认PN), max_cells(可选默认300)  # Node HyperFormula
 """
 from __future__ import annotations
 
@@ -23,6 +25,8 @@ from fastapi.responses import FileResponse, JSONResponse
 from starlette.background import BackgroundTask
 
 from convert_runner import parse_employee_directory_payload, parse_pn_meta_payload, run_convert
+from excel_com_snapshot import snapshot_workbook
+from hf_com_snapshot import snapshot_workbook_hf
 from engines import list_engines
 from region_templates import list_regions
 
@@ -134,6 +138,72 @@ def _cleanup_dir(path: Path) -> None:
         shutil.rmtree(path, ignore_errors=True)
     except Exception:
         pass
+
+
+@app.post("/excel-snapshot")
+async def excel_snapshot(
+    file: UploadFile = File(...),
+    sheet: str | None = Form("PN"),
+    max_cells: int = Form(300),
+):
+    """
+    本机桌面 Excel COM 重算后抽取公式格结果（模板发布业务基准）。
+    仅 Windows + 已安装 Excel + pywin32。
+    """
+    suffix = Path(file.filename or "source.xlsx").suffix.lower() or ".xlsx"
+    if suffix not in (".xlsx", ".xlsm", ".xls"):
+        raise HTTPException(status_code=400, detail=f"仅支持 Excel，当前: {suffix}")
+
+    tmp_dir = Path(tempfile.mkdtemp(prefix="excel_snap_"))
+    source_path = tmp_dir / f"source{suffix}"
+    try:
+        content = await file.read()
+        if not content:
+            raise HTTPException(status_code=400, detail="上传文件为空")
+        source_path.write_bytes(content)
+        sheet_filter = None if sheet is None or str(sheet).strip() == "" else str(sheet).strip()
+        result = snapshot_workbook(source_path, sheet_filter, max(1, min(int(max_cells or 300), 2000)))
+        if not result.get("ok"):
+            # 业务失败也返回 200 + ok=false，方便前端展示 message
+            return JSONResponse(content=result)
+        return JSONResponse(content=result)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Excel 快照失败: {exc}") from exc
+    finally:
+        _cleanup_dir(tmp_dir)
+
+
+@app.post("/hf-snapshot")
+async def hf_snapshot(
+    file: UploadFile = File(...),
+    sheet: str | None = Form("PN"),
+    max_cells: int = Form(300),
+):
+    """Node HyperFormula 重算快照（模板三引擎 / 随机压测）。"""
+    suffix = Path(file.filename or "source.xlsx").suffix.lower() or ".xlsx"
+    if suffix not in (".xlsx", ".xlsm", ".xls"):
+        raise HTTPException(status_code=400, detail=f"仅支持 Excel，当前: {suffix}")
+
+    tmp_dir = Path(tempfile.mkdtemp(prefix="hf_snap_"))
+    source_path = tmp_dir / f"source{suffix}"
+    try:
+        content = await file.read()
+        if not content:
+            raise HTTPException(status_code=400, detail="上传文件为空")
+        source_path.write_bytes(content)
+        sheet_filter = None if sheet is None or str(sheet).strip() == "" else str(sheet).strip()
+        result = snapshot_workbook_hf(source_path, sheet_filter, max(1, min(int(max_cells or 300), 2000)))
+        return JSONResponse(content=result)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"HF 快照失败: {exc}") from exc
+    finally:
+        _cleanup_dir(tmp_dir)
 
 
 @app.exception_handler(HTTPException)
