@@ -25,7 +25,13 @@ from openpyxl.worksheet.worksheet import Worksheet
 from fx_rate import fetch_usd_rates, get_hk_pn_fx_rate
 from pn_meta import PnMeta, apply_pn_meta
 from region_templates import get_region_template
-from xlsx_richtext_fix import migrate_inlinestr_richtext_to_shared_strings
+from xlsx_convert_utils import (
+    clean_value,
+    coerce_datetime_for_excel,
+    is_date_column_header,
+    norm,
+)
+from xlsx_postprocess import postprocess_converted_xlsx
 
 DEFAULT_TEMPLATE = get_region_template("Hong Kong")
 
@@ -52,12 +58,6 @@ SKIP_SOURCE_HEADERS = frozenset({"Medical Insurance Allowance"})
 NAME_HEADERS = ("Name of Employee", "EE Name", "Name")
 
 
-def norm(text: Any) -> str:
-    if text is None:
-        return ""
-    return str(text).replace("\uFEFF", "").strip()
-
-
 def map_source_header(source_header: str) -> str | None:
     h = norm(source_header)
     if not h or h in SKIP_SOURCE_HEADERS:
@@ -74,39 +74,8 @@ def build_header_map(ws: Worksheet, header_row: int) -> dict[str, int]:
     return mapping
 
 
-def clean_value(value: Any) -> Any:
-    if value is None:
-        return None
-    s = norm(value)
-    if s in ("", "#N/A", "#REF!", "#VALUE!", "-"):
-        return None
-    if isinstance(value, (int, float)):
-        return value
-    try:
-        if re.fullmatch(r"-?\d+(\.\d+)?", s.replace(",", "")):
-            compact = s.replace(",", "").replace("，", "").replace(" ", "")
-            return float(compact) if "." in compact else int(compact)
-    except ValueError:
-        pass
-    return value
-
-
-def format_payroll_date(value: Any) -> Any:
-    if value is None:
-        return None
-    if isinstance(value, datetime):
-        d = value.date()
-        return f"{d.year}/{d.month}/{d.day}"
-    if isinstance(value, date):
-        return f"{value.year}/{value.month}/{value.day}"
-    s = norm(value)
-    for fmt in ("%m/%d/%Y", "%Y-%m-%d", "%Y/%m/%d", "%d/%m/%Y"):
-        try:
-            d = datetime.strptime(s, fmt).date()
-            return f"{d.year}/{d.month}/{d.day}"
-        except ValueError:
-            continue
-    return value
+def format_payroll_date(value: Any) -> datetime | None:
+    return coerce_datetime_for_excel(value)
 
 
 def normalize_company_name(value: Any) -> Any:
@@ -141,6 +110,10 @@ def read_hk_l_employees(ws: Worksheet) -> list[dict[str, Any]]:
                 continue
             val = clean_value(ws.cell(row, col).value)
             if val is not None:
+                if is_date_column_header(target_hdr):
+                    dt = coerce_datetime_for_excel(val)
+                    if dt is not None:
+                        val = dt
                 record[target_hdr] = val
         employees.append(record)
 
@@ -208,7 +181,15 @@ def write_hk_l(ws: Worksheet, employees: list[dict[str, Any]], meta: dict[str, A
         for hdr, val in emp.items():
             col = target_headers.get(hdr)
             if col is not None:
-                ws.cell(row, col).value = val
+                out_val = val
+                if is_date_column_header(hdr):
+                    dt = coerce_datetime_for_excel(val)
+                    if dt is not None:
+                        out_val = dt
+                cell = ws.cell(row, col)
+                cell.value = out_val
+                if is_date_column_header(hdr) and isinstance(out_val, datetime):
+                    cell.number_format = _DATE_FMT
 
 
 def shift_hk_formula(
@@ -341,7 +322,7 @@ def convert(
     ensure_hk_period_date_formats(wb)
     wb.save(output_path)
     wb.close()
-    migrate_inlinestr_richtext_to_shared_strings(output_path)
+    postprocess_converted_xlsx(output_path)
 
     return {
         "employee_count": len(employees),

@@ -12,6 +12,9 @@ from openpyxl import Workbook
 
 PN_SHEET = "PN"
 
+# 与各地区 convert 里 _DATE_FMT 一致，写入 PN 日期元数据时强制带上
+PN_DATE_NUMBER_FORMAT = "yyyy/m/d"
+
 # PN 页固定单元格（各地区母版一致）
 PN_CELLS = {
     "customer_name": "B8",
@@ -148,6 +151,12 @@ def build_invoice_number(
     return generate_invoice_number(customer_id, bill_date, seq)
 
 
+def _write_pn_date_cell(ws, coord: str, value: date) -> None:
+    cell = ws[coord]
+    cell.value = format_date_for_excel(value)
+    cell.number_format = PN_DATE_NUMBER_FORMAT
+
+
 def apply_pn_meta(
     wb: Workbook,
     meta: PnMeta | dict[str, Any],
@@ -184,8 +193,8 @@ def apply_pn_meta(
     ws[PN_CELLS["customer_id"]] = pn.customer_id
     ws[PN_CELLS["billing_address"]] = pn.billing_address
     ws[PN_CELLS["invoice_number"]] = invoice_number
-    ws[PN_CELLS["invoice_date"]] = format_date_for_excel(invoice_date)
-    ws[PN_CELLS["due_date"]] = format_date_for_excel(pn.due_date)
+    _write_pn_date_cell(ws, PN_CELLS["invoice_date"], invoice_date)
+    _write_pn_date_cell(ws, PN_CELLS["due_date"], pn.due_date)
 
     return PnMeta(
         customer_name=pn.customer_name,

@@ -26,7 +26,7 @@ from openpyxl.worksheet.worksheet import Worksheet
 from fx_rate import fetch_usd_rates, get_tw_pn_fx_rate
 from pn_meta import PnMeta, apply_pn_meta
 from region_templates import get_region_template
-from xlsx_convert_utils import clean_value, norm
+from xlsx_convert_utils import clean_value, coerce_datetime_for_excel, is_date_column_header, norm
 from xlsx_luckysheet_compat import apply_luckysheet_compat
 from xlsx_postprocess import postprocess_converted_xlsx
 
@@ -125,22 +125,9 @@ def resolve_target_col(cols: list[int]) -> int | None:
     return max(payroll) if payroll else max(cols)
 
 
-def format_payroll_date(value: Any) -> Any:
-    if value is None:
-        return None
-    if isinstance(value, datetime):
-        d = value.date()
-        return f"{d.year}/{d.month}/{d.day}"
-    if isinstance(value, date):
-        return f"{value.year}/{value.month}/{value.day}"
-    s = norm(value)
-    for fmt in ("%m/%d/%Y", "%Y-%m-%d", "%Y/%m/%d", "%d/%m/%Y"):
-        try:
-            d = datetime.strptime(s, fmt).date()
-            return f"{d.year}/{d.month}/{d.day}"
-        except ValueError:
-            continue
-    return value
+def format_payroll_date(value: Any) -> datetime | None:
+    """账期/日期写入模板：必须是 datetime，禁止返回字符串。"""
+    return coerce_datetime_for_excel(value)
 
 
 def parse_period(value: Any, payroll_month: Any = None) -> tuple[Any, Any]:
@@ -171,28 +158,16 @@ def parse_period(value: Any, payroll_month: Any = None) -> tuple[Any, Any]:
 
     m1, d1, m2, d2 = (int(m.group(i)) for i in range(1, 5))
     return (
-        format_payroll_date(date(year, m1, d1)),
-        format_payroll_date(date(year, m2, d2)),
+        datetime(year, m1, d1),
+        datetime(year, m2, d2),
     )
 
 
-def payroll_month_start(value: Any) -> Any:
-    if value is None:
+def payroll_month_start(value: Any) -> datetime | None:
+    dt = coerce_datetime_for_excel(value)
+    if dt is None:
         return None
-    if isinstance(value, datetime):
-        d = value.date().replace(day=1)
-        return datetime(d.year, d.month, d.day)
-    if isinstance(value, date):
-        d = value.replace(day=1)
-        return datetime(d.year, d.month, d.day)
-    s = norm(value)
-    for fmt in ("%Y-%m-%d", "%Y-%m-%d %H:%M:%S", "%Y/%m/%d", "%m/%d/%Y"):
-        try:
-            d = datetime.strptime(s[:19], fmt).date().replace(day=1)
-            return datetime(d.year, d.month, d.day)
-        except ValueError:
-            continue
-    return value
+    return datetime(dt.year, dt.month, 1)
 
 
 def read_pc_employees(ws: Worksheet, header_row: int) -> list[dict[str, Any]]:
@@ -214,6 +189,10 @@ def read_pc_employees(ws: Worksheet, header_row: int) -> list[dict[str, Any]]:
                 continue
             val = clean_value(ws.cell(row, col).value)
             if val is not None:
+                if is_date_column_header(target_hdr):
+                    dt = coerce_datetime_for_excel(val)
+                    if dt is not None:
+                        val = dt
                 record[target_hdr] = val
         employees.append(record)
 
@@ -300,7 +279,15 @@ def write_tw_l(ws: Worksheet, employees: list[dict[str, Any]], meta: dict[str, A
             cols = target_cols.get(hdr)
             col = resolve_target_col(cols) if cols else None
             if col is not None:
-                ws.cell(row, col).value = val
+                out_val = val
+                if is_date_column_header(hdr):
+                    dt = coerce_datetime_for_excel(val)
+                    if dt is not None:
+                        out_val = dt
+                cell = ws.cell(row, col)
+                cell.value = out_val
+                if is_date_column_header(hdr) and isinstance(out_val, datetime):
+                    cell.number_format = _DATE_FMT
         apply_sick_leave_formula(ws, row, target_cols)
 
     update_tw_l_summary_formulas(ws, len(employees))
