@@ -23,6 +23,30 @@ from openpyxl import load_workbook
 from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.worksheet import Worksheet
 
+from bill_convert.formula_copy import (
+    copy_row_formulas as _copy_row_formulas_impl,
+    fix_ee_row_tw_refs,
+    fix_tw_row_tw_ee_refs,
+    shift_row_formula,
+)
+from bill_convert.formula_layout import (
+    apply_employee_formula_styles as _apply_employee_formula_styles_impl,
+    resolve_formula_rows_layout,
+    tw_l_row_for_data_row,
+)
+from bill_convert.formula_layout import _default_example_row as _default_example_row_for_mapping
+from bill_convert.header_scan import find_header_row_by_markers
+from bill_convert.headers import build_header_cols, build_header_map, resolve_target_col as _resolve_target_col
+from bill_convert.meta_period import parse_period, payroll_month_start, read_summary_meta as _read_summary_meta
+from bill_convert.person import norm_person_name as _norm_person_name
+from bill_convert.target_l_layout import (
+    find_target_l_header_row,
+    resolve_target_l_layout,
+    resolve_target_l_sheet_name,
+    target_l_auto_detect_layout,
+)
+from bill_convert.template_rows import clear_row_values, count_data_slots
+from convert_mapping import find_sheet_name, resolve_convert_mapping
 from fx_rate import fetch_usd_rates, get_tw_pn_fx_rate
 from pn_meta import PnMeta, apply_pn_meta
 from region_templates import get_region_template
@@ -71,58 +95,112 @@ SOURCE_TO_TARGET_HEADER: dict[str, str] = {
     "時薪 Hourly Rate": "Full Pay/Hourly Rate",
     "時數\nHours Worked": "Employment day/Hours Worked",
     "健保級距\nInsured Salary Grading - HI": "健保投保級距Insured Salary Grading - HI",
-    "Position ": "Position",
 }
 
 NAME_HEADERS = ("CN Name", "EN Name")
 PC_HEADER_KEYS = frozenset({"BU", "CN Name", "EN Name"})
 
+_ACTIVE_MAPPING: dict[str, Any] | None = None
+
+
+def _active_mapping() -> dict[str, Any]:
+    if _ACTIVE_MAPPING is not None:
+        return _ACTIVE_MAPPING
+    return resolve_convert_mapping("tw_payroll_calc", None)
+
+
+def _source_employee_spec() -> dict[str, Any]:
+    spec = _active_mapping().get("sourceEmployeeSheet")
+    return spec if isinstance(spec, dict) else {}
+
+
+def _skip_source_headers() -> frozenset[str]:
+    raw = _active_mapping().get("skipSourceHeaders")
+    if raw is None:
+        return frozenset()
+    if not raw:
+        return frozenset()
+    return frozenset(norm(str(x)) for x in raw)
+
+
+def _column_rename_map() -> dict[str, str]:
+    base = {norm(k): v for k, v in SOURCE_TO_TARGET_HEADER.items()}
+    extra = _active_mapping().get("columnRename") or {}
+    if isinstance(extra, dict):
+        for k, v in extra.items():
+            base[norm(str(k))] = str(v)
+    return base
+
 
 def map_source_header(source_header: str) -> str | None:
     h = norm(source_header)
-    if not h or h in SKIP_SOURCE_HEADERS:
+    if not h or h in _skip_source_headers():
         return None
-    return SOURCE_TO_TARGET_HEADER.get(h, h)
+    return _column_rename_map().get(h, h)
 
 
-def find_pc_header_row(ws: Worksheet, max_scan: int = 15) -> int:
-    for row in range(1, max_scan + 1):
-        hits = 0
-        for col in range(1, (ws.max_column or 0) + 1):
-            if norm(ws.cell(row, col).value) in PC_HEADER_KEYS:
-                hits += 1
-        if hits >= 2:
-            return row
-    raise ValueError(
-        f"「{PC_SHEET}」前 {max_scan} 行未找到表头行（需含 BU / CN Name / EN Name）"
+def _target_l_auto_detect_layout() -> bool:
+    return target_l_auto_detect_layout(_active_mapping())
+
+
+def find_tw_l_header_row(
+    ws: Worksheet,
+    max_scan: int | None = None,
+    marker_keys: frozenset[str] | None = None,
+    sheet_label: str | None = None,
+) -> int:
+    mapping = _active_mapping()
+    spec = mapping.get("targetL") if isinstance(mapping.get("targetL"), dict) else {}
+    if marker_keys is not None:
+        scan = max_scan if max_scan is not None else int(spec.get("headerScanMaxRow") or 15)
+        label = sheet_label or str(spec.get("sheet") or TW_L_SHEET)
+        return find_header_row_by_markers(
+            ws, marker_keys=marker_keys, max_scan=scan, sheet_label=label
+        )
+    return find_target_l_header_row(
+        ws, mapping, sheet_label=sheet_label, default_sheet_name=TW_L_SHEET
     )
 
 
-def build_header_map(ws: Worksheet, header_row: int) -> dict[str, int]:
-    mapping: dict[str, int] = {}
-    for col in range(1, (ws.max_column or 0) + 1):
-        key = norm(ws.cell(header_row, col).value)
-        if key and key not in mapping:
-            mapping[key] = col
-    return mapping
+def resolve_tw_l_layout(ws: Worksheet, *, sheet_label: str | None = None) -> dict[str, int]:
+    return resolve_target_l_layout(
+        ws,
+        _active_mapping(),
+        sheet_label=sheet_label,
+        default_sheet_name=TW_L_SHEET,
+        fallback_header_row=TW_L_HEADER_ROW,
+    )
 
 
-def build_header_cols(ws: Worksheet, header_row: int) -> dict[str, list[int]]:
-    mapping: dict[str, list[int]] = {}
-    for col in range(1, (ws.max_column or 0) + 1):
-        key = norm(ws.cell(header_row, col).value)
-        if key:
-            mapping.setdefault(key, []).append(col)
-    return mapping
+def resolve_tw_l_sheet_name(sheet_names: list[str]) -> str:
+    return resolve_target_l_sheet_name(
+        sheet_names, _active_mapping(), default_sheet_name=TW_L_SHEET
+    )
+
+
+def find_pc_header_row(
+    ws: Worksheet,
+    max_scan: int | None = None,
+    marker_keys: frozenset[str] | None = None,
+    sheet_label: str | None = None,
+) -> int:
+    spec = _source_employee_spec()
+    scan = max_scan if max_scan is not None else int(spec.get("headerScanMaxRow") or 15)
+    if marker_keys is not None:
+        keys = marker_keys
+    elif isinstance(spec.get("headerMarkerKeys"), list):
+        keys = frozenset(norm(str(x)) for x in spec["headerMarkerKeys"])
+    else:
+        keys = PC_HEADER_KEYS
+    label = sheet_label or str(spec.get("sheet") or PC_SHEET)
+    return find_header_row_by_markers(
+        ws, marker_keys=keys, max_scan=scan, sheet_label=label
+    )
 
 
 def resolve_target_col(cols: list[int]) -> int | None:
-    if not cols:
-        return None
-    if len(cols) == 1:
-        return cols[0]
-    payroll = [c for c in cols if c >= PAYROLL_DUP_MIN_COL]
-    return max(payroll) if payroll else max(cols)
+    dup_min = int(_source_employee_spec().get("payrollDupMinCol") or PAYROLL_DUP_MIN_COL)
+    return _resolve_target_col(cols, dup_min_col=dup_min)
 
 
 def format_payroll_date(value: Any) -> datetime | None:
@@ -130,51 +208,22 @@ def format_payroll_date(value: Any) -> datetime | None:
     return coerce_datetime_for_excel(value)
 
 
-def parse_period(value: Any, payroll_month: Any = None) -> tuple[Any, Any]:
-    """解析 Summary 中 Period 如 3/1-3/31"""
-    if value is None:
-        return None, None
-    s = norm(value)
-    m = re.match(r"(\d{1,2})/(\d{1,2})\s*-\s*(\d{1,2})/(\d{1,2})", s)
-    if not m:
-        return None, None
-
-    year = None
-    if payroll_month is not None:
-        if isinstance(payroll_month, datetime):
-            year = payroll_month.year
-        elif isinstance(payroll_month, date):
-            year = payroll_month.year
-        else:
-            ps = norm(payroll_month)
-            for fmt in ("%Y-%m-%d", "%Y-%m-%d %H:%M:%S", "%Y/%m/%d"):
-                try:
-                    year = datetime.strptime(ps[:19], fmt).year
-                    break
-                except ValueError:
-                    continue
-    if year is None:
-        year = datetime.now().year
-
-    m1, d1, m2, d2 = (int(m.group(i)) for i in range(1, 5))
-    return (
-        datetime(year, m1, d1),
-        datetime(year, m2, d2),
-    )
-
-
-def payroll_month_start(value: Any) -> datetime | None:
-    dt = coerce_datetime_for_excel(value)
-    if dt is None:
-        return None
-    return datetime(dt.year, dt.month, 1)
+def read_summary_meta(wb, meta_spec: dict[str, Any] | None = None) -> dict[str, Any]:
+    return _read_summary_meta(wb, meta_spec, default_sheet=SUMMARY_SHEET)
 
 
 def read_pc_employees(ws: Worksheet, header_row: int) -> list[dict[str, Any]]:
     source_headers = build_header_map(ws, header_row)
-    name_cols = [source_headers[h] for h in NAME_HEADERS if h in source_headers]
+    spec = _source_employee_spec()
+    sheet_label = str(spec.get("sheet") or PC_SHEET)
+    name_keys = spec.get("nameHeaders")
+    if isinstance(name_keys, list) and name_keys:
+        name_header_list = tuple(str(x) for x in name_keys)
+    else:
+        name_header_list = NAME_HEADERS
+    name_cols = [source_headers[norm(h)] for h in name_header_list if norm(h) in source_headers]
     if not name_cols:
-        raise ValueError(f"「{PC_SHEET}」表头行须包含 CN Name 或 EN Name")
+        raise ValueError(f"「{sheet_label}」表头行须包含 {' 或 '.join(name_header_list)}")
 
     employees: list[dict[str, Any]] = []
     for row in range(header_row + 1, (ws.max_row or 0) + 1):
@@ -197,31 +246,10 @@ def read_pc_employees(ws: Worksheet, header_row: int) -> list[dict[str, Any]]:
         employees.append(record)
 
     if not employees:
-        raise ValueError(f"「{PC_SHEET}」中未找到有效员工行（需有 CN Name 或 EN Name）")
+        raise ValueError(f"「{sheet_label}」中未找到有效员工行（需有 {' 或 '.join(name_header_list)}）")
     if len(employees) > MAX_EMPLOYEES:
         raise ValueError(f"员工数 {len(employees)} 超过模板上限 {MAX_EMPLOYEES}")
     return employees
-
-
-def read_summary_meta(wb) -> dict[str, Any]:
-    if SUMMARY_SHEET not in wb.sheetnames:
-        return {}
-    ws = wb[SUMMARY_SHEET]
-    meta: dict[str, Any] = {}
-    for row in range(1, 20):
-        label = norm(ws.cell(row, 1).value)
-        val = ws.cell(row, 2).value
-        if label == "Client":
-            meta["company_name"] = val
-        elif label == "Payroll Month":
-            meta["payroll_month"] = val
-        elif label == "Period":
-            meta["period_raw"] = val
-    period_from, period_to = parse_period(meta.get("period_raw"), meta.get("payroll_month"))
-    meta["period_from"] = period_from
-    meta["period_to"] = period_to
-    meta["payroll_month_start"] = payroll_month_start(meta.get("payroll_month"))
-    return meta
 
 
 def apply_sick_leave_formula(ws: Worksheet, row: int, target_cols: dict[str, list[int]]) -> None:
@@ -246,18 +274,22 @@ def apply_sick_leave_formula(ws: Worksheet, row: int, target_cols: dict[str, lis
         ws.cell(row, col).value = 0
 
 
-def clear_tw_l_data(ws: Worksheet, employee_count: int) -> None:
-    max_row = max(ws.max_row or TW_L_DATA_START_ROW, TW_L_DATA_START_ROW + MAX_EMPLOYEES)
+def clear_tw_l_data(ws: Worksheet, employee_count: int, *, data_start_row: int) -> None:
+    max_row = max(ws.max_row or data_start_row, data_start_row + MAX_EMPLOYEES)
     max_col = ws.max_column or 1
-    for row in range(TW_L_DATA_START_ROW, max_row + 1):
+    for row in range(data_start_row, max_row + 1):
         for col in range(1, max_col + 1):
             ws.cell(row, col).value = None
 
 
 def write_tw_l(ws: Worksheet, employees: list[dict[str, Any]], meta: dict[str, Any]) -> None:
-    target_cols = build_header_cols(ws, TW_L_HEADER_ROW)
+    layout = resolve_tw_l_layout(ws)
+    header_row = layout["header_row"]
+    data_start_row = layout["data_start_row"]
+    summary_row = layout["summary_row"]
+    target_cols = build_header_cols(ws, header_row)
     if not target_cols:
-        raise ValueError(f"「{TW_L_SHEET}」第 {TW_L_HEADER_ROW} 行表头为空")
+        raise ValueError(f"「{TW_L_SHEET}」第 {header_row} 行表头为空")
 
     if meta.get("payroll_month_start") is not None:
         cell = ws.cell(3, 3)
@@ -272,9 +304,9 @@ def write_tw_l(ws: Worksheet, employees: list[dict[str, Any]], meta: dict[str, A
         cell.value = meta["period_to"]
         cell.number_format = _DATE_FMT
 
-    clear_tw_l_data(ws, len(employees))
+    clear_tw_l_data(ws, len(employees), data_start_row=data_start_row)
     for idx, emp in enumerate(employees):
-        row = TW_L_DATA_START_ROW + idx
+        row = data_start_row + idx
         for hdr, val in emp.items():
             cols = target_cols.get(hdr)
             col = resolve_target_col(cols) if cols else None
@@ -290,17 +322,28 @@ def write_tw_l(ws: Worksheet, employees: list[dict[str, Any]], meta: dict[str, A
                     cell.number_format = _DATE_FMT
         apply_sick_leave_formula(ws, row, target_cols)
 
-    update_tw_l_summary_formulas(ws, len(employees))
+    update_tw_l_summary_formulas(
+        ws,
+        len(employees),
+        data_start_row=data_start_row,
+        summary_row=summary_row,
+    )
 
 
-def update_tw_l_summary_formulas(ws: Worksheet, employee_count: int) -> None:
+def update_tw_l_summary_formulas(
+    ws: Worksheet,
+    employee_count: int,
+    *,
+    data_start_row: int,
+    summary_row: int,
+) -> None:
     end_row = max(
-        TW_L_DATA_START_ROW + max(employee_count, 1) - 1,
+        data_start_row + max(employee_count, 1) - 1,
         TW_L_SUMMARY_MIN_END_ROW,
     )
     max_col = ws.max_column or 1
     for col in range(1, max_col + 1):
-        cell = ws.cell(TW_L_SUMMARY_ROW, col)
+        cell = ws.cell(summary_row, col)
         if cell.data_type != "f" or not isinstance(cell.value, str):
             continue
         formula = cell.value
@@ -308,7 +351,7 @@ def update_tw_l_summary_formulas(ws: Worksheet, employee_count: int) -> None:
             continue
         cell.value = re.sub(
             r"(SUM\([A-Z]+)(\d+)(:[A-Z]+)(\d+)(\))",
-            lambda m: f"{m.group(1)}{TW_L_DATA_START_ROW}{m.group(3)}{end_row}{m.group(5)}",
+            lambda m: f"{m.group(1)}{data_start_row}{m.group(3)}{end_row}{m.group(5)}",
             formula,
             flags=re.I,
         )
@@ -321,35 +364,22 @@ def shift_tw_formula(
     tw_l_from: int,
     tw_l_to: int,
 ) -> str:
-    if not formula or not isinstance(formula, str) or not formula.startswith("="):
-        return formula
-
-    placeholders: list[str] = []
-
-    def stash_external(match: re.Match[str]) -> str:
-        placeholders.append(match.group(0))
-        return f"__EXT{len(placeholders) - 1}__"
-
-    # 先暂存跨 sheet 引用，避免本 sheet 行号替换误改 'TW-L'!N10 中的 10
-    s = re.sub(r"'[^']+'!\$?[A-Z]{1,3}\$?\d+", stash_external, formula)
-    s = re.sub(
-        rf"(?<!\$)(?<![A-Z])([A-Z]{{1,3}}){from_row}(?!\d)",
-        lambda m: f"{m.group(1)}{to_row}",
-        s,
+    return shift_row_formula(
+        formula,
+        from_row,
+        to_row,
+        target_l_from=tw_l_from,
+        target_l_to=tw_l_to,
+        target_l_sheet=TW_L_SHEET,
     )
-    for idx, ref in enumerate(placeholders):
-        ref = re.sub(
-            r"'TW-L'!([A-Z]{1,3})(\d+)",
-            lambda m: f"'TW-L'!{m.group(1)}{tw_l_to}",
-            ref,
-        )
-        s = s.replace(f"__EXT{idx}__", ref)
-    return s
 
 
 def clear_employee_row(ws: Worksheet, row: int) -> None:
-    for col in range(1, (ws.max_column or 0) + 1):
-        ws.cell(row, col).value = None
+    clear_row_values(ws, row)
+
+
+def count_template_employee_slots(ws: Worksheet, data_start_row: int, marker_col: int = 2) -> int:
+    return count_data_slots(ws, data_start_row, marker_col=marker_col, max_slots=MAX_EMPLOYEES)
 
 
 # TW!F = Business Tax = TW-L!Total(BO) * 5%
@@ -373,22 +403,21 @@ def ensure_tw_period_date_formats(wb) -> None:
         pass
 
 
-def apply_tw_business_tax(ws_tw: Worksheet, employee_count: int) -> None:
+def apply_tw_business_tax(
+    ws_tw: Worksheet,
+    employee_count: int,
+    *,
+    tw_data_start_row: int,
+    tw_l_data_start_row: int,
+) -> None:
     """每人 Business Tax：TW!F = ROUND('TW-L'!BO * 5%, 0) 取整。LuckySheet 用 (5/100)。"""
     n = max(int(employee_count), 0)
     for i in range(n):
-        tw_row = TW_DATA_START_ROW + i
-        tw_l_row = TW_L_DATA_START_ROW + i
+        tw_row = tw_data_start_row + i
+        tw_l_row = tw_l_data_start_row + i
         cell = ws_tw.cell(tw_row, _TW_BUSINESS_TAX_COL)
         cell.value = f"=ROUND('TW-L'!BO{tw_l_row}*(5/100),0)"
         cell.number_format = "#,##0"
-
-
-def _norm_person_name(value: Any) -> str:
-    if value is None:
-        return ""
-    s = str(value).replace("\u3000", " ").strip().lower()
-    return re.sub(r"\s+", " ", s)
 
 
 def _name_tokens(value: str) -> list[str]:
@@ -468,12 +497,14 @@ def apply_tw_ee_codes(
     ws_ee: Worksheet,
     employees: list[dict[str, Any]],
     directory: list[dict[str, Any]] | None,
+    *,
+    tw_ee_data_start_row: int = TW_EE_DATA_START_ROW,
 ) -> list[str]:
     """写入 TW EE!D（EE Code）；匹配失败留空并返回 warnings。"""
     warnings: list[str] = []
     dir_list = list(directory or [])
     for i, emp in enumerate(employees):
-        row = TW_EE_DATA_START_ROW + i
+        row = tw_ee_data_start_row + i
         excel_names = [
             emp.get("EN Name"),
             emp.get("CN Name"),
@@ -698,7 +729,7 @@ def _pn_delete_rows(ws: Worksheet, idx: int, amount: int) -> None:
     _restore_merges(ws, merges, row_shift=-amount)
 
 
-def fit_pn_employees(ws: Worksheet, employee_count: int) -> dict[str, int]:
+def fit_pn_employees(ws: Worksheet, employee_count: int, *, tw_data_start_row: int = TW_DATA_START_ROW) -> dict[str, int]:
     """
     按实际人数扩/缩 PN 的 Labor + Expense 明细行，并重写相关公式。
     插入/删除时同步平移下方合并单元格与行高，避免 Service/合计/汇率区样式错位。
@@ -748,7 +779,7 @@ def fit_pn_employees(ws: Worksheet, employee_count: int) -> dict[str, int]:
     fx_row = _find_pn_fx_row(ws)
 
     for i in range(n):
-        tw_row = TW_DATA_START_ROW + i
+        tw_row = tw_data_start_row + i
         labor_row = labor_start + i
         expense_row = expense_start + i
 
@@ -893,67 +924,6 @@ def _rewrite_pn_settlement_block(ws: Worksheet, *, fx_row: int, total_row: int) 
 
 
 
-def count_template_employee_slots(ws: Worksheet, data_start_row: int, marker_col: int = 2) -> int:
-    n = 0
-    for row in range(data_start_row, data_start_row + MAX_EMPLOYEES):
-        if ws.cell(row, marker_col).value is not None:
-            n += 1
-        else:
-            break
-    return max(n, 1)
-
-
-def fit_formula_sheets(wb, employee_count: int, client_id_prefix: str) -> None:
-    """母版已预置 N 人公式行：人数≤N 时只清除多余行；人数>N 时才复制扩展。"""
-    tw = wb[TW_SHEET]
-    ee = wb[TW_EE_SHEET]
-    # TW!B 有员工标记；TW EE 的 D(EE Code) 母版常为空，改用 E(姓名公式) 计数
-    tw_slots = count_template_employee_slots(tw, TW_DATA_START_ROW, marker_col=2)
-    ee_slots = count_template_employee_slots(ee, TW_EE_DATA_START_ROW, marker_col=5)
-
-    for i in range(employee_count, tw_slots):
-        clear_employee_row(tw, TW_DATA_START_ROW + i)
-
-    for i in range(employee_count, ee_slots):
-        clear_employee_row(ee, TW_EE_DATA_START_ROW + i)
-
-    if employee_count > tw_slots:
-        src_row = TW_DATA_START_ROW + tw_slots - 1
-        src_tw_l = TW_L_DATA_START_ROW + tw_slots - 1
-        for i in range(tw_slots, employee_count):
-            dst_row = TW_DATA_START_ROW + i
-            dst_tw_l = TW_L_DATA_START_ROW + i
-            ee_row = TW_EE_DATA_START_ROW + i
-            copy_row_formulas(tw, src_row, dst_row, src_tw_l, dst_tw_l)
-            for col in range(1, (tw.max_column or 0) + 1):
-                cell = tw.cell(dst_row, col)
-                if cell.data_type == "f" and isinstance(cell.value, str):
-                    cell.value = re.sub(
-                        rf"'TW EE'!([A-Z]+){ee_row - 1}(?!\d)",
-                        lambda m: f"'TW EE'!{m.group(1)}{ee_row}",
-                        cell.value,
-                    )
-
-    if employee_count > ee_slots:
-        src_row = TW_EE_DATA_START_ROW + ee_slots - 1
-        src_tw_l = TW_L_DATA_START_ROW + ee_slots - 1
-        for i in range(ee_slots, employee_count):
-            dst_row = TW_EE_DATA_START_ROW + i
-            dst_tw_l = TW_L_DATA_START_ROW + i
-            tw_row = TW_DATA_START_ROW + i
-            copy_row_formulas(ee, src_row, dst_row, src_tw_l, dst_tw_l)
-            # EE Code 由 apply_tw_ee_codes 按主数据匹配写入，扩行时先留空
-            ee.cell(dst_row, 4).value = None
-            for col in range(1, (ee.max_column or 0) + 1):
-                cell = ee.cell(dst_row, col)
-                if cell.data_type == "f" and isinstance(cell.value, str):
-                    cell.value = re.sub(
-                        rf"TW!([A-Z]+){tw_row - 1}(?!\d)",
-                        lambda m: f"TW!{m.group(1)}{tw_row}",
-                        cell.value,
-                    )
-
-
 def copy_row_formulas(
     ws: Worksheet,
     from_row: int,
@@ -961,39 +931,144 @@ def copy_row_formulas(
     tw_l_from: int,
     tw_l_to: int,
 ) -> None:
-    max_col = ws.max_column or 1
-    for col in range(1, max_col + 1):
-        src = ws.cell(from_row, col)
-        dst = ws.cell(to_row, col)
-        if src.has_style:
-            dst.font = copy(src.font)
-            dst.border = copy(src.border)
-            dst.fill = copy(src.fill)
-            dst.number_format = src.number_format
-            dst.protection = copy(src.protection)
-            dst.alignment = copy(src.alignment)
-        if src.data_type == "f" and isinstance(src.value, str):
-            dst.value = shift_tw_formula(src.value, from_row, to_row, tw_l_from, tw_l_to)
-        elif src.value is not None and src.data_type != "f":
-            dst.value = copy(src.value)
+    _copy_row_formulas_impl(
+        ws, from_row, to_row, tw_l_from, tw_l_to, target_l_sheet=TW_L_SHEET
+    )
+
+
+def _default_example_row(sheet_key: str, data_start_fallback: int) -> int:
+    return _default_example_row_for_mapping(
+        _active_mapping(), sheet_key, data_start_fallback
+    )
+
+
+def resolve_tw_formula_rows_layout(wb, tw_l_data_start: int) -> dict[str, int]:
+    return resolve_formula_rows_layout(
+        wb,
+        _active_mapping(),
+        tw_l_data_start,
+        tw_sheet=TW_SHEET,
+        tw_ee_sheet=TW_EE_SHEET,
+        fallback_tw_data_start=TW_DATA_START_ROW,
+        fallback_tw_ee_data_start=TW_EE_DATA_START_ROW,
+        target_l_sheet=TW_L_SHEET,
+    )
+
+
+def apply_employee_formula_styles(
+    wb,
+    employees: list[dict[str, Any]],
+    *,
+    formula_rows: dict[str, int],
+) -> None:
+    _apply_employee_formula_styles_impl(
+        wb,
+        employees,
+        _active_mapping(),
+        formula_rows=formula_rows,
+        tw_sheet=TW_SHEET,
+        tw_ee_sheet=TW_EE_SHEET,
+        target_l_sheet=TW_L_SHEET,
+    )
+
+
+def fit_formula_sheets(
+    wb,
+    employee_count: int,
+    client_id_prefix: str,
+    *,
+    formula_rows: dict[str, int],
+) -> None:
+    """母版已预置 N 人公式行：人数≤N 时只清除多余行；人数>N 时才复制扩展。"""
+    tw_l_data_start_row = formula_rows["tw_l_data_start"]
+    tw_data_start = formula_rows["tw_data_start"]
+    tw_ee_data_start = formula_rows["tw_ee_data_start"]
+    tw = wb[TW_SHEET]
+    ee = wb[TW_EE_SHEET]
+    tw_slots = count_template_employee_slots(tw, tw_data_start, marker_col=2)
+    ee_slots = count_template_employee_slots(ee, tw_ee_data_start, marker_col=5)
+    tw_tpl_src = _default_example_row("TW", tw_data_start)
+    ee_tpl_src = _default_example_row("TW EE", tw_ee_data_start)
+    src_tw_l_tpl = tw_l_row_for_data_row(
+        tw_tpl_src, data_start=tw_data_start, target_l_data_start=tw_l_data_start_row
+    )
+    src_ee_l_tpl = tw_l_row_for_data_row(
+        ee_tpl_src, data_start=tw_ee_data_start, target_l_data_start=tw_l_data_start_row
+    )
+
+    for i in range(employee_count, tw_slots):
+        clear_employee_row(tw, tw_data_start + i)
+
+    for i in range(employee_count, ee_slots):
+        clear_employee_row(ee, tw_ee_data_start + i)
+
+    if employee_count > tw_slots:
+        src_row = tw_tpl_src
+        src_tw_l = src_tw_l_tpl
+        for i in range(tw_slots, employee_count):
+            dst_row = tw_data_start + i
+            dst_tw_l = tw_l_data_start_row + i
+            ee_row = tw_ee_data_start + i
+            copy_row_formulas(tw, src_row, dst_row, src_tw_l, dst_tw_l)
+            fix_tw_row_tw_ee_refs(tw, dst_row, ee_row)
+
+    if employee_count > ee_slots:
+        src_row = ee_tpl_src
+        src_tw_l = src_ee_l_tpl
+        for i in range(ee_slots, employee_count):
+            dst_row = tw_ee_data_start + i
+            dst_tw_l = tw_l_data_start_row + i
+            tw_row = tw_data_start + i
+            copy_row_formulas(ee, src_row, dst_row, src_tw_l, dst_tw_l)
+            ee.cell(dst_row, 4).value = None
+            fix_ee_row_tw_refs(ee, dst_row, tw_row)
 
 
 def parse_source(source_path: Path) -> dict[str, Any]:
+    mapping = _active_mapping()
     wb = load_workbook(source_path, data_only=True, read_only=True)
-    if PC_SHEET not in wb.sheetnames:
+    src_spec = mapping.get("sourceEmployeeSheet") or {}
+    pc_name = find_sheet_name(list(wb.sheetnames), src_spec if isinstance(src_spec, dict) else None)
+    if not pc_name:
         names = wb.sheetnames
         wb.close()
-        raise ValueError(f"未找到 sheet「{PC_SHEET}」，现有: {names}")
+        want = (src_spec.get("sheet") if isinstance(src_spec, dict) else None) or PC_SHEET
+        raise ValueError(f"未找到 sheet「{want}」，现有: {names}")
 
-    ws = wb[PC_SHEET]
-    header_row = find_pc_header_row(ws)
+    ws = wb[pc_name]
+    header_row = find_pc_header_row(ws, sheet_label=pc_name)
     employees = read_pc_employees(ws, header_row)
-    meta = read_summary_meta(wb)
+    meta = read_summary_meta(wb, mapping.get("sourceMetaSheet"))
     wb.close()
-    return {"employees": employees, "meta": meta, "pc_header_row": header_row}
+    return {"employees": employees, "meta": meta, "pc_header_row": header_row, "pc_sheet": pc_name}
 
 
 def convert(
+    source_path: Path,
+    output_path: Path,
+    template_path: Path,
+    *,
+    pn_meta: PnMeta | dict[str, Any] | None = None,
+    registry_dir: Path | None = None,
+    employee_directory: list[dict[str, Any]] | None = None,
+    convert_mapping: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    global _ACTIVE_MAPPING
+    _ACTIVE_MAPPING = resolve_convert_mapping("tw_payroll_calc", convert_mapping)
+    try:
+        return _convert_impl(
+            source_path,
+            output_path,
+            template_path,
+            pn_meta=pn_meta,
+            registry_dir=registry_dir,
+            employee_directory=employee_directory,
+        )
+    finally:
+        _ACTIVE_MAPPING = None
+
+
+def _convert_impl(
     source_path: Path,
     output_path: Path,
     template_path: Path,
@@ -1014,10 +1089,16 @@ def convert(
     shutil.copy2(template_path, output_path)
 
     wb = load_workbook(output_path, rich_text=True)
-    for name in (TW_L_SHEET, TW_SHEET, TW_EE_SHEET, PN_SHEET):
+    tw_l_name = resolve_tw_l_sheet_name(list(wb.sheetnames))
+    for name in (TW_SHEET, TW_EE_SHEET, PN_SHEET):
         if name not in wb.sheetnames:
             wb.close()
             raise ValueError(f"母版缺少 sheet「{name}」，现有: {wb.sheetnames}")
+
+    tw_l_ws = wb[tw_l_name]
+    tw_l_layout = resolve_tw_l_layout(tw_l_ws, sheet_label=tw_l_name)
+    tw_l_data_start = tw_l_layout["data_start_row"]
+    formula_rows = resolve_tw_formula_rows_layout(wb, tw_l_data_start)
 
     applied_pn: PnMeta | None = None
     if pn_meta is not None:
@@ -1028,16 +1109,27 @@ def convert(
             reserve_invoice_number=True,
         )
 
-    write_tw_l(wb[TW_L_SHEET], employees, parsed["meta"])
+    write_tw_l(tw_l_ws, employees, parsed["meta"])
     client_prefix = (
         applied_pn.customer_id
         if applied_pn
         else norm(wb[PN_SHEET]["B9"].value) or "CUS1516"
     )
-    fit_formula_sheets(wb, len(employees), client_prefix)
-    apply_tw_business_tax(wb[TW_SHEET], len(employees))
-    ee_warnings = apply_tw_ee_codes(wb[TW_EE_SHEET], employees, employee_directory)
-    pn_layout = fit_pn_employees(wb[PN_SHEET], len(employees))
+    fit_formula_sheets(wb, len(employees), client_prefix, formula_rows=formula_rows)
+    apply_employee_formula_styles(wb, employees, formula_rows=formula_rows)
+    apply_tw_business_tax(
+        wb[TW_SHEET],
+        len(employees),
+        tw_data_start_row=formula_rows["tw_data_start"],
+        tw_l_data_start_row=formula_rows["tw_l_data_start"],
+    )
+    ee_warnings = apply_tw_ee_codes(
+        wb[TW_EE_SHEET],
+        employees,
+        employee_directory,
+        tw_ee_data_start_row=formula_rows["tw_ee_data_start"],
+    )
+    pn_layout = fit_pn_employees(wb[PN_SHEET], len(employees), tw_data_start_row=formula_rows["tw_data_start"])
 
     rates = fetch_usd_rates()
     fx_rate = get_tw_pn_fx_rate(rates)

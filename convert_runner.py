@@ -25,6 +25,7 @@ def run_convert(
     pn_meta: PnMeta | dict[str, Any] | None = None,
     registry_dir: Path | None = None,
     employee_directory: list[dict[str, Any]] | None = None,
+    convert_mapping: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     engine = get_engine(engine_id)
     module = importlib.import_module(engine.module)
@@ -57,6 +58,8 @@ def run_convert(
     sig = inspect.signature(module.convert)
     if "employee_directory" in sig.parameters:
         convert_kwargs["employee_directory"] = employee_directory
+    if "convert_mapping" in sig.parameters and convert_mapping:
+        convert_kwargs["convert_mapping"] = convert_mapping
 
     result = module.convert(
         source_path,
@@ -82,6 +85,15 @@ def parse_pn_meta_payload(raw: str | None) -> dict[str, Any] | None:
     # 缺省账单日用今天，便于自动生成发票号
     if not data.get("invoice_date"):
         data["invoice_date"] = date.today().isoformat()
+    return data
+
+
+def parse_convert_mapping_payload(raw: str | None) -> dict[str, Any] | None:
+    if not raw or not str(raw).strip():
+        return None
+    data = json.loads(raw)
+    if not isinstance(data, dict):
+        raise ValueError("convert_mapping 必须是 JSON 对象")
     return data
 
 

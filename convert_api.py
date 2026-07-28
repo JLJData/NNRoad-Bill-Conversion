@@ -10,7 +10,8 @@
 接口:
   GET  /health
   GET  /engines
-  POST /convert  multipart: file, engine_id, region, pn_meta(json可选), employee_directory(json数组可选)
+  POST /convert  multipart: file, engine_id, region, template(可选), pn_meta(json可选), employee_directory(json数组可选)
+  GET  /region-template?region=Taiwan  地区默认 PN 母版
   POST /excel-snapshot  multipart: file, sheet(可选默认PN), max_cells(可选默认300)
   POST /hf-snapshot     multipart: file, sheet(可选默认PN), max_cells(可选默认300)  # Node HyperFormula
 """
@@ -20,15 +21,16 @@ import tempfile
 import traceback
 from pathlib import Path
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
 from starlette.background import BackgroundTask
 
-from convert_runner import parse_employee_directory_payload, parse_pn_meta_payload, run_convert
+from mapping_inspect import inspect_pn_headers, inspect_source_headers
+from convert_runner import parse_employee_directory_payload, parse_pn_meta_payload, parse_convert_mapping_payload, run_convert
 from excel_com_snapshot import snapshot_workbook
 from hf_com_snapshot import snapshot_workbook_hf
 from engines import list_engines
-from region_templates import list_regions
+from region_templates import list_regions, get_region_template
 
 app = FastAPI(title="HROne Bill Convert Service", version="1.0.0")
 BASE_DIR = Path(__file__).resolve().parent
@@ -55,13 +57,30 @@ def engines():
     }
 
 
+@app.get("/region-template")
+def region_template(region: str = Query(..., min_length=1)):
+    try:
+        path = get_region_template(region.strip())
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail=f"地区母版不存在: {path}")
+    return FileResponse(
+        path=str(path),
+        filename=path.name,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+
+
 @app.post("/convert")
 async def convert(
     file: UploadFile = File(...),
     engine_id: str = Form(...),
     region: str = Form(...),
+    template: UploadFile | None = File(None),
     pn_meta: str | None = Form(None),
     employee_directory: str | None = Form(None),
+    convert_mapping: str | None = Form(None),
     output_prefix: str | None = Form(None),
 ):
     suffix = Path(file.filename or "source.xlsx").suffix.lower() or ".xlsx"
@@ -76,6 +95,10 @@ async def convert(
         emp_dir = parse_employee_directory_payload(employee_directory)
     except Exception as exc:
         raise HTTPException(status_code=400, detail=f"employee_directory 无效: {exc}") from exc
+    try:
+        mapping = parse_convert_mapping_payload(convert_mapping)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"convert_mapping 无效: {exc}") from exc
 
     tmp_dir = Path(tempfile.mkdtemp(prefix="bill_convert_"))
     source_path = tmp_dir / f"source{suffix}"
@@ -88,13 +111,25 @@ async def convert(
             raise HTTPException(status_code=400, detail="上传文件为空")
         source_path.write_bytes(content)
 
+        template_path = None
+        if template is not None and template.filename:
+            tpl_suffix = Path(template.filename).suffix.lower() or ".xlsx"
+            if tpl_suffix not in (".xlsx", ".xlsm"):
+                raise HTTPException(status_code=400, detail=f"母版仅支持 .xlsx/.xlsm，当前: {tpl_suffix}")
+            tpl_bytes = await template.read()
+            if tpl_bytes:
+                template_path = tmp_dir / f"template{tpl_suffix}"
+                template_path.write_bytes(tpl_bytes)
+
         result = run_convert(
             engine_id=engine_id.strip(),
             source_path=source_path,
             output_path=output_path,
             region=region.strip(),
+            template_path=template_path,
             pn_meta=meta,
             employee_directory=emp_dir,
+            convert_mapping=mapping,
             registry_dir=BASE_DIR,
         )
         if not output_path.is_file():
@@ -202,6 +237,76 @@ async def hf_snapshot(
     except Exception as exc:
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"HF 快照失败: {exc}") from exc
+    finally:
+        _cleanup_dir(tmp_dir)
+
+
+@app.post("/mapping/inspect-source")
+async def mapping_inspect_source(
+    file: UploadFile = File(...),
+    engine_id: str = Form(...),
+    convert_mapping: str | None = Form(None),
+):
+    """上传样例源账单，按当前映射识别表头（供下拉）。"""
+    suffix = Path(file.filename or "source.xlsx").suffix.lower() or ".xlsx"
+    if suffix not in (".xlsx", ".xlsm"):
+        raise HTTPException(status_code=400, detail=f"仅支持 .xlsx/.xlsm，当前: {suffix}")
+    try:
+        mapping = parse_convert_mapping_payload(convert_mapping)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"convert_mapping 无效: {exc}") from exc
+
+    tmp_dir = Path(tempfile.mkdtemp(prefix="map_insp_"))
+    source_path = tmp_dir / f"source{suffix}"
+    try:
+        content = await file.read()
+        if not content:
+            raise HTTPException(status_code=400, detail="上传文件为空")
+        source_path.write_bytes(content)
+        result = inspect_source_headers(
+            source_path=source_path,
+            engine_id=engine_id.strip(),
+            convert_mapping=mapping,
+        )
+        return JSONResponse(content=result)
+    finally:
+        _cleanup_dir(tmp_dir)
+
+
+@app.post("/mapping/inspect-pn")
+async def mapping_inspect_pn(
+    engine_id: str = Form(...),
+    convert_mapping: str | None = Form(None),
+    region: str | None = Form(None),
+    template: UploadFile | None = File(None),
+):
+    """解析 PN 母版 targetL 表头行（生效母版或地区默认）。"""
+    try:
+        mapping = parse_convert_mapping_payload(convert_mapping)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"convert_mapping 无效: {exc}") from exc
+
+    tmp_dir = Path(tempfile.mkdtemp(prefix="map_pn_"))
+    try:
+        template_path: Path | None = None
+        if template is not None and template.filename:
+            tpl_suffix = Path(template.filename).suffix.lower() or ".xlsx"
+            if tpl_suffix not in (".xlsx", ".xlsm"):
+                raise HTTPException(status_code=400, detail=f"母版仅支持 .xlsx/.xlsm")
+            tpl_bytes = await template.read()
+            if tpl_bytes:
+                template_path = tmp_dir / f"template{tpl_suffix}"
+                template_path.write_bytes(tpl_bytes)
+        if template_path is None:
+            if not region or not str(region).strip():
+                raise HTTPException(status_code=400, detail="未上传母版时必须提供 region")
+            template_path = Path(get_region_template(region.strip()))
+        result = inspect_pn_headers(
+            template_path=template_path,
+            engine_id=engine_id.strip(),
+            convert_mapping=mapping,
+        )
+        return JSONResponse(content=result)
     finally:
         _cleanup_dir(tmp_dir)
 
