@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 """
-HROne Co., Ltd. + Hermetic 账单 → PN 转换脚本
+大陆 HROne「计算结果」源账单 → China PN（引擎 china_hrone）
 
 用法:
-  python -m profiles.hrone_hermetic.convert <原始账单.xlsx> [-o 输出.xlsx] [-t 母版.xlsx]
+  python -m profiles.china_hrone.convert <原始账单.xlsx> [-o 输出.xlsx] [-t 母版.xlsx]
 
 默认母版: templates/china/template.xlsx
 （含 PN / China / China EE / China-L 公式结构）

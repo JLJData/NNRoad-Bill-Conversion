@@ -53,7 +53,25 @@ DEFAULT_SUMMARY_LABELS = {
     "Client": "company_name",
     "Payroll Month": "payroll_month",
     "Period": "period_raw",
+    "Exchange rate": "exchange_rate",
 }
+
+
+def coerce_exchange_rate(value: Any) -> float | None:
+    """Summary「Exchange rate」→ PN 汇率单元格数值。"""
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    s = norm(value).replace(",", "").strip()
+    if not s:
+        return None
+    try:
+        return float(s)
+    except ValueError:
+        return None
 
 
 def read_summary_meta(
@@ -85,4 +103,9 @@ def read_summary_meta(
     meta["period_from"] = period_from
     meta["period_to"] = period_to
     meta["payroll_month_start"] = payroll_month_start(meta.get("payroll_month"))
+    fx = coerce_exchange_rate(meta.get("exchange_rate"))
+    if fx is not None:
+        meta["exchange_rate"] = fx
+    elif "exchange_rate" in meta:
+        meta["exchange_rate"] = None
     return meta

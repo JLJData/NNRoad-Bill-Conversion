@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import re
 from copy import copy
+from typing import Any
 
 from openpyxl.worksheet.worksheet import Worksheet
 
@@ -38,6 +39,63 @@ def shift_row_formula(
     return s
 
 
+def snapshot_row_cells(ws: Worksheet, row: int) -> list[dict[str, Any]]:
+    """拷贝一行公式/值与样式，避免后续覆盖源行后丢失示例。"""
+    out: list[dict[str, Any]] = []
+    max_col = ws.max_column or 1
+    for col in range(1, max_col + 1):
+        src = ws.cell(row, col)
+        item: dict[str, Any] = {
+            "col": col,
+            "value": src.value,
+            "data_type": src.data_type,
+        }
+        if src.has_style:
+            item["font"] = copy(src.font)
+            item["border"] = copy(src.border)
+            item["fill"] = copy(src.fill)
+            item["number_format"] = src.number_format
+            item["protection"] = copy(src.protection)
+            item["alignment"] = copy(src.alignment)
+        out.append(item)
+    return out
+
+
+def copy_row_formulas_from_snapshot(
+    snapshot: list[dict[str, Any]],
+    ws: Worksheet,
+    from_row: int,
+    to_row: int,
+    target_l_from: int,
+    target_l_to: int,
+    *,
+    target_l_sheet: str = "TW-L",
+) -> None:
+    for item in snapshot:
+        col = int(item["col"])
+        dst = ws.cell(to_row, col)
+        if "font" in item:
+            dst.font = item["font"]
+            dst.border = item["border"]
+            dst.fill = item["fill"]
+            dst.number_format = item["number_format"]
+            dst.protection = item["protection"]
+            dst.alignment = item["alignment"]
+        value = item.get("value")
+        data_type = item.get("data_type")
+        if data_type == "f" and isinstance(value, str):
+            dst.value = shift_row_formula(
+                value,
+                from_row,
+                to_row,
+                target_l_from=target_l_from,
+                target_l_to=target_l_to,
+                target_l_sheet=target_l_sheet,
+            )
+        elif value is not None and data_type != "f":
+            dst.value = copy(value)
+
+
 def copy_row_formulas(
     ws: Worksheet,
     from_row: int,
@@ -47,28 +105,15 @@ def copy_row_formulas(
     *,
     target_l_sheet: str = "TW-L",
 ) -> None:
-    max_col = ws.max_column or 1
-    for col in range(1, max_col + 1):
-        src = ws.cell(from_row, col)
-        dst = ws.cell(to_row, col)
-        if src.has_style:
-            dst.font = copy(src.font)
-            dst.border = copy(src.border)
-            dst.fill = copy(src.fill)
-            dst.number_format = src.number_format
-            dst.protection = copy(src.protection)
-            dst.alignment = copy(src.alignment)
-        if src.data_type == "f" and isinstance(src.value, str):
-            dst.value = shift_row_formula(
-                src.value,
-                from_row,
-                to_row,
-                target_l_from=target_l_from,
-                target_l_to=target_l_to,
-                target_l_sheet=target_l_sheet,
-            )
-        elif src.value is not None and src.data_type != "f":
-            dst.value = copy(src.value)
+    copy_row_formulas_from_snapshot(
+        snapshot_row_cells(ws, from_row),
+        ws,
+        from_row,
+        to_row,
+        target_l_from,
+        target_l_to,
+        target_l_sheet=target_l_sheet,
+    )
 
 
 def fix_tw_row_tw_ee_refs(ws_tw: Worksheet, dst_row: int, ee_row: int) -> None:

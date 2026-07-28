@@ -7,12 +7,47 @@ from typing import Any
 from openpyxl.worksheet.worksheet import Worksheet
 
 from bill_convert.formula_copy import (
-    copy_row_formulas,
+    copy_row_formulas_from_snapshot,
     fix_ee_row_tw_refs,
     fix_tw_row_tw_ee_refs,
+    snapshot_row_cells,
 )
 from bill_convert.mapping_spec import mapping_section
-from bill_convert.person import norm_person_name
+from bill_convert.person import (
+    bill_employee_like_entry,
+    norm_person_name,
+    score_person_name_match,
+)
+
+
+def _lookup_directory_row_for_emp(
+    emp: dict[str, Any],
+    directory: list[dict[str, Any]] | None,
+) -> dict[str, Any] | None:
+    if not directory:
+        return None
+    bill_labels = [str(emp.get("CN Name") or ""), str(emp.get("EN Name") or "")]
+    best: dict[str, Any] | None = None
+    best_score = 0
+    for row in directory:
+        if not isinstance(row, dict):
+            continue
+        dir_labels = [
+            str(row.get("employee_name") or row.get("employeeName") or ""),
+            str(row.get("employee_name_en") or row.get("employeeNameEn") or ""),
+        ]
+        pair_best = 0
+        for a in bill_labels:
+            if not a.strip():
+                continue
+            for b in dir_labels:
+                if not b.strip():
+                    continue
+                pair_best = max(pair_best, score_person_name_match(a, b))
+        if pair_best > best_score:
+            best_score = pair_best
+            best = row
+    return best if best_score >= 70 else None
 
 
 def _formula_templates_spec(mapping: dict[str, Any]) -> dict[str, Any]:
@@ -109,21 +144,33 @@ def _employee_formula_styles(mapping: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def _style_entry_matches_employee(entry: dict[str, Any], emp: dict[str, Any]) -> bool:
-    cn = norm_person_name(emp.get("CN Name"))
-    en = norm_person_name(emp.get("EN Name"))
-    e_cn = norm_person_name(entry.get("cnName"))
-    e_en = norm_person_name(entry.get("enName"))
-    if e_cn and e_en:
-        return e_cn == cn and e_en == en
-    if e_cn:
-        return e_cn == cn
-    if e_en:
-        return e_en == en
-    return False
+    return bill_employee_like_entry(emp, entry, min_score=70)
 
 
-def _style_for_employee(mapping: dict[str, Any], emp: dict[str, Any]) -> dict[str, Any]:
-    for entry in _employee_formula_styles(mapping):
+def _style_for_employee(
+    mapping: dict[str, Any],
+    emp: dict[str, Any],
+    *,
+    employee_directory: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    styles = _employee_formula_styles(mapping)
+    if not styles:
+        return {}
+
+    dir_row = _lookup_directory_row_for_emp(emp, employee_directory)
+    if dir_row is not None:
+        eid = dir_row.get("employee_id") or dir_row.get("employeeId")
+        if eid is not None:
+            try:
+                want = int(eid)
+                for entry in styles:
+                    sid = entry.get("employeeId") if entry.get("employeeId") is not None else entry.get("employee_id")
+                    if sid is not None and int(sid) == want:
+                        return entry
+            except (TypeError, ValueError):
+                pass
+
+    for entry in styles:
         if _style_entry_matches_employee(entry, emp):
             return entry
     return {}
@@ -142,6 +189,7 @@ def apply_employee_formula_styles(
     mapping: dict[str, Any],
     *,
     formula_rows: dict[str, int],
+    employee_directory: list[dict[str, Any]] | None = None,
     tw_sheet: str = "TW",
     tw_ee_sheet: str = "TW EE",
     target_l_sheet: str = "TW-L",
@@ -158,34 +206,55 @@ def apply_employee_formula_styles(
     tw_def = _default_example_row(mapping, "TW", tw_data_start)
     ee_def = _default_example_row(mapping, "TW EE", tw_ee_data_start)
 
+    # 先解析每人源行，再快照示例行，避免「先写第 9 行把第 9 行示例冲掉」或源行相互覆盖。
+    # 未配对的人必须套用 defaultExampleRow（第一行公式），不能「保留母版落位行」——
+    # 否则第 2 人落在母版第 10 行时会误继承第二种公式。
+    plans: list[tuple[int, int, int]] = []
+    tw_src_needed: set[int] = set()
+    ee_src_needed: set[int] = set()
     for i, emp in enumerate(employees):
-        entry = _style_for_employee(mapping, emp)
-        dst_tw = tw_data_start + i
-        dst_ee = tw_ee_data_start + i
-
+        entry = _style_for_employee(mapping, emp, employee_directory=employee_directory)
         has_override = bool(entry.get("twExampleRow") or entry.get("twEeExampleRow"))
-        if not apply_all and not has_override:
-            continue
-
         if has_override:
             src_tw = int(entry["twExampleRow"]) if entry.get("twExampleRow") else tw_def
             src_ee = int(entry["twEeExampleRow"]) if entry.get("twEeExampleRow") else ee_def
         else:
             src_tw = tw_def
             src_ee = ee_def
+        plans.append((i, src_tw, src_ee))
+        tw_src_needed.add(src_tw)
+        ee_src_needed.add(src_ee)
 
+    tw_snaps = {r: snapshot_row_cells(tw, r) for r in tw_src_needed}
+    ee_snaps = {r: snapshot_row_cells(ee, r) for r in ee_src_needed}
+
+    for i, src_tw, src_ee in plans:
+        dst_tw = tw_data_start + i
+        dst_ee = tw_ee_data_start + i
         src_tw_l = tw_l_row_for_data_row(
             src_tw, data_start=tw_data_start, target_l_data_start=tw_l_data_start_row
         )
         dst_tw_l = tw_l_data_start_row + i
-        copy_row_formulas(
-            tw, src_tw, dst_tw, src_tw_l, dst_tw_l, target_l_sheet=target_l_sheet
+        copy_row_formulas_from_snapshot(
+            tw_snaps[src_tw],
+            tw,
+            src_tw,
+            dst_tw,
+            src_tw_l,
+            dst_tw_l,
+            target_l_sheet=target_l_sheet,
         )
         fix_tw_row_tw_ee_refs(tw, dst_tw, dst_ee)
         src_ee_l = tw_l_row_for_data_row(
             src_ee, data_start=tw_ee_data_start, target_l_data_start=tw_l_data_start_row
         )
-        copy_row_formulas(
-            ee, src_ee, dst_ee, src_ee_l, dst_tw_l, target_l_sheet=target_l_sheet
+        copy_row_formulas_from_snapshot(
+            ee_snaps[src_ee],
+            ee,
+            src_ee,
+            dst_ee,
+            src_ee_l,
+            dst_tw_l,
+            target_l_sheet=target_l_sheet,
         )
         fix_ee_row_tw_refs(ee, dst_ee, dst_tw)

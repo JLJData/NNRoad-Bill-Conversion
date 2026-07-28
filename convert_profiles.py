@@ -49,7 +49,7 @@ class ConvertProfile:
 
 PROFILES: list[ConvertProfile] = [
     ConvertProfile(
-        profile_id="hrone_hermetic",
+        profile_id="hrone_hermetic",  # Office 种子 profile_code（示例客户对）
         supplier="HROne Co., Ltd.",
         customer="Hermetic",
         region="China",
@@ -62,7 +62,7 @@ PROFILES: list[ConvertProfile] = [
         pn_billing_address="Eight Neshaminy Interplex,Suite 221, Trevose. PA 19053",
     ),
     ConvertProfile(
-        profile_id="topfdi_uecorp",
+        profile_id="topfdi_uecorp",  # Office 种子 profile_code（示例客户对）
         supplier="Top FDI",
         customer="UE Corp",
         region="Hong Kong",
@@ -75,7 +75,7 @@ PROFILES: list[ConvertProfile] = [
         pn_billing_address="168 Georgetown Rd., Canonsburg, Pennsylvanis, USA",
     ),
     ConvertProfile(
-        profile_id="peoplesearch_coralsea",
+        profile_id="peoplesearch_coralsea",  # Office 种子 profile_code（示例客户对）
         supplier="People Search",
         customer="Coral Sea",
         region="Taiwan",

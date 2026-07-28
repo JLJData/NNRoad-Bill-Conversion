@@ -17,19 +17,19 @@ ENGINES: dict[str, ConvertEngine] = {
     "china_hrone": ConvertEngine(
         engine_id="china_hrone",
         label="HROne China",
-        module="profiles.hrone_hermetic.convert",
+        module="profiles.china_hrone.convert",
         description="源账单 sheet「计算结果」→ China PN",
     ),
     "hk_vertical_l": ConvertEngine(
         engine_id="hk_vertical_l",
         label="HK Vertical-L",
-        module="profiles.topfdi_uecorp.convert",
+        module="profiles.hk_vertical_l.convert",
         description="源账单 sheet「Hong Kong-L」→ Hong Kong PN",
     ),
     "tw_payroll_calc": ConvertEngine(
         engine_id="tw_payroll_calc",
         label="TW Payroll Calculation",
-        module="profiles.peoplesearch_coralsea.convert",
+        module="profiles.tw_payroll_calc.convert",
         description="源账单 sheet「Payroll calculation」→ Taiwan PN",
     ),
 }

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""分析 Top FDI + UE Corp 账单字段结构，输出 structure.json。"""
+"""分析 hk_vertical_l 样例账单字段结构，输出 structure.json。"""
 import json
 import sys
 from pathlib import Path

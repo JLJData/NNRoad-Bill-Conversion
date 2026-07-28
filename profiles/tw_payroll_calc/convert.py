@@ -1,12 +1,13 @@
 # -*- coding: utf-8 -*-
 """
-People Search + Coral Sea 台湾账单 → PN N-C 转换脚本
+台湾 Payroll calculation 源账单 → PN（引擎 tw_payroll_calc）
 
 用法:
-  python -m profiles.peoplesearch_coralsea.convert <原始供应商账单.xlsx> [-o 输出.xlsx] [-t 母版.xlsx]
+  python -m profiles.tw_payroll_calc.convert <原始供应商账单.xlsx> [-o 输出.xlsx] [-t 母版.xlsx]
 
 原始账单: sheet「Payroll calculation」按表头名匹配（支持多员工）
 默认母版: templates/taiwan/template.xlsx
+Office 各供应商–客户差异见 convert_mapping / portal mapping_json，非本目录分客户。
 """
 from __future__ import annotations
 
@@ -960,12 +961,14 @@ def apply_employee_formula_styles(
     employees: list[dict[str, Any]],
     *,
     formula_rows: dict[str, int],
+    employee_directory: list[dict[str, Any]] | None = None,
 ) -> None:
     _apply_employee_formula_styles_impl(
         wb,
         employees,
         _active_mapping(),
         formula_rows=formula_rows,
+        employee_directory=employee_directory,
         tw_sheet=TW_SHEET,
         tw_ee_sheet=TW_EE_SHEET,
         target_l_sheet=TW_L_SHEET,
@@ -978,8 +981,13 @@ def fit_formula_sheets(
     client_id_prefix: str,
     *,
     formula_rows: dict[str, int],
+    clear_excess: bool = True,
 ) -> None:
-    """母版已预置 N 人公式行：人数≤N 时只清除多余行；人数>N 时才复制扩展。"""
+    """母版已预置 N 人公式行：人数>N 时复制扩展；人数≤N 时可清除多余行。
+
+    注意：若随后还要从母版「示例行」（如第 10 行第二种公式）复制到实际员工行，
+    须先 apply_employee_formula_styles，再 clear_excess——否则人数不足时会先清掉示例行。
+    """
     tw_l_data_start_row = formula_rows["tw_l_data_start"]
     tw_data_start = formula_rows["tw_data_start"]
     tw_ee_data_start = formula_rows["tw_ee_data_start"]
@@ -996,11 +1004,12 @@ def fit_formula_sheets(
         ee_tpl_src, data_start=tw_ee_data_start, target_l_data_start=tw_l_data_start_row
     )
 
-    for i in range(employee_count, tw_slots):
-        clear_employee_row(tw, tw_data_start + i)
+    if clear_excess:
+        for i in range(employee_count, tw_slots):
+            clear_employee_row(tw, tw_data_start + i)
 
-    for i in range(employee_count, ee_slots):
-        clear_employee_row(ee, tw_ee_data_start + i)
+        for i in range(employee_count, ee_slots):
+            clear_employee_row(ee, tw_ee_data_start + i)
 
     if employee_count > tw_slots:
         src_row = tw_tpl_src
@@ -1022,6 +1031,25 @@ def fit_formula_sheets(
             copy_row_formulas(ee, src_row, dst_row, src_tw_l, dst_tw_l)
             ee.cell(dst_row, 4).value = None
             fix_ee_row_tw_refs(ee, dst_row, tw_row)
+
+
+def clear_excess_formula_rows(
+    wb,
+    employee_count: int,
+    *,
+    formula_rows: dict[str, int],
+) -> None:
+    """清除 TW / TW EE 上超出本次员工人数的预置公式行。"""
+    tw_data_start = formula_rows["tw_data_start"]
+    tw_ee_data_start = formula_rows["tw_ee_data_start"]
+    tw = wb[TW_SHEET]
+    ee = wb[TW_EE_SHEET]
+    tw_slots = count_template_employee_slots(tw, tw_data_start, marker_col=2)
+    ee_slots = count_template_employee_slots(ee, tw_ee_data_start, marker_col=5)
+    for i in range(employee_count, tw_slots):
+        clear_employee_row(tw, tw_data_start + i)
+    for i in range(employee_count, ee_slots):
+        clear_employee_row(ee, tw_ee_data_start + i)
 
 
 def parse_source(source_path: Path) -> dict[str, Any]:
@@ -1115,8 +1143,15 @@ def _convert_impl(
         if applied_pn
         else norm(wb[PN_SHEET]["B9"].value) or "CUS1516"
     )
-    fit_formula_sheets(wb, len(employees), client_prefix, formula_rows=formula_rows)
-    apply_employee_formula_styles(wb, employees, formula_rows=formula_rows)
+    # 先扩展（不清多余行）→ 按员工配对从示例行复制公式 → 再清多余行。
+    # 若先清，人数 < 母版槽位时会把「第 10 行第二种公式」等示例行清掉，导致配对无法生效。
+    fit_formula_sheets(
+        wb, len(employees), client_prefix, formula_rows=formula_rows, clear_excess=False
+    )
+    apply_employee_formula_styles(
+        wb, employees, formula_rows=formula_rows, employee_directory=employee_directory
+    )
+    clear_excess_formula_rows(wb, len(employees), formula_rows=formula_rows)
     apply_tw_business_tax(
         wb[TW_SHEET],
         len(employees),
@@ -1131,8 +1166,14 @@ def _convert_impl(
     )
     pn_layout = fit_pn_employees(wb[PN_SHEET], len(employees), tw_data_start_row=formula_rows["tw_data_start"])
 
-    rates = fetch_usd_rates()
-    fx_rate = get_tw_pn_fx_rate(rates)
+    summary_fx = parsed["meta"].get("exchange_rate")
+    if summary_fx is not None:
+        fx_rate = float(summary_fx)
+        fx_source = "summary:Exchange rate"
+    else:
+        rates = fetch_usd_rates()
+        fx_rate = get_tw_pn_fx_rate(rates)
+        fx_source = "api:TWD"
     fx_row = pn_layout.get("fx_row") or _find_pn_fx_row(wb[PN_SHEET])
     wb[PN_SHEET].cell(fx_row, 2).value = fx_rate
     pn_layout["fx_row"] = fx_row
@@ -1144,6 +1185,10 @@ def _convert_impl(
     # 主题填充 / 富文本；金额由前端 HyperFormula 按公式重算，不再注入 PN 缓存
     postprocess_converted_xlsx(output_path)
 
+    warnings = list(ee_warnings)
+    if summary_fx is None:
+        warnings.append("Summary 未找到有效 Exchange rate，已回退 API TWD 汇率")
+
     return {
         "employee_count": len(employees),
         "employee_names": [
@@ -1152,11 +1197,12 @@ def _convert_impl(
         "company_name": parsed["meta"].get("company_name"),
         "period": (parsed["meta"].get("period_from"), parsed["meta"].get("period_to")),
         "fx_rate": fx_rate,
-        "fx_source": "api:TWD",
+        "fx_source": fx_source,
+        "summary_exchange_rate": parsed["meta"].get("exchange_rate"),
         "fx_row": fx_row,
         "output": str(output_path),
         "pn_meta": applied_pn.to_dict() if applied_pn else None,
-        "warnings": ee_warnings,
+        "warnings": warnings,
     }
 
 

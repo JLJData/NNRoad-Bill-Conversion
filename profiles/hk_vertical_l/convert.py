@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 """
-Top FDI + UE Corp 账单 T-N → PN N-C 转换脚本
+香港 Vertical-L 源账单 → Hong Kong PN（引擎 hk_vertical_l）
 
 用法:
-  python -m profiles.topfdi_uecorp.convert <原始 T-N 账单.xlsx> [-o 输出.xlsx] [-t 母版.xlsx]
+  python -m profiles.hk_vertical_l.convert <原始 T-N 账单.xlsx> [-o 输出.xlsx] [-t 母版.xlsx]
 
 原始账单: sheet「Hong Kong-L」第 7 行表头、第 8 行起员工数据（按表头名匹配）
 默认母版: templates/hongkong/template.xlsx

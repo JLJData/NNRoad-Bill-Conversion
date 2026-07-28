@@ -46,7 +46,7 @@ def inspect_source_headers(
 
 
 def _inspect_tw_source(source_path: Path, mapping: dict[str, Any]) -> dict[str, Any]:
-    from profiles.peoplesearch_coralsea import convert as tw_mod
+    from profiles.tw_payroll_calc import convert as tw_mod
 
     tw_mod._ACTIVE_MAPPING = mapping
     try:
@@ -157,7 +157,7 @@ def inspect_pn_headers(
         return {"ok": False, "message": f"母版文件不存在: {template_path}"}
 
     if engine_id == "tw_payroll_calc":
-        from profiles.peoplesearch_coralsea import convert as tw_mod
+        from profiles.tw_payroll_calc import convert as tw_mod
 
         tw_mod._ACTIVE_MAPPING = mapping
         try:

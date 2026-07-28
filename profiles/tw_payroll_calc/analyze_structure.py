@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""分析 People Search + Coral Sea 账单结构，输出 structure.json。"""
+"""分析 TW Payroll calculation 样例账单结构，输出 structure.json。"""
 import json
 import sys
 from pathlib import Path
