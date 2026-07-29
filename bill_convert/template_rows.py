@@ -28,7 +28,13 @@ def list_formula_example_rows(
     marker_col: int = 2,
     max_slots: int = 9,
 ) -> list[dict[str, Any]]:
+    """列出可作为公式参照的示例行。
+
+    不再在「中间空行」处提前结束：母版常在第 9 行默认公式、第 10 行第二种公式，
+    中间若短暂无 marker 也应继续扫描。
+    """
     out: list[dict[str, Any]] = []
+    last_hit = -1
     for offset in range(max_slots):
         row = data_start_row + offset
         marker = ws.cell(row, marker_col).value
@@ -38,9 +44,11 @@ def list_formula_example_rows(
             if cell.data_type == "f" and cell.value:
                 has_formula = True
                 break
-        if offset > 0 and marker is None and not has_formula:
-            break
-        if marker is None and not has_formula and offset > 0:
+        if marker is None and not has_formula:
+            if offset == 0:
+                # 默认起始行即使暂无公式也保留选项
+                out.append({"row": row, "label": f"第 {row} 行（默认）"})
+                last_hit = offset
             continue
         label = str(marker).strip() if marker is not None else ""
         if not label:
@@ -48,6 +56,9 @@ def list_formula_example_rows(
         else:
             label = f"第 {row} 行 · {label[:48]}"
         out.append({"row": row, "label": label})
+        last_hit = offset
     if not out:
         out.append({"row": data_start_row, "label": f"第 {data_start_row} 行（默认）"})
+    # 去掉尾部连续空占位：若只因 offset==0 塞了默认且后面全无，保留默认即可
+    _ = last_hit
     return out

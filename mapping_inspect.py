@@ -39,7 +39,7 @@ def inspect_source_headers(
         return _inspect_tw_source(source_path, mapping)
     if engine_id in ("china_payroll_calc", "china_hrone"):
         return _inspect_fixed_header_source(source_path, mapping, default_sheet="计算结果", default_row=1)
-    if engine_id == "hk_vertical_l":
+    if engine_id in ("hk_payroll_calc", "hk_vertical_l"):
         return _inspect_fixed_header_source(source_path, mapping, default_sheet="Hong Kong-L", default_row=7)
 
     return {"ok": False, "message": f"引擎「{engine_id}」暂不支持表头识别"}
@@ -123,8 +123,11 @@ def _inspect_fixed_header_source(
             header_map[key] = col
 
     employees: list[dict[str, str]] = []
+    data_start = int(src_spec.get("dataStartRow") or (header_row + 1))
     name_keys = [str(x).strip() for x in name_headers if str(x).strip()] or (
-        ["姓名"] if "姓名" in header_map else []
+        ["姓名"] if "姓名" in header_map else (
+            ["Name of Employee"] if "Name of Employee" in header_map else []
+        )
     )
     if name_keys:
         primary = next((k for k in name_keys if k in header_map), None)
@@ -132,7 +135,7 @@ def _inspect_fixed_header_source(
         if primary:
             pcol = header_map[primary]
             scol = header_map.get(secondary) if secondary else None
-            for row in range(header_row + 1, (ws.max_row or header_row) + 1):
+            for row in range(data_start, (ws.max_row or data_start) + 1):
                 cn = ws.cell(row, pcol).value
                 cn_s = str(cn).strip() if cn is not None else ""
                 if not cn_s:
@@ -305,6 +308,68 @@ def inspect_pn_headers(
             return {"ok": False, "message": str(exc)}
         finally:
             cn_mod._ACTIVE_MAPPING = None
+
+    if engine_id in ("hk_payroll_calc", "hk_vertical_l"):
+        from profiles.hk_payroll_calc import convert as hk_mod
+
+        hk_mod._ACTIVE_MAPPING = mapping
+        try:
+            wb = load_workbook(template_path, data_only=True, read_only=True)
+            sheet_names = list(wb.sheetnames)
+            name = find_sheet_name(sheet_names, spec)
+            if not name:
+                wb.close()
+                return {
+                    "ok": False,
+                    "message": f"母版中未找到 sheet「{sheet_want}」",
+                    "sheetNames": sheet_names,
+                }
+            header_row = int(target.get("headerRow") or hk_mod.HK_L_HEADER_ROW)
+            data_start = int(target.get("dataStartRow") or hk_mod.HK_L_DATA_START_ROW)
+            headers = _header_cells(wb[name], header_row)
+            wb.close()
+
+            wb_f = load_workbook(template_path, data_only=False, read_only=False)
+            hk_start = hk_mod.HK_DATA_START_ROW
+            ee_start = hk_mod.HK_EE_DATA_START_ROW
+            hk_examples: list[dict[str, Any]] = []
+            ee_examples: list[dict[str, Any]] = []
+            if hk_mod.HK_SHEET in wb_f.sheetnames:
+                hk_examples = list_formula_example_rows(
+                    wb_f[hk_mod.HK_SHEET],
+                    hk_start,
+                    marker_col=2,
+                )
+            if hk_mod.HK_EE_SHEET in wb_f.sheetnames:
+                ee_examples = list_formula_example_rows(
+                    wb_f[hk_mod.HK_EE_SHEET],
+                    ee_start,
+                    marker_col=4,
+                )
+            wb_f.close()
+            ft = mapping.get("formulaTemplates") if isinstance(mapping.get("formulaTemplates"), dict) else {}
+            hk_tpl = ft.get("Hong Kong") if isinstance(ft.get("Hong Kong"), dict) else {}
+            ee_tpl = ft.get("Hong Kong EE") if isinstance(ft.get("Hong Kong EE"), dict) else {}
+            return {
+                "ok": True,
+                "sheetName": name,
+                "headerRow": header_row,
+                "dataStartRow": data_start,
+                "autoDetectedLayout": False,
+                "headers": headers,
+                "formulaExampleRows": {
+                    "Hong Kong": hk_examples,
+                    "Hong Kong EE": ee_examples,
+                    "hkDataStartRow": hk_start,
+                    "hkEeDataStartRow": ee_start,
+                    "defaultHkRow": int(hk_tpl.get("defaultExampleRow") or hk_start),
+                    "defaultHkEeRow": int(ee_tpl.get("defaultExampleRow") or ee_start),
+                },
+            }
+        except Exception as exc:
+            return {"ok": False, "message": str(exc)}
+        finally:
+            hk_mod._ACTIVE_MAPPING = None
 
     header_row = int(target.get("headerRow") or 7)
     wb = load_workbook(template_path, data_only=True, read_only=True)

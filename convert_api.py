@@ -152,6 +152,9 @@ async def convert(
         formula_rows = str(result.get("formula_main_rows") or "").strip()
         if formula_rows:
             headers["X-Convert-Formula-Rows"] = formula_rows[:200]
+        match_hint = str(result.get("formula_match_hint") or "").strip()
+        if match_hint:
+            headers["X-Convert-Formula-Match"] = match_hint[:64]
         # 结果摘要用自定义头传一小段 JSON（可选）；主体仍是文件
         return FileResponse(
             path=str(output_path),

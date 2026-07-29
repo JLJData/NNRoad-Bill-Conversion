@@ -42,10 +42,8 @@ def _lookup_directory_row_for_emp(
     if not directory:
         return None
 
-    # China 等：账单有工号时优先按工号对齐员工库（库名常与供应商姓名不一致）
-    bill_code = _norm_code(
-        emp.get("工号") or emp.get("employee_code") or emp.get("employeeCode") or emp.get("EE Code")
-    )
+    # 账单有工号时优先按工号对齐员工库（库名常与供应商姓名不一致）
+    bill_code = _bill_employee_code(emp)
     if bill_code:
         soft: list[dict[str, Any]] = []
         for row in directory:
@@ -70,6 +68,9 @@ def _lookup_directory_row_for_emp(
         str(emp.get("CN Name") or ""),
         str(emp.get("EN Name") or ""),
         str(emp.get("姓名") or ""),
+        str(emp.get("Name of Employee") or ""),
+        str(emp.get("EE Name") or ""),
+        str(emp.get("Name") or ""),
     ]
     best: dict[str, Any] | None = None
     best_score = 0
@@ -228,6 +229,11 @@ def _bill_employee_code(emp: dict[str, Any]) -> str:
         "Employee ID",
         "employee_code",
         "employeeCode",
+        # HK Vertical-L：工号在「No. of EE」（样例值为 CUS1503-0001）
+        "No. of EE",
+        "No of EE",
+        "EE No",
+        "EE No.",
     )
     for key in preferred:
         got = _norm_code(emp.get(key))
@@ -235,7 +241,11 @@ def _bill_employee_code(emp: dict[str, Any]) -> str:
             return got
     for key, val in emp.items():
         ks = str(key)
-        if "工号" in ks or re.search(r"employee\s*code|ee\s*code", ks, re.I):
+        if "工号" in ks or re.search(
+            r"employee\s*code|ee\s*code|no\.?\s*of\s*ee|ee\s*no",
+            ks,
+            re.I,
+        ):
             got = _norm_code(val)
             if got:
                 return got
@@ -341,14 +351,20 @@ def _style_for_employee(
     if not styles:
         return {}
 
+    bill_code = _bill_employee_code(emp)
+
     # 核心：映射人 → 员工库 → 用工号对齐账单（库名可以 ≠ 供应商姓名）
     for entry in styles:
         dir_row = _resolve_style_directory_person(entry, employee_directory)
         if dir_row is not None and _emp_matches_directory_person(emp, dir_row):
             return entry
+        # 映射带 employeeId 且已解析到库行：再用库工号对账单工号（防止 entry.employeeCode 为空）
+        if dir_row is not None and bill_code:
+            dir_code = _norm_code(dir_row.get("employee_code") or dir_row.get("employeeCode"))
+            if dir_code and _codes_soft_equal(bill_code, dir_code):
+                return entry
 
-    # 账单工号 ↔ 映射 employeeCode（映射未带 employeeId 时）
-    bill_code = _bill_employee_code(emp)
+    # 账单工号 ↔ 映射 employeeCode
     if bill_code:
         for entry in styles:
             got = _norm_code(entry.get("employeeCode") or entry.get("employee_code"))
@@ -369,7 +385,7 @@ def _style_for_employee(
             except (TypeError, ValueError):
                 pass
 
-    # 姓名直接糊配（最后手段）
+    # 姓名直接糊配（最后手段）：映射 cnName ↔ 账单姓名
     for entry in styles:
         if _style_entry_matches_employee(entry, emp):
             return entry
@@ -396,10 +412,20 @@ def needed_example_rows_for_styles(
     # 先收录映射里声明的示例行，避免配对暂失败时扩行把第二种公式盖掉
     for entry in _employee_formula_styles(mapping):
         main_r = _pick_int_field(
-            entry, main_example_field, "mainExampleRow", "chinaExampleRow", "twExampleRow"
+            entry,
+            main_example_field,
+            "mainExampleRow",
+            "chinaExampleRow",
+            "twExampleRow",
+            "hkExampleRow",
         )
         ee_r = _pick_int_field(
-            entry, ee_example_field, "eeExampleRow", "chinaEeExampleRow", "twEeExampleRow"
+            entry,
+            ee_example_field,
+            "eeExampleRow",
+            "chinaEeExampleRow",
+            "twEeExampleRow",
+            "hkEeExampleRow",
         )
         if main_r is not None:
             main_needed.add(main_r)
@@ -408,10 +434,20 @@ def needed_example_rows_for_styles(
     for emp in employees:
         entry = _style_for_employee(mapping, emp, employee_directory=employee_directory)
         main_r = _pick_int_field(
-            entry, main_example_field, "mainExampleRow", "chinaExampleRow", "twExampleRow"
+            entry,
+            main_example_field,
+            "mainExampleRow",
+            "chinaExampleRow",
+            "twExampleRow",
+            "hkExampleRow",
         )
         ee_r = _pick_int_field(
-            entry, ee_example_field, "eeExampleRow", "chinaEeExampleRow", "twEeExampleRow"
+            entry,
+            ee_example_field,
+            "eeExampleRow",
+            "chinaEeExampleRow",
+            "twEeExampleRow",
+            "hkEeExampleRow",
         )
         if main_r is not None:
             main_needed.add(main_r)
@@ -490,12 +526,22 @@ def apply_employee_formula_styles(
     ee_src_needed: set[int] = set()
     for i, emp in enumerate(employees):
         entry = _style_for_employee(mapping, emp, employee_directory=employee_directory)
-        # 兼容 chinaExampleRow / twExampleRow / mainExampleRow 等别名，避免 UI 字段与引擎字段不一致时「像没应用」
+        # 兼容 china/tw/hk ExampleRow / mainExampleRow 等别名，避免 UI 字段与引擎字段不一致
         main_over = _pick_int_field(
-            entry, main_example_field, "mainExampleRow", "chinaExampleRow", "twExampleRow"
+            entry,
+            main_example_field,
+            "mainExampleRow",
+            "chinaExampleRow",
+            "twExampleRow",
+            "hkExampleRow",
         )
         ee_over = _pick_int_field(
-            entry, ee_example_field, "eeExampleRow", "chinaEeExampleRow", "twEeExampleRow"
+            entry,
+            ee_example_field,
+            "eeExampleRow",
+            "chinaEeExampleRow",
+            "twEeExampleRow",
+            "hkEeExampleRow",
         )
         if main_over is not None or ee_over is not None:
             src_main = main_over if main_over is not None else main_def

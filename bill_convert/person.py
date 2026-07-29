@@ -56,8 +56,15 @@ def person_name_labels_match(
 
 
 def bill_employee_like_entry(emp: dict, entry: dict, *, min_score: int = 70) -> bool:
-    # TW: CN Name / EN Name；China: 姓名（可与 cnName/enName 配置互配）
-    bill = [emp.get("CN Name"), emp.get("EN Name"), emp.get("姓名")]
+    # TW: CN/EN Name；China: 姓名；HK: Name of Employee / EE Name / Name
+    bill = [
+        emp.get("CN Name"),
+        emp.get("EN Name"),
+        emp.get("姓名"),
+        emp.get("Name of Employee"),
+        emp.get("EE Name"),
+        emp.get("Name"),
+    ]
     cfg = [entry.get("cnName"), entry.get("enName")]
     return person_name_labels_match(
         [str(x) for x in bill if x is not None],

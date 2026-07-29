@@ -32,9 +32,15 @@ def shift_row_formula(
         lambda m: f"{m.group(1)}{to_row}",
         s,
     )
+    # 只改「示例员工」对应的 L 行；账期等元数据行（如 C2/E2）必须保留
     pat = re.compile(rf"'{re.escape(target_l_sheet)}'!([A-Z]{{1,3}})(\d+)")
     for idx, ref in enumerate(placeholders):
-        ref = pat.sub(lambda m: f"'{target_l_sheet}'!{m.group(1)}{target_l_to}", ref)
+        def _retarget_l(m: re.Match[str], _from: int = target_l_from, _to: int = target_l_to) -> str:
+            if int(m.group(2)) == _from:
+                return f"'{target_l_sheet}'!{m.group(1)}{_to}"
+            return m.group(0)
+
+        ref = pat.sub(_retarget_l, ref)
         s = s.replace(f"__EXT{idx}__", ref)
     return s
 
@@ -124,9 +130,9 @@ def fix_sheet_cross_refs(
     other_row: int,
     quoted: bool,
 ) -> None:
-    """修正同行公式里对其它 sheet 上一行引用（复制扩展后常见 off-by-one）。"""
+    """修正同行公式里对其它 sheet 的行引用为配对行（扩多行时不能只修 off-by-one）。"""
     prefix = f"'{other_sheet}'!" if quoted else f"{other_sheet}!"
-    pat = re.compile(rf"{re.escape(prefix)}([A-Z]+){other_row - 1}(?!\d)")
+    pat = re.compile(rf"{re.escape(prefix)}([A-Z]+)(\d+)(?!\d)")
     repl_prefix = prefix
     for col in range(1, (ws.max_column or 0) + 1):
         cell = ws.cell(dst_row, col)
@@ -148,3 +154,11 @@ def fix_china_row_china_ee_refs(ws_china: Worksheet, dst_row: int, ee_row: int) 
 
 def fix_ee_row_china_refs(ws_ee: Worksheet, dst_row: int, china_row: int) -> None:
     fix_sheet_cross_refs(ws_ee, dst_row, other_sheet="China", other_row=china_row, quoted=False)
+
+
+def fix_hk_row_hk_ee_refs(ws_hk: Worksheet, dst_row: int, ee_row: int) -> None:
+    fix_sheet_cross_refs(ws_hk, dst_row, other_sheet="Hong Kong EE", other_row=ee_row, quoted=True)
+
+
+def fix_ee_row_hk_refs(ws_ee: Worksheet, dst_row: int, hk_row: int) -> None:
+    fix_sheet_cross_refs(ws_ee, dst_row, other_sheet="Hong Kong", other_row=hk_row, quoted=False)

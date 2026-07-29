@@ -1026,10 +1026,19 @@ def _convert_impl(
                 + ",".join(str(x) for x in sorted(want_rows))
                 + "，但实际全部落在默认行；请检查员工库工号是否与账单「工号」一致"
             )
+            formula_match_hint = "style-row-miss"
         elif not want_rows:
             name_warnings.append(
                 "映射有员工公式样式，但未找到 chinaExampleRow/mainExampleRow 字段（可能未保存成功）"
             )
+            formula_match_hint = "style-row-missing-field"
+        elif want_rows and want_rows.issubset(used):
+            formula_match_hint = "style-row-hit"
+        else:
+            formula_match_hint = "style-row-partial"
+    else:
+        formula_match_hint = ""
+
     pn_layout = fit_pn_employees(wb[PN_SHEET], len(employees))
     fx_row = int(pn_layout.get("fx_row") or _find_pn_fx_row(wb[PN_SHEET]))
 
@@ -1068,6 +1077,7 @@ def _convert_impl(
         "formula_main_rows": ",".join(
             str(p.get("mainExampleRow")) for p in (formula_plan or []) if p.get("mainExampleRow") is not None
         ),
+        "formula_match_hint": formula_match_hint,
     }
 
 
