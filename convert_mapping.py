@@ -48,7 +48,7 @@ ENGINE_DEFAULTS: dict[str, dict[str, Any]] = {
         "employeeFormulaStyles": [],
         "skipSourceHeaders": [],
     },
-    "china_hrone": {
+    "china_payroll_calc": {
         "schemaVersion": 1,
         "sourceEmployeeSheet": {
             "sheet": "计算结果",
@@ -56,7 +56,15 @@ ENGINE_DEFAULTS: dict[str, dict[str, Any]] = {
             "headerRow": 1,
             "nameHeaders": ["姓名"],
         },
-        "targetL": {"sheet": "China-L", "dataStartRow": 2},
+        "targetL": {"sheet": "China-L", "headerRow": 1, "dataStartRow": 2},
+        "columnRename": {},
+        "formulaTemplates": {
+            "applyDefaultToAllEmployees": True,
+            "China": {"defaultExampleRow": 9},
+            "China EE": {"defaultExampleRow": 10, "dataStartOffset": 1},
+        },
+        "employeeFormulaStyles": [],
+        "skipSourceHeaders": [],
     },
     "hk_vertical_l": {
         "schemaVersion": 1,
@@ -73,6 +81,9 @@ ENGINE_DEFAULTS: dict[str, dict[str, Any]] = {
 
 
 def resolve_convert_mapping(engine_id: str, raw: dict[str, Any] | None) -> dict[str, Any]:
+    # 旧引擎 id 兼容
+    if engine_id == "china_hrone":
+        engine_id = "china_payroll_calc"
     base = copy.deepcopy(ENGINE_DEFAULTS.get(engine_id, {"schemaVersion": 1}))
     if not raw:
         return base

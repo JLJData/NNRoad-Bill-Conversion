@@ -37,7 +37,7 @@ def inspect_source_headers(
 
     if engine_id == "tw_payroll_calc":
         return _inspect_tw_source(source_path, mapping)
-    if engine_id == "china_hrone":
+    if engine_id in ("china_payroll_calc", "china_hrone"):
         return _inspect_fixed_header_source(source_path, mapping, default_sheet="计算结果", default_row=1)
     if engine_id == "hk_vertical_l":
         return _inspect_fixed_header_source(source_path, mapping, default_sheet="Hong Kong-L", default_row=7)
@@ -101,6 +101,7 @@ def _inspect_fixed_header_source(
     if not isinstance(src_spec, dict):
         src_spec = {}
     header_row = int(src_spec.get("headerRow") or default_row)
+    name_headers = src_spec.get("nameHeaders") if isinstance(src_spec.get("nameHeaders"), list) else []
     wb = load_workbook(source_path, data_only=True, read_only=True)
     sheet_names = list(wb.sheetnames)
     name = find_sheet_name(sheet_names, src_spec) or find_sheet_name(
@@ -115,12 +116,40 @@ def _inspect_fixed_header_source(
         }
     ws = wb[name]
     headers = _header_cells(ws, header_row)
+    header_map: dict[str, int] = {}
+    for col in range(1, (ws.max_column or 0) + 1):
+        key = norm(ws.cell(header_row, col).value)
+        if key and key not in header_map:
+            header_map[key] = col
+
+    employees: list[dict[str, str]] = []
+    name_keys = [str(x).strip() for x in name_headers if str(x).strip()] or (
+        ["姓名"] if "姓名" in header_map else []
+    )
+    if name_keys:
+        primary = next((k for k in name_keys if k in header_map), None)
+        secondary = next((k for k in name_keys if k != primary and k in header_map), None)
+        if primary:
+            pcol = header_map[primary]
+            scol = header_map.get(secondary) if secondary else None
+            for row in range(header_row + 1, (ws.max_row or header_row) + 1):
+                cn = ws.cell(row, pcol).value
+                cn_s = str(cn).strip() if cn is not None else ""
+                if not cn_s:
+                    continue
+                en_s = ""
+                if scol:
+                    en = ws.cell(row, scol).value
+                    en_s = str(en).strip() if en is not None else ""
+                employees.append({"cnName": cn_s, "enName": en_s})
+
     wb.close()
     return {
         "ok": True,
         "sheetName": name,
         "headerRow": header_row,
         "headers": headers,
+        "employees": employees,
     }
 
 
@@ -214,6 +243,68 @@ def inspect_pn_headers(
             return {"ok": False, "message": str(exc)}
         finally:
             tw_mod._ACTIVE_MAPPING = None
+
+    if engine_id in ("china_payroll_calc", "china_hrone"):
+        from profiles.china_payroll_calc import convert as cn_mod
+
+        cn_mod._ACTIVE_MAPPING = mapping
+        try:
+            wb = load_workbook(template_path, data_only=True, read_only=True)
+            sheet_names = list(wb.sheetnames)
+            name = find_sheet_name(sheet_names, spec)
+            if not name:
+                wb.close()
+                return {
+                    "ok": False,
+                    "message": f"母版中未找到 sheet「{sheet_want}」",
+                    "sheetNames": sheet_names,
+                }
+            header_row = int(target.get("headerRow") or 1)
+            data_start = int(target.get("dataStartRow") or cn_mod.CHINA_L_DATA_START_ROW)
+            headers = _header_cells(wb[name], header_row)
+            wb.close()
+
+            wb_f = load_workbook(template_path, data_only=False, read_only=False)
+            china_start = cn_mod.CHINA_DATA_START_ROW
+            ee_start = cn_mod.CHINA_EE_DATA_START_ROW
+            china_examples: list[dict[str, Any]] = []
+            ee_examples: list[dict[str, Any]] = []
+            if cn_mod.CHINA_SHEET in wb_f.sheetnames:
+                china_examples = list_formula_example_rows(
+                    wb_f[cn_mod.CHINA_SHEET],
+                    china_start,
+                    marker_col=3,
+                )
+            if cn_mod.CHINA_EE_SHEET in wb_f.sheetnames:
+                ee_examples = list_formula_example_rows(
+                    wb_f[cn_mod.CHINA_EE_SHEET],
+                    ee_start,
+                    marker_col=4,
+                )
+            wb_f.close()
+            ft = mapping.get("formulaTemplates") if isinstance(mapping.get("formulaTemplates"), dict) else {}
+            china_tpl = ft.get("China") if isinstance(ft.get("China"), dict) else {}
+            ee_tpl = ft.get("China EE") if isinstance(ft.get("China EE"), dict) else {}
+            return {
+                "ok": True,
+                "sheetName": name,
+                "headerRow": header_row,
+                "dataStartRow": data_start,
+                "autoDetectedLayout": False,
+                "headers": headers,
+                "formulaExampleRows": {
+                    "China": china_examples,
+                    "China EE": ee_examples,
+                    "chinaDataStartRow": china_start,
+                    "chinaEeDataStartRow": ee_start,
+                    "defaultChinaRow": int(china_tpl.get("defaultExampleRow") or china_start),
+                    "defaultChinaEeRow": int(ee_tpl.get("defaultExampleRow") or ee_start),
+                },
+            }
+        except Exception as exc:
+            return {"ok": False, "message": str(exc)}
+        finally:
+            cn_mod._ACTIVE_MAPPING = None
 
     header_row = int(target.get("headerRow") or 7)
     wb = load_workbook(template_path, data_only=True, read_only=True)

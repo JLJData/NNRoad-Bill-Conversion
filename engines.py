@@ -14,10 +14,10 @@ class ConvertEngine:
 
 
 ENGINES: dict[str, ConvertEngine] = {
-    "china_hrone": ConvertEngine(
-        engine_id="china_hrone",
-        label="HROne China",
-        module="profiles.china_hrone.convert",
+    "china_payroll_calc": ConvertEngine(
+        engine_id="china_payroll_calc",
+        label="China Payroll Calculation",
+        module="profiles.china_payroll_calc.convert",
         description="源账单 sheet「计算结果」→ China PN",
     ),
     "hk_vertical_l": ConvertEngine(
@@ -34,14 +34,18 @@ ENGINES: dict[str, ConvertEngine] = {
     ),
 }
 
+# 旧引擎 id 兼容（曾误用供应商名 china_hrone）；新代码请用 china_payroll_calc
+ENGINES["china_hrone"] = ENGINES["china_payroll_calc"]
+
 
 def get_engine(engine_id: str) -> ConvertEngine:
     engine = ENGINES.get(engine_id)
     if engine is None:
-        known = ", ".join(sorted(ENGINES))
+        known = ", ".join(sorted(k for k in ENGINES if k != "china_hrone"))
         raise KeyError(f"未知转换引擎「{engine_id}」，已知: {known}")
     return engine
 
 
 def list_engines() -> list[ConvertEngine]:
-    return [ENGINES[k] for k in sorted(ENGINES)]
+    # 列表不重复暴露兼容别名
+    return [ENGINES[k] for k in sorted(ENGINES) if k != "china_hrone"]

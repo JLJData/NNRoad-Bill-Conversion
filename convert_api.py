@@ -146,6 +146,12 @@ async def convert(
             headers["X-Convert-Warnings"] = str(len(warnings))
             for w in warnings:
                 print(f"[convert-warning] {w}")
+        # ASCII 诊断：映射样式条数、每人实际套用的 China 示例行
+        if result.get("mapping_style_count") is not None:
+            headers["X-Convert-Mapping-Styles"] = str(int(result.get("mapping_style_count") or 0))
+        formula_rows = str(result.get("formula_main_rows") or "").strip()
+        if formula_rows:
+            headers["X-Convert-Formula-Rows"] = formula_rows[:200]
         # 结果摘要用自定义头传一小段 JSON（可选）；主体仍是文件
         return FileResponse(
             path=str(output_path),

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""分析 china_hrone 样例账单字段结构，输出 structure.json。"""
+"""分析 china_payroll_calc 样例账单字段结构，输出 structure.json。"""
 import sys
 from pathlib import Path
 

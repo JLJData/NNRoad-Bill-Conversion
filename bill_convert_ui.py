@@ -387,7 +387,7 @@ class BillConvertApp(tk.Tk):
             names = result.get("employee_names") or []
             if names:
                 lines.append(f"  姓名: {', '.join(str(n) for n in names if n)}")
-            if profile.engine == "china_hrone":
+            if profile.engine in ("china_payroll_calc", "china_hrone"):
                 lines.append(f"  Other: {result.get('other_amount')}  报销笔数: {result.get('expense_count')}")
             else:
                 lines.append(f"  公司: {result.get('company_name')}  账期: {result.get('period')}")

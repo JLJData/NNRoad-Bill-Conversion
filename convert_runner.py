@@ -52,13 +52,14 @@ def run_convert(
         "pn_meta": meta_obj,
         "registry_dir": registry,
     }
-    # 仅台湾引擎等支持 employee_directory；其它引擎忽略该参数
+    # 引擎签名支持时注入；china_payroll_calc / tw_payroll_calc 等各自消费，互不混用字段名
     import inspect
 
     sig = inspect.signature(module.convert)
     if "employee_directory" in sig.parameters:
         convert_kwargs["employee_directory"] = employee_directory
-    if "convert_mapping" in sig.parameters and convert_mapping:
+    # 即使 mapping 为空也传入，让引擎显式走「无映射」分支并打诊断
+    if "convert_mapping" in sig.parameters:
         convert_kwargs["convert_mapping"] = convert_mapping
 
     result = module.convert(

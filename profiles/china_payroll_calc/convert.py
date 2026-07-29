@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 """
-大陆 HROne「计算结果」源账单 → China PN（引擎 china_hrone）
+大陆「计算结果」源账单 → China PN（引擎 china_payroll_calc）
 
 用法:
-  python -m profiles.china_hrone.convert <原始账单.xlsx> [-o 输出.xlsx] [-t 母版.xlsx]
+  python -m profiles.china_payroll_calc.convert <原始账单.xlsx> [-o 输出.xlsx] [-t 母版.xlsx]
 
 默认母版: templates/china/template.xlsx
 （含 PN / China / China EE / China-L 公式结构）
@@ -28,6 +28,19 @@ from region_templates import get_region_template
 from xlsx_convert_utils import clean_value, norm
 from xlsx_luckysheet_compat import apply_luckysheet_compat
 from xlsx_postprocess import postprocess_converted_xlsx
+from convert_mapping import find_sheet_name, resolve_convert_mapping
+from bill_convert.formula_copy import (
+    copy_row_formulas as shared_copy_row_formulas,
+    fix_china_row_china_ee_refs,
+    fix_ee_row_china_refs,
+    snapshot_row_cells,
+)
+from bill_convert.formula_layout import (
+    apply_employee_formula_styles,
+    needed_example_rows_for_styles,
+    tw_l_row_for_data_row,
+)
+from bill_convert.formula_layout import _default_example_row as default_example_row_for_mapping
 
 DEFAULT_TEMPLATE = get_region_template("China")
 
@@ -35,10 +48,39 @@ CALC_SHEET_NAMES = ("计算结果",)
 OTHER_FEE_NAMES = ("Other Fee",)
 PAYMENT_NOTICE_NAMES = ("S-Payment Notice",)
 
+CHINA_SHEET = "China"
+CHINA_EE_SHEET = "China EE"
+CHINA_L_SHEET = "China-L"
 CHINA_DATA_START_ROW = 9
 CHINA_EE_DATA_START_ROW = 10
 CHINA_L_DATA_START_ROW = 2
 MAX_EMPLOYEES = 10
+
+_ACTIVE_MAPPING: dict[str, Any] | None = None
+
+
+def _active_mapping() -> dict[str, Any]:
+    return _ACTIVE_MAPPING if isinstance(_ACTIVE_MAPPING, dict) else resolve_convert_mapping("china_payroll_calc", None)
+
+
+def _china_l_data_start() -> int:
+    target = _active_mapping().get("targetL")
+    if isinstance(target, dict) and target.get("dataStartRow") is not None:
+        return int(target["dataStartRow"])
+    return CHINA_L_DATA_START_ROW
+
+
+def _china_formula_rows() -> dict[str, int]:
+    l_start = _china_l_data_start()
+    return {
+        "l_data_start": l_start,
+        "main_data_start": CHINA_DATA_START_ROW,
+        "ee_data_start": CHINA_EE_DATA_START_ROW,
+        # 兼容旧键名（若公共层回退）
+        "tw_l_data_start": l_start,
+        "tw_data_start": CHINA_DATA_START_ROW,
+        "tw_ee_data_start": CHINA_EE_DATA_START_ROW,
+    }
 
 
 def find_sheet(wb, candidates: tuple[str, ...]) -> str | None:
@@ -116,12 +158,24 @@ def write_china_l(ws: Worksheet, employees: list[dict[str, Any]]) -> None:
     if not target_headers:
         raise ValueError("China-L 第 1 行表头为空")
 
+    rename = _active_mapping().get("columnRename") or {}
+    if not isinstance(rename, dict):
+        rename = {}
+    # China-L 列名 → 源账单列名
+    target_to_source = {
+        str(v).strip(): str(k).strip()
+        for k, v in rename.items()
+        if k and v and str(k).strip() != str(v).strip()
+    }
+
     clear_china_l_data(ws)
     for idx, emp in enumerate(employees):
-        row = CHINA_L_DATA_START_ROW + idx
-        for hdr, val in emp.items():
-            col = target_headers.get(hdr)
-            if col is not None and val is not None:
+        row = _china_l_data_start() + idx
+        for hdr, col in target_headers.items():
+            val = emp.get(hdr)
+            if val is None and hdr in target_to_source:
+                val = emp.get(target_to_source[hdr])
+            if val is not None:
                 ws.cell(row, col).value = val
 
 
@@ -166,58 +220,217 @@ def clear_employee_row(ws: Worksheet, row: int) -> None:
 
 
 def count_template_employee_slots(ws: Worksheet, data_start_row: int, marker_col: int) -> int:
+    """连续占位：marker 非空，或该行存在公式（第二种公式行 C 列可能为空）。"""
     n = 0
     for row in range(data_start_row, data_start_row + MAX_EMPLOYEES):
-        if ws.cell(row, marker_col).value is not None:
+        marker = ws.cell(row, marker_col).value
+        has_formula = False
+        if marker is None:
+            for col in range(1, (ws.max_column or 0) + 1):
+                cell = ws.cell(row, col)
+                if cell.data_type == "f" and cell.value:
+                    has_formula = True
+                    break
+        if marker is not None or has_formula:
             n += 1
-        else:
-            break
+            continue
+        break
     return max(n, 1)
 
 
-def fit_china_formula_sheets(wb, employee_count: int) -> None:
+def fit_china_formula_sheets(
+    wb,
+    employee_count: int,
+    *,
+    clear_excess: bool = True,
+    protected_china_rows: set[int] | None = None,
+    protected_ee_rows: set[int] | None = None,
+) -> None:
     """
-    母版 China / China EE 预置 1 人公式行（汇总区预留到 +9）。
-    人数不足时清多余行；人数更多时复制扩展（含样式）。
+    母版 China / China EE 预置公式行。
+    人数更多时从「默认示例行」（第一行公式）复制扩展；人数不足时可清多余行。
+
+    若随后还要按 employeeFormulaStyles 从示例行盖公式，须先 clear_excess=False，
+    再 apply_china_employee_formula_styles，最后 clear_excess_china_formula_rows。
+    protected_*：扩行时不得覆盖的示例行（如第二种公式行）。
     """
     n = max(int(employee_count), 1)
-    china = wb["China"]
-    ee = wb["China EE"]
+    mapping = _active_mapping()
+    l_start = _china_l_data_start()
+    china = wb[CHINA_SHEET]
+    ee = wb[CHINA_EE_SHEET]
     china_slots = count_template_employee_slots(china, CHINA_DATA_START_ROW, marker_col=3)
     ee_slots = count_template_employee_slots(ee, CHINA_EE_DATA_START_ROW, marker_col=4)
+    china_tpl = default_example_row_for_mapping(mapping, "China", CHINA_DATA_START_ROW)
+    ee_tpl = default_example_row_for_mapping(mapping, "China EE", CHINA_EE_DATA_START_ROW)
+    # 保护第二种公式示例行：槽位至少覆盖到这些行，避免扩行时从第 1 种公式盖掉
+    prot_c = set(protected_china_rows or ())
+    prot_e = set(protected_ee_rows or ())
+    prot_c.add(china_tpl)
+    prot_e.add(ee_tpl)
+    for r in prot_c:
+        china_slots = max(china_slots, r - CHINA_DATA_START_ROW + 1)
+    for r in prot_e:
+        ee_slots = max(ee_slots, r - CHINA_EE_DATA_START_ROW + 1)
+    src_china_l = tw_l_row_for_data_row(
+        china_tpl, data_start=CHINA_DATA_START_ROW, target_l_data_start=l_start
+    )
+    src_ee_l = tw_l_row_for_data_row(
+        ee_tpl, data_start=CHINA_EE_DATA_START_ROW, target_l_data_start=l_start
+    )
 
+    if clear_excess:
+        for i in range(n, china_slots):
+            clear_employee_row(china, CHINA_DATA_START_ROW + i)
+        for i in range(n, ee_slots):
+            clear_employee_row(ee, CHINA_EE_DATA_START_ROW + i)
+
+    if n > china_slots:
+        for i in range(china_slots, n):
+            dst_row = CHINA_DATA_START_ROW + i
+            dst_l = l_start + i
+            ee_row = CHINA_EE_DATA_START_ROW + i
+            shared_copy_row_formulas(
+                china, china_tpl, dst_row, src_china_l, dst_l, target_l_sheet=CHINA_L_SHEET
+            )
+            fix_china_row_china_ee_refs(china, dst_row, ee_row)
+
+    if n > ee_slots:
+        for i in range(ee_slots, n):
+            dst_row = CHINA_EE_DATA_START_ROW + i
+            dst_l = l_start + i
+            china_row = CHINA_DATA_START_ROW + i
+            shared_copy_row_formulas(
+                ee, ee_tpl, dst_row, src_ee_l, dst_l, target_l_sheet=CHINA_L_SHEET
+            )
+            fix_ee_row_china_refs(ee, dst_row, china_row)
+
+
+def clear_excess_china_formula_rows(wb, employee_count: int) -> None:
+    n = max(int(employee_count), 0)
+    china = wb[CHINA_SHEET]
+    ee = wb[CHINA_EE_SHEET]
+    china_slots = count_template_employee_slots(china, CHINA_DATA_START_ROW, marker_col=3)
+    ee_slots = count_template_employee_slots(ee, CHINA_EE_DATA_START_ROW, marker_col=4)
     for i in range(n, china_slots):
         clear_employee_row(china, CHINA_DATA_START_ROW + i)
     for i in range(n, ee_slots):
         clear_employee_row(ee, CHINA_EE_DATA_START_ROW + i)
 
-    if n > china_slots:
-        src_row = CHINA_DATA_START_ROW + china_slots - 1
-        src_l = CHINA_L_DATA_START_ROW + china_slots - 1
-        for i in range(china_slots, n):
-            copy_row_formulas(
-                china,
-                src_row,
-                CHINA_DATA_START_ROW + i,
-                src_l,
-                CHINA_L_DATA_START_ROW + i,
-            )
 
-    if n > ee_slots:
-        src_row = CHINA_EE_DATA_START_ROW + ee_slots - 1
-        src_l = CHINA_L_DATA_START_ROW + ee_slots - 1
-        for i in range(ee_slots, n):
-            dst_row = CHINA_EE_DATA_START_ROW + i
-            china_row = CHINA_DATA_START_ROW + i
-            copy_row_formulas(ee, src_row, dst_row, src_l, CHINA_L_DATA_START_ROW + i)
-            for col in range(1, (ee.max_column or 0) + 1):
-                cell = ee.cell(dst_row, col)
-                if cell.data_type == "f" and isinstance(cell.value, str):
-                    cell.value = re.sub(
-                        rf"China!([A-Z]+){CHINA_DATA_START_ROW + ee_slots - 1}(?!\d)",
-                        lambda m, cr=china_row: f"China!{m.group(1)}{cr}",
-                        cell.value,
-                    )
+def apply_china_employee_formula_styles(
+    wb,
+    employees: list[dict[str, Any]],
+    *,
+    formula_rows: dict[str, int] | None = None,
+    employee_directory: list[dict[str, Any]] | None = None,
+    main_snapshots: dict[int, list[dict[str, Any]]] | None = None,
+    ee_snapshots: dict[int, list[dict[str, Any]]] | None = None,
+) -> list[dict[str, Any]]:
+    """China / China EE 按人盖公式：配对用 chinaExampleRow，未配对用默认第一行公式。"""
+    return apply_employee_formula_styles(
+        wb,
+        employees,
+        _active_mapping(),
+        formula_rows=formula_rows or _china_formula_rows(),
+        employee_directory=employee_directory,
+        main_sheet=CHINA_SHEET,
+        ee_sheet=CHINA_EE_SHEET,
+        target_l_sheet=CHINA_L_SHEET,
+        main_template_key="China",
+        ee_template_key="China EE",
+        main_example_field="chinaExampleRow",
+        ee_example_field="chinaEeExampleRow",
+        fix_main_ee_refs=fix_china_row_china_ee_refs,
+        fix_ee_main_refs=fix_ee_row_china_refs,
+        main_snapshots=main_snapshots,
+        ee_snapshots=ee_snapshots,
+    )
+
+
+_CHINA_EE_NAME_COL = 2  # China!B = EE Name（China EE!E 引用 =China!B{row}）
+
+
+def _directory_row_by_employee_code(
+    code: Any,
+    directory: list[dict[str, Any]],
+) -> dict[str, Any] | None:
+    want = norm(code)
+    if not want:
+        return None
+    exact: list[dict[str, Any]] = []
+    for row in directory:
+        if not isinstance(row, dict):
+            continue
+        got = norm(row.get("employee_code") or row.get("employeeCode"))
+        if got and got == want:
+            exact.append(row)
+    if len(exact) == 1:
+        return exact[0]
+    if len(exact) > 1:
+        return exact[0]
+    # 兼容库里只存短工号、账单带客户前缀：CUS1525-0002 ↔ 0002
+    tail = want.split("-")[-1] if "-" in want else want
+    soft: list[dict[str, Any]] = []
+    for row in directory:
+        if not isinstance(row, dict):
+            continue
+        got = norm(row.get("employee_code") or row.get("employeeCode"))
+        if not got:
+            continue
+        got_tail = got.split("-")[-1] if "-" in got else got
+        if got == tail or got_tail == want or got_tail == tail:
+            soft.append(row)
+    if len(soft) == 1:
+        return soft[0]
+    return None
+
+
+def apply_china_sheet_names_from_directory(
+    ws_china: Worksheet,
+    employees: list[dict[str, Any]],
+    directory: list[dict[str, Any]] | None,
+    *,
+    china_data_start_row: int = CHINA_DATA_START_ROW,
+) -> tuple[list[str], list[str]]:
+    """
+    写入 China!B（EE Name）：只用员工库名称（按工号匹配），绝不使用供应商账单「姓名」。
+    China EE!E = China!B{row}，须在公式扩行之后覆盖母版占位（如 CPT）。
+    未匹配或库姓名为空时清空该格并记 warning。
+
+    Returns:
+        (warnings, written_names) — written_names 与 employees 对齐，未写入则为 ""。
+    """
+    warnings: list[str] = []
+    written: list[str] = []
+    dir_list = [r for r in (directory or []) if isinstance(r, dict)]
+    for i, emp in enumerate(employees):
+        row = china_data_start_row + i
+        code = emp.get("工号")
+        cell = ws_china.cell(row, _CHINA_EE_NAME_COL)
+        if not dir_list:
+            cell.value = None
+            written.append("")
+            warnings.append(f"第{i + 1}人：未传入员工库，China!B 未写入库名称（工号 {code or '（空）'}）")
+            continue
+        hit = _directory_row_by_employee_code(code, dir_list)
+        if hit is None:
+            cell.value = None
+            written.append("")
+            warnings.append(f"第{i + 1}人：工号 {code or '（空）'} 未在员工库匹配，China!B 未填（不用供应商姓名）")
+            continue
+        lib_name = (
+            str(hit.get("employee_name") or hit.get("employeeName") or "").strip()
+            or str(hit.get("employee_name_en") or hit.get("employeeNameEn") or "").strip()
+        )
+        if not lib_name:
+            cell.value = None
+            written.append("")
+            warnings.append(f"第{i + 1}人：工号 {code} 已匹配员工库，但库中姓名为空，China!B 未填")
+            continue
+        cell.value = lib_name
+        written.append(lib_name)
+    return warnings, written
 
 
 def apply_china_specials(
@@ -230,7 +443,16 @@ def apply_china_specials(
 ) -> None:
     for i in range(employee_count):
         row = CHINA_DATA_START_ROW + i
-        ws.cell(row, 9).value = f"=40*PN!$B${fx_row}*{expense_count}"
+        # I 列：保留母版/配对公式（如 50*PN!$B$xx*n），只改汇率行与末尾报销笔数
+        # 旧逻辑写死 =40*... 会把第二种公式的 50 盖掉
+        i_val = ws.cell(row, 9).value
+        if isinstance(i_val, str) and i_val.startswith("="):
+            updated = re.sub(r"PN!\$?B\$?\d+", f"PN!$B${fx_row}", i_val, flags=re.IGNORECASE)
+            if re.search(r"\*\d+\s*$", updated):
+                updated = re.sub(r"\*\d+\s*$", f"*{int(expense_count)}", updated)
+            ws.cell(row, 9).value = updated
+        else:
+            ws.cell(row, 9).value = f"=40*PN!$B${fx_row}*{int(expense_count)}"
         # 同步母版 H 列里的汇率绝对行号
         h = ws.cell(row, 8).value
         if isinstance(h, str) and "PN!" in h:
@@ -557,10 +779,9 @@ def fit_pn_employees(ws: Worksheet, employee_count: int) -> dict[str, int]:
         f_dh = ws.cell(deposit_hdr, 6)
         f_dh.value = f"=SUM(F{deposit_row})"
         f_dh.number_format = _PN_USD_FMT
+        # Deposit 只有一行：始终保留完整描述公式（勿因人数>1 简化成 "=- Deposit"）
         ws.cell(deposit_row, 1).value = (
             '="- Deposit  for "&China!B9&"  -  "&MONTH(China!B2)&"-"&YEAR(China!B2)'
-            if n == 1
-            else '="- Deposit"'
         )
         e_dep = ws.cell(deposit_row, 5)
         e_dep.value = "=China!BI6"
@@ -603,27 +824,41 @@ def fit_pn_employees(ws: Worksheet, employee_count: int) -> dict[str, int]:
 
 
 def retarget_pn_fx_refs(wb, fx_row: int) -> None:
-    """插删 PN 行后，把 China / China EE / PN 里的 PN!$B$xx 指到新汇率行。"""
-    pat = re.compile(r"PN!\$?B\$?\d+", re.IGNORECASE)
+    """插删 PN 行后，仅把「汇率格」绝对引用改到新行。
+
+    只改：
+    - 跨表 PN!$B$xx（如 China!H9 的服务费×汇率）
+    - PN 本表裸 $B$xx（如 =E16/$B$29）
+    不要动：
+    - PN!B8 相对引用（Client Name）
+    - China!$B$2 等他表绝对引用（Labor cost 账期 MONTH/YEAR）
+    """
+    pat_pn = re.compile(r"PN!\$B\$\d+", re.IGNORECASE)
+    # 负向后顾：前面是 ! 说明是 Sheet!$B$n，不是本表汇率格
+    pat_local = re.compile(r"(?<!!)\$B\$\d+")
     for name in wb.sheetnames:
         ws = wb[name]
         for row in ws.iter_rows():
             for cell in row:
                 v = cell.value
-                if isinstance(v, str) and "PN!" in v.upper() and pat.search(v):
-                    cell.value = pat.sub(f"PN!$B${fx_row}", v)
-                elif isinstance(v, str) and name == PN_SHEET and "$B$" in v:
-                    # PN 表内 =E16/$B$29
-                    if re.search(r"\$B\$\d+", v):
-                        cell.value = re.sub(r"\$B\$\d+", f"$B${fx_row}", v)
+                if not isinstance(v, str):
+                    continue
+                if "PN!" in v.upper() and pat_pn.search(v):
+                    cell.value = pat_pn.sub(f"PN!$B${fx_row}", v)
+                elif name == PN_SHEET and pat_local.search(v):
+                    cell.value = pat_local.sub(f"$B${fx_row}", v)
 
 
 def parse_source(source_path: Path) -> dict[str, Any]:
+    mapping = _active_mapping()
+    src_spec = mapping.get("sourceEmployeeSheet") if isinstance(mapping.get("sourceEmployeeSheet"), dict) else {}
     wb = load_workbook(source_path, data_only=True, read_only=True)
-    calc_name = find_sheet(wb, CALC_SHEET_NAMES)
+    calc_name = find_sheet_name(list(wb.sheetnames), src_spec) or find_sheet(wb, CALC_SHEET_NAMES)
     if not calc_name:
+        names = wb.sheetnames
         wb.close()
-        raise ValueError(f"未找到 sheet「计算结果」，现有: {wb.sheetnames}")
+        want = str(src_spec.get("sheet") or "计算结果")
+        raise ValueError(f"未找到 sheet「{want}」，现有: {names}")
 
     employees = read_calc_employees(wb[calc_name])
 
@@ -644,13 +879,18 @@ def parse_source(source_path: Path) -> dict[str, Any]:
 
     wb.close()
 
-    try:
-        rates = fetch_usd_rates()
-        fx_rate = get_china_pn_fx_rate(rates)
-        fx_source = "api:CNY"
-    except RuntimeError:
+    # 优先供应商账单汇率；无效再回退网上 CNY
+    if vendor_fx_rate is not None:
         fx_rate = vendor_fx_rate
-        fx_source = "vendor:C49" if vendor_fx_rate is not None else "none"
+        fx_source = "vendor:C49"
+    else:
+        try:
+            rates = fetch_usd_rates()
+            fx_rate = get_china_pn_fx_rate(rates)
+            fx_source = "api:CNY"
+        except RuntimeError:
+            fx_rate = None
+            fx_source = "none"
 
     return {
         "employees": employees,
@@ -669,6 +909,32 @@ def convert(
     *,
     pn_meta: PnMeta | dict[str, Any] | None = None,
     registry_dir: Path | None = None,
+    employee_directory: list[dict[str, Any]] | None = None,
+    convert_mapping: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    global _ACTIVE_MAPPING
+    _ACTIVE_MAPPING = resolve_convert_mapping("china_payroll_calc", convert_mapping)
+    try:
+        return _convert_impl(
+            source_path,
+            output_path,
+            template_path,
+            pn_meta=pn_meta,
+            registry_dir=registry_dir,
+            employee_directory=employee_directory,
+        )
+    finally:
+        _ACTIVE_MAPPING = None
+
+
+def _convert_impl(
+    source_path: Path,
+    output_path: Path,
+    template_path: Path,
+    *,
+    pn_meta: PnMeta | dict[str, Any] | None = None,
+    registry_dir: Path | None = None,
+    employee_directory: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     if not template_path.is_file():
         raise FileNotFoundError(f"母版不存在: {template_path}")
@@ -682,7 +948,7 @@ def convert(
     shutil.copy2(template_path, output_path)
 
     wb = load_workbook(output_path, rich_text=True)
-    required = ("China-L", "China", "China EE", "PN")
+    required = (CHINA_L_SHEET, CHINA_SHEET, CHINA_EE_SHEET, PN_SHEET)
     for name in required:
         if name not in wb.sheetnames:
             wb.close()
@@ -697,8 +963,73 @@ def convert(
             reserve_invoice_number=True,
         )
 
-    write_china_l(wb["China-L"], employees)
-    fit_china_formula_sheets(wb, len(employees))
+    write_china_l(wb[CHINA_L_SHEET], employees)
+    # 扩行前先快照示例行（含第二种公式），否则 4 人扩行会先用第 1 种公式盖掉第 10 行
+    mapping = _active_mapping()
+    formula_rows = _china_formula_rows()
+    need_china, need_ee = needed_example_rows_for_styles(
+        mapping,
+        employees,
+        main_template_key="China",
+        ee_template_key="China EE",
+        main_example_field="chinaExampleRow",
+        ee_example_field="chinaEeExampleRow",
+        main_data_start=CHINA_DATA_START_ROW,
+        ee_data_start=CHINA_EE_DATA_START_ROW,
+        employee_directory=employee_directory,
+    )
+    main_snaps = {r: snapshot_row_cells(wb[CHINA_SHEET], r) for r in need_china}
+    ee_snaps = {r: snapshot_row_cells(wb[CHINA_EE_SHEET], r) for r in need_ee}
+    fit_china_formula_sheets(
+        wb,
+        len(employees),
+        clear_excess=False,
+        protected_china_rows=need_china,
+        protected_ee_rows=need_ee,
+    )
+    formula_plan = apply_china_employee_formula_styles(
+        wb,
+        employees,
+        formula_rows=formula_rows,
+        employee_directory=employee_directory,
+        main_snapshots=main_snaps,
+        ee_snapshots=ee_snaps,
+    )
+    clear_excess_china_formula_rows(wb, len(employees))
+    # 公式扩行可能带上母版占位名（如 CPT）；用工号查员工库覆盖 China!B（只用库名称）
+    name_warnings, lib_names = apply_china_sheet_names_from_directory(
+        wb[CHINA_SHEET],
+        employees,
+        employee_directory,
+        china_data_start_row=CHINA_DATA_START_ROW,
+    )
+    for p in formula_plan or []:
+        name_warnings.append(
+            f"公式配对：第{p.get('index')}人 → China第{p.get('mainExampleRow')}行 / China EE第{p.get('eeExampleRow')}行"
+        )
+    styles = mapping.get("employeeFormulaStyles") if isinstance(mapping.get("employeeFormulaStyles"), list) else []
+    name_warnings.insert(0, f"映射员工公式样式条数: {len(styles)}")
+    if styles:
+        from bill_convert.formula_layout import _pick_int_field
+
+        want_rows = set()
+        for s in styles:
+            if not isinstance(s, dict):
+                continue
+            r = _pick_int_field(s, "chinaExampleRow", "mainExampleRow", "twExampleRow")
+            if r is not None:
+                want_rows.add(r)
+        used = {int(p["mainExampleRow"]) for p in (formula_plan or []) if p.get("mainExampleRow") is not None}
+        if want_rows and used.isdisjoint(want_rows):
+            name_warnings.append(
+                "公式配对未命中：映射要求 China 示例行 "
+                + ",".join(str(x) for x in sorted(want_rows))
+                + "，但实际全部落在默认行；请检查员工库工号是否与账单「工号」一致"
+            )
+        elif not want_rows:
+            name_warnings.append(
+                "映射有员工公式样式，但未找到 chinaExampleRow/mainExampleRow 字段（可能未保存成功）"
+            )
     pn_layout = fit_pn_employees(wb[PN_SHEET], len(employees))
     fx_row = int(pn_layout.get("fx_row") or _find_pn_fx_row(wb[PN_SHEET]))
 
@@ -707,7 +1038,7 @@ def convert(
 
     retarget_pn_fx_refs(wb, fx_row)
     apply_china_specials(
-        wb["China"],
+        wb[CHINA_SHEET],
         len(employees),
         parsed["expense_count"],
         parsed["other_amount"],
@@ -723,7 +1054,7 @@ def convert(
 
     return {
         "employee_count": len(employees),
-        "employee_names": [e.get("姓名") for e in employees],
+        "employee_names": lib_names,
         "fx_rate": parsed["fx_rate"],
         "fx_source": parsed.get("fx_source"),
         "vendor_fx_rate": parsed.get("vendor_fx_rate"),
@@ -732,6 +1063,11 @@ def convert(
         "fx_row": fx_row,
         "output": str(output_path),
         "pn_meta": applied_pn.to_dict() if applied_pn else None,
+        "warnings": name_warnings,
+        "mapping_style_count": len(styles),
+        "formula_main_rows": ",".join(
+            str(p.get("mainExampleRow")) for p in (formula_plan or []) if p.get("mainExampleRow") is not None
+        ),
     }
 
 
@@ -758,8 +1094,8 @@ def main(argv: list[str] | None = None) -> int:
     print(f"  输出: {result['output']}")
     print(f"  员工: {result['employee_count']} 人 → {result['employee_names']}")
     print(f"  汇率 PN!B{result.get('fx_row', 29)}: {result['fx_rate']} ({result.get('fx_source')})")
-    if result.get("vendor_fx_rate") is not None and result.get("fx_source") == "api:CNY":
-        print(f"  供应商 C49 参考: {result['vendor_fx_rate']}")
+    if result.get("fx_source") == "api:CNY":
+        print("  （供应商 C49 无有效汇率，已回退网上 CNY）")
     print(f"  Other Fee → China!J*: {result['other_amount']}")
     print(f"  报销笔数 → For Expense: {result['expense_count']}")
     return 0

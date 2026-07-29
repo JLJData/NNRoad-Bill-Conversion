@@ -116,23 +116,35 @@ def copy_row_formulas(
     )
 
 
-def fix_tw_row_tw_ee_refs(ws_tw: Worksheet, dst_row: int, ee_row: int) -> None:
-    for col in range(1, (ws_tw.max_column or 0) + 1):
-        cell = ws_tw.cell(dst_row, col)
+def fix_sheet_cross_refs(
+    ws: Worksheet,
+    dst_row: int,
+    *,
+    other_sheet: str,
+    other_row: int,
+    quoted: bool,
+) -> None:
+    """修正同行公式里对其它 sheet 上一行引用（复制扩展后常见 off-by-one）。"""
+    prefix = f"'{other_sheet}'!" if quoted else f"{other_sheet}!"
+    pat = re.compile(rf"{re.escape(prefix)}([A-Z]+){other_row - 1}(?!\d)")
+    repl_prefix = prefix
+    for col in range(1, (ws.max_column or 0) + 1):
+        cell = ws.cell(dst_row, col)
         if cell.data_type == "f" and isinstance(cell.value, str):
-            cell.value = re.sub(
-                rf"'TW EE'!([A-Z]+){ee_row - 1}(?!\d)",
-                lambda m: f"'TW EE'!{m.group(1)}{ee_row}",
-                cell.value,
-            )
+            cell.value = pat.sub(lambda m: f"{repl_prefix}{m.group(1)}{other_row}", cell.value)
+
+
+def fix_tw_row_tw_ee_refs(ws_tw: Worksheet, dst_row: int, ee_row: int) -> None:
+    fix_sheet_cross_refs(ws_tw, dst_row, other_sheet="TW EE", other_row=ee_row, quoted=True)
 
 
 def fix_ee_row_tw_refs(ws_ee: Worksheet, dst_row: int, tw_row: int) -> None:
-    for col in range(1, (ws_ee.max_column or 0) + 1):
-        cell = ws_ee.cell(dst_row, col)
-        if cell.data_type == "f" and isinstance(cell.value, str):
-            cell.value = re.sub(
-                rf"TW!([A-Z]+){tw_row - 1}(?!\d)",
-                lambda m: f"TW!{m.group(1)}{tw_row}",
-                cell.value,
-            )
+    fix_sheet_cross_refs(ws_ee, dst_row, other_sheet="TW", other_row=tw_row, quoted=False)
+
+
+def fix_china_row_china_ee_refs(ws_china: Worksheet, dst_row: int, ee_row: int) -> None:
+    fix_sheet_cross_refs(ws_china, dst_row, other_sheet="China EE", other_row=ee_row, quoted=True)
+
+
+def fix_ee_row_china_refs(ws_ee: Worksheet, dst_row: int, china_row: int) -> None:
+    fix_sheet_cross_refs(ws_ee, dst_row, other_sheet="China", other_row=china_row, quoted=False)
