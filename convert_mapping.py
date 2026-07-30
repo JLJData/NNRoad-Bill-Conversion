@@ -87,6 +87,27 @@ ENGINE_DEFAULTS: dict[str, dict[str, Any]] = {
         "employeeFormulaStyles": [],
         "skipSourceHeaders": ["Medical Insurance Allowance"],
     },
+    "uk_payroll_calc": {
+        "schemaVersion": 1,
+        "sourceEmployeeSheet": {
+            "sheet": "UK-L",
+            "candidates": ["UK-L"],
+            "layout": "vertical_label_amount",
+            "nameHeaders": ["Employee Name"],
+        },
+        "targetL": {
+            "sheet": "UK-L",
+            "layout": "vertical_label_amount",
+        },
+        "columnRename": {},
+        "formulaTemplates": {
+            "applyDefaultToAllEmployees": False,
+            "UK": {"defaultExampleRow": 9},
+            "UK EE": {"defaultExampleRow": 10, "dataStartOffset": 1},
+        },
+        "employeeFormulaStyles": [],
+        "skipSourceHeaders": [],
+    },
 }
 
 

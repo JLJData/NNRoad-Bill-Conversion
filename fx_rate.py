@@ -46,3 +46,11 @@ def get_hk_pn_fx_rate(rates: dict[str, float] | None = None) -> float:
 def get_tw_pn_fx_rate(rates: dict[str, float] | None = None) -> float:
     """Taiwan PN!B31：USD → TWD"""
     return round(get_usd_rate("TWD", rates), 4)
+
+
+def get_uk_gbp_per_usd(rates: dict[str, float] | None = None) -> float:
+    """UK-L!D24：1 GBP = ? USD（母版用金额 GBP × D24 → USD；PN!B29=1/D24）。"""
+    gbp_per_usd = get_usd_rate("GBP", rates)
+    if gbp_per_usd <= 0:
+        raise RuntimeError("GBP 汇率无效")
+    return round(1.0 / gbp_per_usd, 6)

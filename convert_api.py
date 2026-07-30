@@ -10,7 +10,11 @@
 接口:
   GET  /health
   GET  /engines
+  GET  /pdf-profiles
   POST /convert  multipart: file, engine_id, region, template(可选), pn_meta(json可选), employee_directory(json数组可选)
+  POST /pdf-to-source  multipart: file, profile_id(可选自动识别), pn_meta(json可选), template(可选)
+  POST /pdf-to-source-batch  multipart: files[], profile_id, …
+  POST /vendor-to-source-batch  multipart: files[](pdf/xlsx), profile_id, …  # 按扩展名自动分流
   GET  /region-template?region=Taiwan  地区默认 PN 母版
   POST /excel-snapshot  multipart: file, sheet(可选默认PN), max_cells(可选默认300)
   POST /hf-snapshot     multipart: file, sheet(可选默认PN), max_cells(可选默认300)  # Node HyperFormula
@@ -30,8 +34,9 @@ from convert_runner import parse_employee_directory_payload, parse_pn_meta_paylo
 from excel_com_snapshot import snapshot_workbook
 from hf_com_snapshot import snapshot_workbook_hf
 from engines import list_engines
+from pdf_ingest.registry import list_pdf_profiles
+from pdf_ingest.runner import run_pdf_to_source, run_pdf_to_source_batch, run_vendor_to_source_batch
 from region_templates import list_regions, get_region_template
-
 app = FastAPI(title="HROne Bill Convert Service", version="1.0.0")
 BASE_DIR = Path(__file__).resolve().parent
 
@@ -43,6 +48,7 @@ def health():
 
 @app.get("/engines")
 def engines():
+    pdfs = list_pdf_profiles()
     return {
         "engines": [
             {
@@ -50,11 +56,276 @@ def engines():
                 "label": e.label,
                 "module": e.module,
                 "description": e.description,
+                "pdfProfiles": [
+                    {
+                        "profileId": p.profile_id,
+                        "label": p.label,
+                        "region": p.region,
+                        "description": p.description,
+                    }
+                    for p in pdfs
+                    if e.engine_id in p.engine_ids
+                ],
             }
             for e in list_engines()
         ],
         "regions": list_regions(),
     }
+
+
+@app.get("/pdf-profiles")
+def pdf_profiles():
+    return {
+        "profiles": [
+            {
+                "profileId": p.profile_id,
+                "label": p.label,
+                "region": p.region,
+                "module": p.module,
+                "description": p.description,
+                "engineIds": list(p.engine_ids),
+            }
+            for p in list_pdf_profiles()
+        ]
+    }
+
+
+@app.post("/pdf-to-source")
+async def pdf_to_source(
+    file: UploadFile = File(...),
+    profile_id: str | None = Form(None),
+    pn_meta: str | None = Form(None),
+    template: UploadFile | None = File(None),
+):
+    """供应商 PDF → 地区源 Excel（当前：eor_uk → UK-L）。"""
+    suffix = Path(file.filename or "bill.pdf").suffix.lower() or ".pdf"
+    if suffix != ".pdf":
+        raise HTTPException(status_code=400, detail=f"仅支持 .pdf，当前: {suffix}")
+
+    tmp_dir = Path(tempfile.mkdtemp(prefix="pdf2src_"))
+    pdf_path = tmp_dir / f"source{suffix}"
+    out_path = tmp_dir / "source_from_pdf.xlsx"
+    template_path: Path | None = None
+    try:
+        content = await file.read()
+        if not content:
+            raise HTTPException(status_code=400, detail="上传文件为空")
+        pdf_path.write_bytes(content)
+
+        if template is not None and template.filename:
+            tpl_suffix = Path(template.filename).suffix.lower() or ".xlsx"
+            if tpl_suffix not in (".xlsx", ".xlsm"):
+                raise HTTPException(status_code=400, detail="母版仅支持 .xlsx/.xlsm")
+            tpl_bytes = await template.read()
+            if tpl_bytes:
+                template_path = tmp_dir / f"template{tpl_suffix}"
+                template_path.write_bytes(tpl_bytes)
+
+        try:
+            meta = parse_pn_meta_payload(pn_meta)
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=f"pn_meta 无效: {exc}") from exc
+
+        result = run_pdf_to_source(
+            pdf_path,
+            out_path,
+            profile_id=(profile_id or "").strip() or None,
+            template_path=template_path,
+            pn_meta=meta,
+            registry_dir=tmp_dir,
+            fill_fx=True,
+        )
+        headers = {
+            "X-Pdf-Profile": str(result.get("profile_id") or ""),
+            "X-Pdf-Region": str(result.get("region") or ""),
+            "X-Pdf-Warnings": str(len(result.get("warnings") or [])),
+        }
+        for w in result.get("warnings") or []:
+            print(f"[pdf-warning] {w}")
+        return FileResponse(
+            path=str(out_path),
+            filename=out_path.name,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers=headers,
+            background=BackgroundTask(_cleanup_dir, tmp_dir),
+        )
+    except HTTPException:
+        _cleanup_dir(tmp_dir)
+        raise
+    except KeyError as exc:
+        _cleanup_dir(tmp_dir)
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except ValueError as exc:
+        _cleanup_dir(tmp_dir)
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        _cleanup_dir(tmp_dir)
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"PDF 转换失败: {exc}") from exc
+
+
+@app.post("/pdf-to-source-batch")
+async def pdf_to_source_batch(
+    files: list[UploadFile] = File(...),
+    profile_id: str | None = Form(None),
+    pn_meta: str | None = Form(None),
+    template: UploadFile | None = File(None),
+):
+    """多份供应商 PDF → 一份地区源 Excel（如 TopSource 一人一票）。"""
+    if not files:
+        raise HTTPException(status_code=400, detail="请至少上传一个 PDF")
+
+    tmp_dir = Path(tempfile.mkdtemp(prefix="pdf2src_batch_"))
+    out_path = tmp_dir / "source_from_pdf.xlsx"
+    template_path: Path | None = None
+    pdf_paths: list[Path] = []
+    try:
+        for i, f in enumerate(files):
+            suffix = Path(f.filename or f"bill_{i}.pdf").suffix.lower() or ".pdf"
+            if suffix != ".pdf":
+                raise HTTPException(status_code=400, detail=f"仅支持 .pdf，当前: {f.filename}")
+            content = await f.read()
+            if not content:
+                raise HTTPException(status_code=400, detail=f"上传文件为空: {f.filename}")
+            pdf_path = tmp_dir / f"source_{i}{suffix}"
+            pdf_path.write_bytes(content)
+            pdf_paths.append(pdf_path)
+
+        if template is not None and template.filename:
+            tpl_suffix = Path(template.filename).suffix.lower() or ".xlsx"
+            if tpl_suffix not in (".xlsx", ".xlsm"):
+                raise HTTPException(status_code=400, detail="母版仅支持 .xlsx/.xlsm")
+            tpl_bytes = await template.read()
+            if tpl_bytes:
+                template_path = tmp_dir / f"template{tpl_suffix}"
+                template_path.write_bytes(tpl_bytes)
+
+        try:
+            meta = parse_pn_meta_payload(pn_meta)
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=f"pn_meta 无效: {exc}") from exc
+
+        result = run_pdf_to_source_batch(
+            pdf_paths,
+            out_path,
+            profile_id=(profile_id or "").strip() or None,
+            template_path=template_path,
+            pn_meta=meta,
+            registry_dir=tmp_dir,
+            fill_fx=True,
+        )
+        headers = {
+            "X-Pdf-Profile": str(result.get("profile_id") or ""),
+            "X-Pdf-Region": str(result.get("region") or ""),
+            "X-Pdf-Warnings": str(len(result.get("warnings") or [])),
+            "X-Pdf-Employees": str(result.get("employee_count") or len(pdf_paths)),
+        }
+        for w in result.get("warnings") or []:
+            print(f"[pdf-warning] {w}")
+        return FileResponse(
+            path=str(out_path),
+            filename=out_path.name,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers=headers,
+            background=BackgroundTask(_cleanup_dir, tmp_dir),
+        )
+    except HTTPException:
+        _cleanup_dir(tmp_dir)
+        raise
+    except KeyError as exc:
+        _cleanup_dir(tmp_dir)
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except ValueError as exc:
+        _cleanup_dir(tmp_dir)
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        _cleanup_dir(tmp_dir)
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"PDF 批量转换失败: {exc}") from exc
+
+
+@app.post("/vendor-to-source-batch")
+async def vendor_to_source_batch(
+    files: list[UploadFile] = File(...),
+    profile_id: str | None = Form(None),
+    pn_meta: str | None = Form(None),
+    template: UploadFile | None = File(None),
+):
+    """供应商 PDF/Excel → 一份地区源表（按扩展名自动走 PDF 或 Excel 解析）。"""
+    if not files:
+        raise HTTPException(status_code=400, detail="请至少上传一个源文件")
+
+    tmp_dir = Path(tempfile.mkdtemp(prefix="vendor2src_"))
+    out_path = tmp_dir / "source_from_vendor.xlsx"
+    template_path: Path | None = None
+    source_paths: list[Path] = []
+    try:
+        for i, f in enumerate(files):
+            suffix = Path(f.filename or f"bill_{i}.bin").suffix.lower() or ""
+            if suffix not in (".pdf", ".xlsx", ".xlsm", ".xls"):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"仅支持 .pdf / .xlsx / .xlsm，当前: {f.filename}",
+                )
+            content = await f.read()
+            if not content:
+                raise HTTPException(status_code=400, detail=f"上传文件为空: {f.filename}")
+            path = tmp_dir / f"source_{i}{suffix}"
+            path.write_bytes(content)
+            source_paths.append(path)
+
+        if template is not None and template.filename:
+            tpl_suffix = Path(template.filename).suffix.lower() or ".xlsx"
+            if tpl_suffix not in (".xlsx", ".xlsm"):
+                raise HTTPException(status_code=400, detail="母版仅支持 .xlsx/.xlsm")
+            tpl_bytes = await template.read()
+            if tpl_bytes:
+                template_path = tmp_dir / f"template{tpl_suffix}"
+                template_path.write_bytes(tpl_bytes)
+
+        try:
+            meta = parse_pn_meta_payload(pn_meta)
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=f"pn_meta 无效: {exc}") from exc
+
+        result = run_vendor_to_source_batch(
+            source_paths,
+            out_path,
+            profile_id=(profile_id or "").strip() or None,
+            template_path=template_path,
+            pn_meta=meta,
+            registry_dir=tmp_dir,
+            fill_fx=True,
+        )
+        headers = {
+            "X-Pdf-Profile": str(result.get("profile_id") or ""),
+            "X-Pdf-Region": str(result.get("region") or ""),
+            "X-Source-Kind": str(result.get("source_kind") or ""),
+            "X-Pdf-Warnings": str(len(result.get("warnings") or [])),
+            "X-Pdf-Employees": str(result.get("employee_count") or len(source_paths)),
+        }
+        for w in result.get("warnings") or []:
+            print(f"[vendor-warning] {w}")
+        return FileResponse(
+            path=str(out_path),
+            filename=out_path.name,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers=headers,
+            background=BackgroundTask(_cleanup_dir, tmp_dir),
+        )
+    except HTTPException:
+        _cleanup_dir(tmp_dir)
+        raise
+    except KeyError as exc:
+        _cleanup_dir(tmp_dir)
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except ValueError as exc:
+        _cleanup_dir(tmp_dir)
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        _cleanup_dir(tmp_dir)
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"供应商源批量转换失败: {exc}") from exc
 
 
 @app.get("/region-template")

@@ -14,7 +14,10 @@ venv/
 _cmp_*.py
 _inspect_*.py
 _*.txt
+_*.xlsx
 _rich_check.txt
+**/template_new.xlsx
+**/*.xlsx.tmp
 
 # 误放进仓库的 Office 库表导出（应在 hrone-abp/sql）
 portal_*.sql

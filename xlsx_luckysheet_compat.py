@@ -4,7 +4,7 @@
 
 - PN 母版误写 `="- "&+"Expense...` → 合法拼接
 - A1 用 =MID(CELL("filename",A1),...) 取表名 → 静态表名（避免自引用）
-- `=+'Sheet'!A1` 一元加号、EOMONTH(TODAY(),n)、孤立 TODAY() → 可计算写法
+- `=+'Sheet'!A1` 一元加号、EOMONTH(…)/TODAY() → HyperFormula 可算写法
 """
 from __future__ import annotations
 
@@ -25,6 +25,7 @@ _EOMONTH_TODAY_RE = re.compile(
     r"EOMONTH\s*\(\s*TODAY\s*\(\s*\)\s*,\s*(-?\d+)\s*\)(?:\s*\+\s*(\d+))?",
     re.IGNORECASE,
 )
+_EOMONTH_HEAD_RE = re.compile(r"EOMONTH\s*\(", re.IGNORECASE)
 _TODAY_RE = re.compile(r"TODAY\s*\(\s*\)", re.IGNORECASE)
 
 
@@ -77,6 +78,64 @@ def _replace_eomonth_today(match: re.Match) -> str:
     return f"DATE({end.year},{end.month},{end.day})"
 
 
+def _rewrite_eomonth_to_date(formula: str) -> str:
+    """EOMONTH(date, n) → DATE(YEAR(date), MONTH(date)+n+1, 0)；HF 无 EOMONTH。"""
+    if not _EOMONTH_HEAD_RE.search(formula):
+        return formula
+    f = formula
+    for _ in range(20):
+        m = _EOMONTH_HEAD_RE.search(f)
+        if not m:
+            break
+        start = m.start()
+        open_idx = m.end() - 1
+        depth = 0
+        end = -1
+        in_str = False
+        for i in range(open_idx, len(f)):
+            ch = f[i]
+            if ch == '"':
+                in_str = not in_str
+                continue
+            if in_str:
+                continue
+            if ch == "(":
+                depth += 1
+            elif ch == ")":
+                depth -= 1
+                if depth == 0:
+                    end = i
+                    break
+        if end < 0:
+            break
+        inner = f[open_idx + 1 : end]
+        comma = -1
+        d2 = 0
+        s2 = False
+        for i, ch in enumerate(inner):
+            if ch == '"':
+                s2 = not s2
+                continue
+            if s2:
+                continue
+            if ch == "(":
+                d2 += 1
+            elif ch == ")":
+                d2 -= 1
+            elif ch == "," and d2 == 0:
+                comma = i
+                break
+        if comma < 0:
+            break
+        date_expr = inner[:comma].strip()
+        months_expr = inner[comma + 1 :].strip()
+        if not date_expr or not months_expr:
+            break
+        replacement = f"DATE(YEAR({date_expr}),MONTH({date_expr})+({months_expr})+1,0)"
+        f = f[:start] + replacement + f[end + 1 :]
+    return f
+
+
 def normalize_formula_for_lucky(formula: str) -> str:
     """单条公式改写，供转换写盘前 / 扫描修复复用。"""
     if not (isinstance(formula, str) and formula.startswith("=")):
@@ -89,9 +148,11 @@ def normalize_formula_for_lucky(formula: str) -> str:
         f = _DASH_AMP_QUOTE_RE.sub(r'="- \1"', f)
     if re.search(r"EOMONTH", f, re.I) and re.search(r"TODAY\s*\(", f, re.I):
         f = _EOMONTH_TODAY_RE.sub(_replace_eomonth_today, f)
-    elif _TODAY_RE.search(f):
+    if _EOMONTH_HEAD_RE.search(f):
+        f = _rewrite_eomonth_to_date(f)
+    if _TODAY_RE.search(f) and not _EOMONTH_HEAD_RE.search(f):
         today = date.today()
-        f = _TODAY_RE.sub(f'DATE({today.year},{today.month},{today.day})', f)
+        f = _TODAY_RE.sub(f"DATE({today.year},{today.month},{today.day})", f)
     return f
 
 
