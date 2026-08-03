@@ -38,6 +38,12 @@ ENGINES: dict[str, ConvertEngine] = {
         module="profiles.uk_payroll_calc.convert",
         description="源账单 sheet「UK-L」（竖表）→ UK PN；PDF 版式可选 EOR / TopSource",
     ),
+    "uae_payroll_calc": ConvertEngine(
+        engine_id="uae_payroll_calc",
+        label="UAE Payroll Calculation",
+        module="profiles.uae_payroll_calc.convert",
+        description="源账单 sheet「UAE-L」→ UAE PN；Excel 版式可选 Auxilium",
+    ),
 }
 
 # 旧引擎 id 兼容

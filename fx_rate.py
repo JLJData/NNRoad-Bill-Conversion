@@ -54,3 +54,8 @@ def get_uk_gbp_per_usd(rates: dict[str, float] | None = None) -> float:
     if gbp_per_usd <= 0:
         raise RuntimeError("GBP 汇率无效")
     return round(1.0 / gbp_per_usd, 6)
+
+
+def get_uae_pn_fx_rate(rates: dict[str, float] | None = None) -> float:
+    """UAE PN!B28：USD → AED（金额 AED / B28 → USD）。"""
+    return round(get_usd_rate("AED", rates), 6)

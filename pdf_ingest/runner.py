@@ -33,7 +33,7 @@ def _resolve_profile_for_sources(paths: list[Path], profile_id: str | None):
     if pdfs:
         return _resolve_profile(pdfs[0], None)
     raise ValueError(
-        "Excel 源须显式传入 profile_id（如 topsource_uk）；无法从正文自动识别"
+        "Excel 源须显式传入 profile_id（如 topsource_uk / auxilium_uae）；无法从正文自动识别"
     )
 
 
@@ -126,6 +126,7 @@ def run_vendor_to_source_batch(
     pn_meta: PnMeta | dict[str, Any] | None = None,
     registry_dir: Path | None = None,
     fill_fx: bool = True,
+    convert_mapping: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """
     供应商 PDF 和/或 Excel → 一份源表。
@@ -148,6 +149,7 @@ def run_vendor_to_source_batch(
             pn_meta=pn_meta,
             registry_dir=registry_dir or output_path.parent,
             fill_fx=fill_fx,
+            convert_mapping=convert_mapping,
         )
 
     pdfs = [p for p in paths if p.suffix.lower() == ".pdf"]
@@ -168,6 +170,7 @@ def run_vendor_to_source_batch(
             pn_meta=pn_meta,
             registry_dir=registry_dir or output_path.parent,
             fill_fx=fill_fx,
+            convert_mapping=convert_mapping,
         )
     return run_pdf_to_source_batch(
         pdfs or paths,

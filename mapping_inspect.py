@@ -41,6 +41,10 @@ def inspect_source_headers(
         return _inspect_fixed_header_source(source_path, mapping, default_sheet="计算结果", default_row=1)
     if engine_id in ("hk_payroll_calc", "hk_vertical_l"):
         return _inspect_fixed_header_source(source_path, mapping, default_sheet="Hong Kong-L", default_row=7)
+    if engine_id == "uae_payroll_calc":
+        return _inspect_uae_source(source_path, mapping)
+    if engine_id == "uk_payroll_calc":
+        return _inspect_uk_vertical_source(source_path, mapping)
 
     return {"ok": False, "message": f"引擎「{engine_id}」暂不支持表头识别"}
 
@@ -156,6 +160,87 @@ def _inspect_fixed_header_source(
     }
 
 
+def _inspect_uae_source(source_path: Path, mapping: dict[str, Any]) -> dict[str, Any]:
+    """
+    UAE 映射样例：
+    1) 已是 UAE-L → 读 UAE-L 表头（引擎输入）
+    2) 供应商 Payroll Draft → 读**原始**供应商表头（供「列名对照：供应商→UAE-L」下拉）
+    """
+    source_path = Path(source_path)
+    try:
+        wb = load_workbook(source_path, data_only=True, read_only=True)
+        sheet_names = list(wb.sheetnames)
+        wb.close()
+    except Exception as exc:
+        return {"ok": False, "message": f"无法打开源表: {exc}"}
+
+    src_spec = mapping.get("sourceEmployeeSheet") if isinstance(mapping.get("sourceEmployeeSheet"), dict) else {}
+    if find_sheet_name(sheet_names, src_spec) or find_sheet_name(
+        sheet_names, {"sheet": "UAE-L", "candidates": ["UAE-L"]}
+    ):
+        return _inspect_fixed_header_source(
+            source_path, mapping, default_sheet="UAE-L", default_row=2
+        )
+
+    # 供应商原始表：扫描表头行，供列名对照左侧选项
+    try:
+        from pdf_ingest.profiles import auxilium_uae as aux
+
+        wb = load_workbook(source_path, data_only=True)
+        try:
+            ws, header_row, headers_raw = aux._pick_payroll_draft_sheet(wb)
+            headers = _header_cells(ws, header_row)
+            employees: list[dict[str, str]] = []
+            name_keys = {"Employee Name", "EE Name", "Name", "Staff Name", "Full Name"}
+            name_col = next(
+                (i for i, h in enumerate(headers_raw, start=1) if norm(h) in name_keys or "name" in norm(h).lower()),
+                None,
+            )
+            id_col = next(
+                (
+                    i
+                    for i, h in enumerate(headers_raw, start=1)
+                    if aux._is_id_header(h)
+                ),
+                None,
+            )
+            data_start = header_row + 1
+            for row in range(data_start, min((ws.max_row or data_start), data_start + 40) + 1):
+                name_s = ""
+                id_s = ""
+                if name_col:
+                    v = ws.cell(row, name_col).value
+                    name_s = str(v).strip() if v is not None else ""
+                if id_col:
+                    v = ws.cell(row, id_col).value
+                    id_s = str(v).strip() if v is not None else ""
+                if not name_s and not id_s:
+                    continue
+                if "TOTAL" in f"{name_s} {id_s}".upper():
+                    continue
+                employees.append({"cnName": "", "enName": name_s or id_s})
+            return {
+                "ok": True,
+                "sheetName": ws.title,
+                "headerRow": header_row,
+                "headers": headers,
+                "employees": employees,
+                "sourceKind": "vendor_payroll_draft",
+                "hint": "已识别供应商原始表头，请在「列名对照」中配置 供应商列 → UAE-L 列",
+            }
+        finally:
+            wb.close()
+    except Exception as exc:
+        return {
+            "ok": False,
+            "message": (
+                "未找到工作表「UAE-L」，且无法识别供应商 Payroll Draft 表头。"
+                f"详情: {exc}"
+            ),
+            "sheetNames": sheet_names,
+        }
+
+
 def list_formula_example_rows(
     ws,
     data_start_row: int,
@@ -183,7 +268,7 @@ def inspect_pn_headers(
     if isinstance(candidates, list):
         spec["candidates"] = candidates
     else:
-        spec["candidates"] = [sheet_want, "China-L", "Hong Kong-L"]
+        spec["candidates"] = [sheet_want, "China-L", "Hong Kong-L", "UK-L", "UAE-L", "TW-L"]
 
     if not template_path.is_file():
         return {"ok": False, "message": f"母版文件不存在: {template_path}"}
@@ -371,6 +456,12 @@ def inspect_pn_headers(
         finally:
             hk_mod._ACTIVE_MAPPING = None
 
+    if engine_id == "uae_payroll_calc":
+        return _inspect_uae_pn(template_path, mapping, spec, sheet_want)
+
+    if engine_id == "uk_payroll_calc":
+        return _inspect_uk_pn(template_path, mapping, spec, sheet_want)
+
     header_row = int(target.get("headerRow") or 7)
     wb = load_workbook(template_path, data_only=True, read_only=True)
     sheet_names = list(wb.sheetnames)
@@ -391,3 +482,185 @@ def inspect_pn_headers(
         "headerRow": header_row,
         "headers": headers,
     }
+
+
+def _inspect_uk_vertical_source(source_path: Path, mapping: dict[str, Any]) -> dict[str, Any]:
+    """UK-L 竖表：A 列标签视为「表头」，便于列名对照。"""
+    src_spec = mapping.get("sourceEmployeeSheet") if isinstance(mapping.get("sourceEmployeeSheet"), dict) else {}
+    try:
+        wb = load_workbook(source_path, data_only=True, read_only=True)
+    except Exception as exc:
+        return {"ok": False, "message": f"无法打开源表: {exc}"}
+    try:
+        sheet_names = list(wb.sheetnames)
+        name = find_sheet_name(sheet_names, src_spec if isinstance(src_spec, dict) else None)
+        if not name:
+            # 供应商原始表也可能不是 UK-L：取首张
+            name = sheet_names[0] if sheet_names else None
+        if not name:
+            return {"ok": False, "message": "工作簿无工作表", "sheetNames": sheet_names}
+        ws = wb[name]
+        label_col = int(src_spec.get("labelColumn") or 1)
+        headers: list[dict[str, str]] = []
+        seen: set[str] = set()
+        for row in range(1, min((ws.max_row or 1), 80) + 1):
+            raw = ws.cell(row, label_col).value
+            key = norm(raw)
+            if not key or key in seen:
+                continue
+            # 跳过明显非金额标签的标题行
+            if key.lower() in {"details", "amount in gbp"}:
+                continue
+            seen.add(key)
+            headers.append({"key": key, "label": key})
+        employees: list[dict[str, str]] = []
+        # 标题行常含员工名
+        title = norm(ws.cell(3, 1).value)
+        if title and "salary calculation" in title.lower():
+            en = title.split("-")[0].strip() if "-" in title else title
+            if en:
+                employees.append({"cnName": "", "enName": en})
+        return {
+            "ok": True,
+            "sheetName": name,
+            "headerRow": 0,
+            "layout": "vertical_label_amount",
+            "headers": headers,
+            "sampleEmployees": employees,
+        }
+    except Exception as exc:
+        return {"ok": False, "message": str(exc)}
+    finally:
+        wb.close()
+
+
+def _inspect_uae_pn(
+    template_path: Path,
+    mapping: dict[str, Any],
+    spec: dict[str, Any],
+    sheet_want: str,
+) -> dict[str, Any]:
+    from profiles.uae_payroll_calc import convert as uae_mod
+
+    target = mapping.get("targetL") if isinstance(mapping.get("targetL"), dict) else {}
+    try:
+        wb = load_workbook(template_path, data_only=True, read_only=True)
+        sheet_names = list(wb.sheetnames)
+        name = find_sheet_name(sheet_names, spec)
+        if not name:
+            wb.close()
+            return {
+                "ok": False,
+                "message": f"母版中未找到 sheet「{sheet_want}」",
+                "sheetNames": sheet_names,
+            }
+        header_row = int(target.get("headerRow") or uae_mod.UAE_L_HEADER_ROW)
+        data_start = int(target.get("dataStartRow") or uae_mod.UAE_L_DATA_START)
+        headers = _header_cells(wb[name], header_row)
+        wb.close()
+
+        wb_f = load_workbook(template_path, data_only=False, read_only=False)
+        uae_start = uae_mod.UAE_DATA_START
+        ee_start = uae_mod.UAE_EE_DATA_START
+        uae_examples: list[dict[str, Any]] = []
+        ee_examples: list[dict[str, Any]] = []
+        if uae_mod.UAE_SHEET in wb_f.sheetnames:
+            uae_examples = list_formula_example_rows(
+                wb_f[uae_mod.UAE_SHEET],
+                uae_start,
+                marker_col=2,
+            )
+        if uae_mod.UAE_EE_SHEET in wb_f.sheetnames:
+            ee_examples = list_formula_example_rows(
+                wb_f[uae_mod.UAE_EE_SHEET],
+                ee_start,
+                marker_col=5,
+            )
+        wb_f.close()
+        ft = mapping.get("formulaTemplates") if isinstance(mapping.get("formulaTemplates"), dict) else {}
+        uae_tpl = ft.get("UAE") if isinstance(ft.get("UAE"), dict) else {}
+        ee_tpl = ft.get("UAE EE") if isinstance(ft.get("UAE EE"), dict) else {}
+        return {
+            "ok": True,
+            "sheetName": name,
+            "headerRow": header_row,
+            "dataStartRow": data_start,
+            "autoDetectedLayout": False,
+            "headers": headers,
+            "formulaExampleRows": {
+                "UAE": uae_examples,
+                "UAE EE": ee_examples,
+                "uaeDataStartRow": uae_start,
+                "uaeEeDataStartRow": ee_start,
+                "defaultUaeRow": int(uae_tpl.get("defaultExampleRow") or uae_start),
+                "defaultUaeEeRow": int(ee_tpl.get("defaultExampleRow") or ee_start),
+            },
+        }
+    except Exception as exc:
+        return {"ok": False, "message": str(exc)}
+
+
+def _inspect_uk_pn(
+    template_path: Path,
+    mapping: dict[str, Any],
+    spec: dict[str, Any],
+    sheet_want: str,
+) -> dict[str, Any]:
+    """UK-L 竖表母版：返回 A 列标签 + UK/UK EE 示例行。"""
+    target = mapping.get("targetL") if isinstance(mapping.get("targetL"), dict) else {}
+    try:
+        wb = load_workbook(template_path, data_only=False, read_only=False)
+        sheet_names = list(wb.sheetnames)
+        name = find_sheet_name(sheet_names, spec)
+        if not name:
+            wb.close()
+            return {
+                "ok": False,
+                "message": f"母版中未找到 sheet「{sheet_want}」",
+                "sheetNames": sheet_names,
+            }
+        ws = wb[name]
+        label_col = int(target.get("labelColumn") or 1)
+        headers: list[dict[str, str]] = []
+        seen: set[str] = set()
+        for row in range(1, min((ws.max_row or 1), 80) + 1):
+            raw = ws.cell(row, label_col).value
+            key = norm(raw)
+            if not key or key in seen:
+                continue
+            if key.lower() in {"details", "amount in gbp"}:
+                continue
+            seen.add(key)
+            headers.append({"key": key, "label": key, "row": str(row)})
+
+        uk_start = 9
+        ee_start = 9
+        uk_examples: list[dict[str, Any]] = []
+        ee_examples: list[dict[str, Any]] = []
+        if "UK" in wb.sheetnames:
+            uk_examples = list_formula_example_rows(wb["UK"], uk_start, marker_col=2)
+        if "UK EE" in wb.sheetnames:
+            ee_examples = list_formula_example_rows(wb["UK EE"], ee_start, marker_col=5)
+        wb.close()
+        ft = mapping.get("formulaTemplates") if isinstance(mapping.get("formulaTemplates"), dict) else {}
+        uk_tpl = ft.get("UK") if isinstance(ft.get("UK"), dict) else {}
+        ee_tpl = ft.get("UK EE") if isinstance(ft.get("UK EE"), dict) else {}
+        return {
+            "ok": True,
+            "sheetName": name,
+            "headerRow": 0,
+            "dataStartRow": 1,
+            "layout": "vertical_label_amount",
+            "autoDetectedLayout": False,
+            "headers": headers,
+            "formulaExampleRows": {
+                "UK": uk_examples,
+                "UK EE": ee_examples,
+                "ukDataStartRow": uk_start,
+                "ukEeDataStartRow": ee_start,
+                "defaultUkRow": int(uk_tpl.get("defaultExampleRow") or uk_start),
+                "defaultUkEeRow": int(ee_tpl.get("defaultExampleRow") or ee_start),
+            },
+        }
+    except Exception as exc:
+        return {"ok": False, "message": str(exc)}

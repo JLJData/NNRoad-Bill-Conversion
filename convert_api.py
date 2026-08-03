@@ -249,6 +249,7 @@ async def vendor_to_source_batch(
     files: list[UploadFile] = File(...),
     profile_id: str | None = Form(None),
     pn_meta: str | None = Form(None),
+    convert_mapping: str | None = Form(None),
     template: UploadFile | None = File(None),
 ):
     """供应商 PDF/Excel → 一份地区源表（按扩展名自动走 PDF 或 Excel 解析）。"""
@@ -287,6 +288,10 @@ async def vendor_to_source_batch(
             meta = parse_pn_meta_payload(pn_meta)
         except Exception as exc:
             raise HTTPException(status_code=400, detail=f"pn_meta 无效: {exc}") from exc
+        try:
+            mapping = parse_convert_mapping_payload(convert_mapping)
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=f"convert_mapping 无效: {exc}") from exc
 
         result = run_vendor_to_source_batch(
             source_paths,
@@ -296,6 +301,7 @@ async def vendor_to_source_batch(
             pn_meta=meta,
             registry_dir=tmp_dir,
             fill_fx=True,
+            convert_mapping=mapping,
         )
         headers = {
             "X-Pdf-Profile": str(result.get("profile_id") or ""),

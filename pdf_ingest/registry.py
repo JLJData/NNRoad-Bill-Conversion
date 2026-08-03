@@ -46,6 +46,19 @@ PDF_PROFILES: dict[str, PdfProfile] = {
             "topsource registered",
         ),
     ),
+    "auxilium_uae": PdfProfile(
+        profile_id="auxilium_uae",
+        label="Auxilium",
+        region="UAE",
+        module="pdf_ingest.profiles.auxilium_uae",
+        description="Auxilium：Payroll Draft Excel → UAE-L；再经 uae_payroll_calc → PN",
+        engine_ids=("uae_payroll_calc",),
+        detect_keywords=(
+            "payroll draft",
+            "ax id",
+            "nnroad (uae)",
+        ),
+    ),
 }
 
 
