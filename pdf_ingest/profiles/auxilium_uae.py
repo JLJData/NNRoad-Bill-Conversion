@@ -687,25 +687,61 @@ def convert_sources(
     pn_meta: PnMeta | dict[str, Any] | None = None,
     registry_dir: Path | None = None,
     fill_fx: bool = True,
+    convert_mapping: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    """
+    Payroll Draft Excel → UAE-L；Admin Fee 发票 PDF 作为旁路事实（Total VAT），不进员工表。
+    """
+    from bill_convert.vendor_plugins.runtime import parse_artifact_facts, split_main_and_artifacts
+
     paths = [Path(p).resolve() for p in source_paths]
     if not paths:
         raise ValueError("未提供源文件")
-    pdfs = [p for p in paths if p.suffix.lower() == ".pdf"]
-    excels = [p for p in paths if p.suffix.lower() in (".xlsx", ".xlsm", ".xls")]
-    other = [p for p in paths if p not in pdfs and p not in excels]
+    main_paths, artifact_paths, split_warnings = split_main_and_artifacts(
+        paths, pdf_profile_id="auxilium_uae"
+    )
+    excels = [p for p in main_paths if p.suffix.lower() in (".xlsx", ".xlsm", ".xls")]
+    leftover_pdfs = [p for p in main_paths if p.suffix.lower() == ".pdf"]
+    other = [p for p in main_paths if p not in excels and p not in leftover_pdfs]
     if other:
         raise ValueError(f"不支持的文件类型: {[p.name for p in other]}")
-    if pdfs:
-        raise ValueError("auxilium_uae 暂仅支持 Excel Payroll Draft，不支持 PDF")
-    return convert_excels(
+    if leftover_pdfs:
+        raise ValueError(
+            "auxilium_uae 主源仅支持 Excel Payroll Draft；"
+            f"无法识别的 PDF: {[p.name for p in leftover_pdfs]}（Admin Fee 发票应能自动识别）"
+        )
+    if not excels:
+        raise ValueError("请至少上传一份 Auxilium Payroll Draft Excel")
+
+    artifact_facts, artifact_warnings = parse_artifact_facts(
+        artifact_paths, pdf_profile_id="auxilium_uae"
+    )
+    # 同批解析到的 VAT 同时作为 latest，供引擎当 curr（即使以后不同批也走 latest）
+    if isinstance(artifact_facts, dict) and "auxilium.admin_fee.total_vat" in artifact_facts:
+        artifact_facts["auxilium.admin_fee.latest_vat"] = artifact_facts["auxilium.admin_fee.total_vat"]
+    result = convert_excels(
         excels,
         output_path,
         template_path=template_path,
         pn_meta=pn_meta,
         registry_dir=registry_dir,
         fill_fx=fill_fx,
+        convert_mapping=convert_mapping,
     )
+    warnings = list(result.get("warnings") or [])
+    warnings.extend(split_warnings)
+    warnings.extend(artifact_warnings)
+    if artifact_paths and not artifact_facts:
+        warnings.append("已识别 Admin Fee PDF 但未解析到事实")
+    elif artifact_facts:
+        warnings.append(
+            "已解析 Admin Fee PDF Total VAT="
+            f"{artifact_facts.get('auxilium.admin_fee.total_vat')} "
+            f"({artifact_facts.get('auxilium.admin_fee.source_file')})"
+        )
+    result["warnings"] = warnings
+    result["artifact_facts"] = artifact_facts
+    return result
 
 
 def convert_pdf(

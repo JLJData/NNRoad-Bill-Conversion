@@ -559,6 +559,40 @@ def set_recurring_fees(wb, employees: list[dict[str, Any]]) -> None:
         uae.cell(UAE_DATA_START + i, 8).value = fee
 
 
+def _resolve_pdf_profile_id(mapping: dict[str, Any] | None) -> str | None:
+    if not isinstance(mapping, dict):
+        return None
+    for key in ("pdfProfileId", "_pdfProfileId"):
+        val = mapping.get(key)
+        if val is not None and str(val).strip():
+            return str(val).strip()
+    from bill_convert.fact_store import get_batch_facts
+
+    batch = get_batch_facts(mapping)
+    if any(str(k).startswith("auxilium.") for k in batch):
+        return "auxilium_uae"
+    return None
+
+
+def _apply_vendor_plugins(wb, warnings: list[str], *, employee_count: int = 1) -> dict[str, Any]:
+    """按 pdfProfile 加载供应商旁路插件（如 Auxilium Admin Fee → Business Tax）。"""
+    from bill_convert.fact_store import get_batch_facts
+    from bill_convert.vendor_plugins.runtime import apply_vendor_plugins
+
+    mapping = _active_mapping()
+    pdf_profile_id = _resolve_pdf_profile_id(mapping)
+    if not pdf_profile_id:
+        return {}
+    return apply_vendor_plugins(
+        wb,
+        pdf_profile_id=pdf_profile_id,
+        mapping=mapping,
+        batch_facts=get_batch_facts(mapping),
+        warnings=warnings,
+        employee_count=employee_count,
+    ) or {}
+
+
 def set_period(wb, employees: list[dict[str, Any]]) -> None:
     if not employees or UAE_SHEET not in wb.sheetnames:
         return
@@ -701,6 +735,7 @@ def convert(
         shutil.copy2(template_path, output_path)
         wb = load_workbook(output_path)
         warnings: list[str] = []
+        fact_store_updates: dict[str, Any] = {}
         fx = None
         applied_pn = None
         try:
@@ -715,6 +750,7 @@ def convert(
             set_period(wb, employees)
             expand_uae_employee_rows(wb, len(employees))
             set_recurring_fees(wb, employees)
+            fact_store_updates = _apply_vendor_plugins(wb, warnings, employee_count=len(employees))
             pn_layout = fit_uae_pn_employees(wb, len(employees))
             try:
                 fx = apply_fx(wb, fill_fx=fill_fx, fx_row=pn_layout.get("fx_row"))
@@ -754,6 +790,7 @@ def convert(
             "fx_rate": fx,
             "warnings": warnings,
             "pn_meta": applied_pn.to_dict() if applied_pn else None,
+            "fact_store_updates": fact_store_updates,
         }
     finally:
         _ACTIVE_MAPPING = None

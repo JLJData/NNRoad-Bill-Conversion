@@ -21,9 +21,16 @@
 """
 from __future__ import annotations
 
+import base64
+import json
 import tempfile
 import traceback
 from pathlib import Path
+
+
+def _b64_json_header(payload: object) -> str:
+    raw = json.dumps(payload, ensure_ascii=True, separators=(",", ":")).encode("utf-8")
+    return base64.b64encode(raw).decode("ascii")
 
 from fastapi import FastAPI, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
@@ -244,6 +251,57 @@ async def pdf_to_source_batch(
         raise HTTPException(status_code=500, detail=f"PDF 批量转换失败: {exc}") from exc
 
 
+@app.post("/vendor-plugins/ingest-file")
+async def vendor_plugins_ingest_file(
+    file: UploadFile = File(...),
+    profile_id: str | None = Form(None),
+):
+    """
+    供应商旁路文件识别（上传时调用）：如 Auxilium Admin Fee PDF → Total VAT 事实。
+    不要求与 Payroll Draft 同批。
+    """
+    from bill_convert.vendor_plugins.registry import get_plugins_for_profile
+
+    tmp_dir = Path(tempfile.mkdtemp(prefix="vendor_ingest_"))
+    try:
+        suffix = Path(file.filename or "file.bin").suffix.lower() or ""
+        content = await file.read()
+        if not content:
+            raise HTTPException(status_code=400, detail="上传文件为空")
+        path = tmp_dir / f"ingest{suffix}"
+        path.write_bytes(content)
+        pid = (profile_id or "").strip() or None
+        plugins = get_plugins_for_profile(pid)
+        if not plugins:
+            return {"ok": True, "matched": False, "facts": {}, "message": "无匹配插件"}
+        for plugin in plugins:
+            try:
+                if not plugin.classify_path(path):
+                    continue
+                facts = plugin.parse_artifacts([path]) or {}
+                facts.pop("_warnings", None)
+                # 上传识别：写入 latest 键，供后续转换当 curr
+                if "auxilium.admin_fee.total_vat" in facts:
+                    facts["auxilium.admin_fee.latest_vat"] = facts["auxilium.admin_fee.total_vat"]
+                return {
+                    "ok": True,
+                    "matched": True,
+                    "plugin_id": plugin.plugin_id,
+                    "facts": facts,
+                    "source_file": file.filename,
+                }
+            except Exception as exc:
+                raise HTTPException(status_code=400, detail=f"{plugin.plugin_id}: {exc}") from exc
+        return {"ok": True, "matched": False, "facts": {}, "message": "未识别为旁路文件"}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"旁路文件识别失败: {exc}") from exc
+    finally:
+        _cleanup_dir(tmp_dir)
+
+
 @app.post("/vendor-to-source-batch")
 async def vendor_to_source_batch(
     files: list[UploadFile] = File(...),
@@ -310,6 +368,9 @@ async def vendor_to_source_batch(
             "X-Pdf-Warnings": str(len(result.get("warnings") or [])),
             "X-Pdf-Employees": str(result.get("employee_count") or len(source_paths)),
         }
+        artifact_facts = result.get("artifact_facts")
+        if isinstance(artifact_facts, dict) and artifact_facts:
+            headers["X-Vendor-Artifact-Facts"] = _b64_json_header(artifact_facts)
         for w in result.get("warnings") or []:
             print(f"[vendor-warning] {w}")
         return FileResponse(
@@ -432,6 +493,9 @@ async def convert(
         match_hint = str(result.get("formula_match_hint") or "").strip()
         if match_hint:
             headers["X-Convert-Formula-Match"] = match_hint[:64]
+        fact_updates = result.get("fact_store_updates")
+        if isinstance(fact_updates, dict) and fact_updates:
+            headers["X-Convert-Fact-Store"] = _b64_json_header(fact_updates)
         # 结果摘要用自定义头传一小段 JSON（可选）；主体仍是文件
         return FileResponse(
             path=str(output_path),
