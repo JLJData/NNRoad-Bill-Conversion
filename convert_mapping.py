@@ -180,6 +180,27 @@ ENGINE_DEFAULTS: dict[str, dict[str, Any]] = {
     },
 }
 
+# 按 pdfProfileId 覆盖引擎默认（Connect UAE-L 表头在第 7 行）
+PROFILE_MAPPING_OVERLAYS: dict[str, dict[str, Any]] = {
+    "connect_uae": {
+        "sourceEmployeeSheet": {
+            "sheet": "UAE-L",
+            "candidates": ["UAE-L"],
+            "headerRow": 7,
+            "dataStartRow": 8,
+            "nameHeaders": ["English Name", "Employee Name"],
+        },
+        "targetL": {
+            "sheet": "UAE-L",
+            "candidates": ["UAE-L"],
+            "headerRow": 7,
+            "dataStartRow": 8,
+        },
+        "columnRename": {},
+        "connectSalarySplit": {},
+    },
+}
+
 
 def resolve_convert_mapping(engine_id: str, raw: dict[str, Any] | None) -> dict[str, Any]:
     # 旧引擎 id 兼容
@@ -189,14 +210,31 @@ def resolve_convert_mapping(engine_id: str, raw: dict[str, Any] | None) -> dict[
         engine_id = "hk_payroll_calc"
     base = copy.deepcopy(ENGINE_DEFAULTS.get(engine_id, {"schemaVersion": 1}))
     if not raw:
-        return base
-    if not isinstance(raw, dict):
-        return base
-    override = copy.deepcopy(raw)
-    for whole_key in ("columnRename", "skipSourceHeaders"):
-        if whole_key in override:
-            base[whole_key] = copy.deepcopy(override.pop(whole_key))
-    return _deep_merge(base, override)
+        merged = base
+    elif not isinstance(raw, dict):
+        merged = base
+    else:
+        override = copy.deepcopy(raw)
+        for whole_key in ("columnRename", "skipSourceHeaders"):
+            if whole_key in override:
+                base[whole_key] = copy.deepcopy(override.pop(whole_key))
+        merged = _deep_merge(base, override)
+
+    pid = ""
+    if isinstance(merged, dict):
+        pid = str(merged.get("pdfProfileId") or merged.get("_pdfProfileId") or "").strip()
+    if pid and pid in PROFILE_MAPPING_OVERLAYS:
+        overlay = copy.deepcopy(PROFILE_MAPPING_OVERLAYS[pid])
+        # 布局键以 profile 为准；薪资拆分等保留用户配置
+        for key in ("sourceEmployeeSheet", "targetL"):
+            if key in overlay:
+                merged[key] = copy.deepcopy(overlay[key])
+        if "columnRename" in overlay and "columnRename" not in (raw or {}):
+            merged["columnRename"] = copy.deepcopy(overlay["columnRename"])
+        if "connectSalarySplit" in overlay and "connectSalarySplit" not in (raw or {}):
+            merged["connectSalarySplit"] = copy.deepcopy(overlay["connectSalarySplit"])
+        merged["pdfProfileId"] = pid
+    return merged
 
 
 def find_sheet_name(sheetnames: list[str], spec: dict[str, Any] | None) -> str | None:

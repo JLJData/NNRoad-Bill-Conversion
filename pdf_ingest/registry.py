@@ -59,6 +59,18 @@ PDF_PROFILES: dict[str, PdfProfile] = {
             "nnroad (uae)",
         ),
     ),
+    "connect_uae": PdfProfile(
+        profile_id="connect_uae",
+        label="Connect",
+        region="UAE",
+        module="pdf_ingest.profiles.connect_uae",
+        description="Connect Resources：Tax Invoice PDF → UAE-L；再经 uae_payroll_calc → PN",
+        engine_ids=("uae_payroll_calc",),
+        detect_keywords=(
+            "connect resources",
+            "connect resources llc",
+        ),
+    ),
 }
 
 

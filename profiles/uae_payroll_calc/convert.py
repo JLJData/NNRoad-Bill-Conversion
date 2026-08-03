@@ -29,6 +29,7 @@ from fx_rate import fetch_usd_rates, get_uae_pn_fx_rate
 from pn_meta import PnMeta, apply_pn_meta
 from profiles.tw_payroll_calc.convert import match_ee_code
 from region_templates import get_region_template
+from xlsx_convert_utils import coerce_datetime_for_excel, is_date_column_header
 from xlsx_luckysheet_compat import apply_luckysheet_compat_uae
 from xlsx_postprocess import postprocess_converted_xlsx
 
@@ -45,6 +46,9 @@ UAE_DATA_START = 9
 UAE_EE_DATA_START = 10
 MAX_EMPLOYEES = 20
 
+# 与 TW/HK 一致：强制日期格式，避免网页把 Excel 序列显示成 46,113.00
+_DATE_FMT = "yyyy/m/d"
+
 _ACTIVE_MAPPING: dict[str, Any] | None = None
 
 
@@ -54,6 +58,30 @@ def _active_mapping() -> dict[str, Any]:
         if isinstance(_ACTIVE_MAPPING, dict)
         else resolve_convert_mapping("uae_payroll_calc", None)
     )
+
+
+def _uae_l_layout(*, target: bool = False) -> tuple[int, int, list[str]]:
+    """返回 (header_row, data_start, name_headers)。Connect 母版多为 7/8 + English Name。"""
+    mapping = _active_mapping()
+    key = "targetL" if target else "sourceEmployeeSheet"
+    spec = mapping.get(key) if isinstance(mapping.get(key), dict) else {}
+    if not spec and target:
+        spec = mapping.get("sourceEmployeeSheet") if isinstance(mapping.get("sourceEmployeeSheet"), dict) else {}
+    header = int(spec.get("headerRow") or UAE_L_HEADER_ROW)
+    data_start = int(spec.get("dataStartRow") or UAE_L_DATA_START)
+    names = spec.get("nameHeaders") if isinstance(spec.get("nameHeaders"), list) else None
+    name_headers = [str(x).strip() for x in (names or ["Employee Name", "English Name"]) if str(x).strip()]
+    if not name_headers:
+        name_headers = ["Employee Name", "English Name"]
+    return header, data_start, name_headers
+
+
+def _emp_display_name(emp: dict[str, Any]) -> str:
+    for key in ("Employee Name", "English Name"):
+        name = _norm(emp.get(key))
+        if name:
+            return name
+    return ""
 
 
 def _norm(value: Any) -> str:
@@ -99,14 +127,18 @@ def _set_cell_value(cell, value: Any) -> None:
 
 
 def parse_uae_l_employees(ws: Worksheet) -> list[dict[str, Any]]:
-    headers = _header_map(ws, UAE_L_HEADER_ROW)
+    header_row, data_start, name_headers = _uae_l_layout(target=False)
+    headers = _header_map(ws, header_row)
     if not headers:
-        raise ValueError(f"「UAE-L」第 {UAE_L_HEADER_ROW} 行表头为空")
+        raise ValueError(f"「UAE-L」第 {header_row} 行表头为空")
     employees: list[dict[str, Any]] = []
-    for row in range(UAE_L_DATA_START, (ws.max_row or UAE_L_DATA_START) + 1):
+    for row in range(data_start, (ws.max_row or data_start) + 1):
         name = None
-        if "Employee Name" in headers:
-            name = ws.cell(row, headers["Employee Name"]).value
+        for nh in name_headers:
+            if nh in headers:
+                name = ws.cell(row, headers[nh]).value
+                if _norm(name):
+                    break
         emp_id = None
         if "Emp ID" in headers:
             emp_id = ws.cell(row, headers["Emp ID"]).value
@@ -124,40 +156,156 @@ def parse_uae_l_employees(ws: Worksheet) -> list[dict[str, Any]]:
 
 
 def clear_uae_l_data(ws: Worksheet) -> None:
-    max_row = max(ws.max_row or UAE_L_DATA_START, UAE_L_DATA_START + MAX_EMPLOYEES)
+    """清空员工数据区。保留母版首行上的公式列结构由 write_uae_l 按「只清数据列」处理。"""
+    _, data_start, _ = _uae_l_layout(target=True)
+    max_row = max(ws.max_row or data_start, data_start + MAX_EMPLOYEES)
     max_col = min(ws.max_column or 1, 64)
-    for row in range(UAE_L_DATA_START, max_row + 1):
+    for row in range(data_start, max_row + 1):
         for col in range(1, max_col + 1):
             cell = ws.cell(row, col)
-            # 保留 Gross 等表内公式列的结构：整行清空后由写入覆盖
             if type(cell).__name__ == "MergedCell":
                 continue
             cell.value = None
 
 
+def _uae_l_formula_cols(ws: Worksheet, data_start: int) -> dict[int, str]:
+    """母版首名员工行上的公式列 → 公式文本。"""
+    out: dict[int, str] = {}
+    for col in range(1, max((ws.max_column or 1), 1) + 1):
+        text = _cell_formula_text(ws.cell(data_start, col).value)
+        if text:
+            out[col] = text
+    return out
+
+
+def ensure_uae_period_date_formats(wb) -> None:
+    """UAE!B2/C2 引用 UAE-L 账期；强制日期格式，避免网页显示成 46,113.00。"""
+    try:
+        uae_l = wb[UAE_L_SHEET]
+        if _norm(uae_l.cell(2, 1).value).lower().startswith("payroll"):
+            for col in (3, 5):
+                uae_l.cell(2, col).number_format = _DATE_FMT
+        header_row, data_start, _ = _uae_l_layout(target=True)
+        headers = _header_map(uae_l, header_row)
+        for key in ("From", "To"):
+            col = headers.get(key)
+            if not col:
+                continue
+            for row in range(data_start, data_start + MAX_EMPLOYEES):
+                cell = uae_l.cell(row, col)
+                if type(cell).__name__ == "MergedCell":
+                    continue
+                if cell.value is None and row > data_start:
+                    break
+                cell.number_format = _DATE_FMT
+    except KeyError:
+        pass
+    try:
+        uae = wb[UAE_SHEET]
+        for col in (2, 3):
+            uae.cell(2, col).number_format = _DATE_FMT
+    except KeyError:
+        pass
+
+
+def write_uae_l_sheet_meta(ws: Worksheet, employees: list[dict[str, Any]]) -> None:
+    """Connect 风格 UAE-L：C1 客户名、C2/E2 账期（写 datetime，勿写文本）。"""
+    if not employees:
+        return
+    emp0 = employees[0]
+    if _norm(ws.cell(1, 1).value).lower().startswith("company"):
+        client = _norm(emp0.get("Client")) or _norm(emp0.get("_client"))
+        if client:
+            ws.cell(1, 3).value = client
+    if _norm(ws.cell(2, 1).value).lower().startswith("payroll"):
+        for key, col in (("From", 3), ("To", 5)):
+            dt = coerce_datetime_for_excel(emp0.get(key))
+            if dt is None:
+                continue
+            cell = ws.cell(2, col)
+            cell.value = dt
+            cell.number_format = _DATE_FMT
+
+
 def write_uae_l(ws: Worksheet, employees: list[dict[str, Any]]) -> None:
-    headers = _header_map(ws, UAE_L_HEADER_ROW)
+    """
+    写入 UAE-L：只覆盖数据列，母版公式列原样保留/扩行复制。
+    避免「整行清空再补公式」——从源头不破坏母版公式。
+    """
+    header_row, data_start, _ = _uae_l_layout(target=True)
+    headers = _header_map(ws, header_row)
     if not headers:
-        raise ValueError(f"「UAE-L」第 {UAE_L_HEADER_ROW} 行表头为空")
-    clear_uae_l_data(ws)
-    skip_formula_headers = {"EC - Gross Salary"}  # 保留母版行公式时跳过；清空后需重写值或公式
+        raise ValueError(f"「UAE-L」第 {header_row} 行表头为空")
+    write_uae_l_sheet_meta(ws, employees)
+
+    n = len(employees)
+    formula_by_col = _uae_l_formula_cols(ws, data_start)
+    max_col = max(max(headers.values(), default=1), max(formula_by_col.keys(), default=1), 1)
+
+    # 多人：先按首行复制样式+公式，再只改数据格
+    for i in range(1, n):
+        _copy_row_style_and_formula(
+            ws,
+            data_start,
+            data_start + i,
+            max_col=max_col,
+            l_from=data_start,
+            l_to=data_start + i,
+        )
+
+    # 只清空「非公式」数据列；多余员工行整行清空
+    last_keep = data_start + max(n, 1) - 1
+    max_row = max(ws.max_row or data_start, data_start + MAX_EMPLOYEES)
+    for row in range(data_start, max_row + 1):
+        for col in range(1, max_col + 1):
+            cell = ws.cell(row, col)
+            if type(cell).__name__ == "MergedCell":
+                continue
+            if row <= last_keep and col in formula_by_col:
+                continue
+            cell.value = None
+
+    # 公式行被多余清空后：确保前 n 行公式仍在（首行未清；扩行已复制）
+    for i in range(n):
+        row = data_start + i
+        for col, formula in formula_by_col.items():
+            cur = ws.cell(row, col).value
+            if _cell_formula_text(cur):
+                continue
+            ws.cell(row, col).value = shift_row_formula(
+                formula,
+                data_start,
+                row,
+                target_l_from=data_start,
+                target_l_to=row,
+                target_l_sheet=UAE_L_SHEET,
+            )
+
     for idx, emp in enumerate(employees):
-        row = UAE_L_DATA_START + idx
+        row = data_start + idx
         for h, col in headers.items():
+            if col in formula_by_col:
+                continue
             if h not in emp:
                 continue
-            if h in skip_formula_headers and emp.get(h) is None:
-                continue
             val = emp[h]
+            if val is None:
+                continue
             cell = ws.cell(row, col)
+            if is_date_column_header(h) or h in ("From", "To"):
+                dt = coerce_datetime_for_excel(val)
+                if dt is not None:
+                    cell.value = dt
+                    cell.number_format = _DATE_FMT
+                    continue
             if isinstance(val, datetime):
                 cell.value = val
-                cell.number_format = "yyyy/m/d"
+                cell.number_format = _DATE_FMT
             else:
                 _set_cell_value(cell, val)
-        # Gross 公式（无 Table 时用单元格加法兜底）
+        # Auxilium：母版若无 Gross 公式则生成
         gross_col = headers.get("EC - Gross Salary")
-        if gross_col:
+        if gross_col and gross_col not in formula_by_col:
             parts = []
             for key in (
                 "EC - Basic Salary",
@@ -170,7 +318,7 @@ def write_uae_l(ws: Worksheet, employees: list[dict[str, Any]]) -> None:
             ):
                 c = headers.get(key)
                 if c:
-                    parts.append(f"{ws.cell(row, c).coordinate}")
+                    parts.append(ws.cell(row, c).coordinate)
             if parts:
                 ws.cell(row, gross_col).value = "=" + "+".join(parts)
 
@@ -223,40 +371,41 @@ def _retarget_ee_refs(formula: str, ee_from: int, ee_to: int) -> str:
 
 def expand_uae_employee_rows(wb, employee_count: int) -> None:
     n = max(int(employee_count), 1)
+    _, l_data_start, _ = _uae_l_layout(target=True)
     if UAE_SHEET in wb.sheetnames:
         uae = wb[UAE_SHEET]
         for i in range(1, n):
             dest = UAE_DATA_START + i
-            l_row = UAE_L_DATA_START + i
+            l_row = l_data_start + i
             ee_row = UAE_EE_DATA_START + i
             _copy_row_style_and_formula(
                 uae,
                 UAE_DATA_START,
                 dest,
                 max_col=40,
-                l_from=UAE_L_DATA_START,
+                l_from=l_data_start,
                 l_to=l_row,
             )
             for c in range(1, 41):
                 cell = uae.cell(dest, c)
                 if isinstance(cell.value, str) and cell.value.startswith("="):
                     cell.value = _retarget_ee_refs(cell.value, UAE_EE_DATA_START, ee_row)
-            uae.cell(dest, 2).value = f"='{UAE_L_SHEET}'!B{l_row}"
+            # 姓名列等公式已由上面从母版首行复制并平移，勿再硬编码覆盖
 
     if UAE_EE_SHEET in wb.sheetnames:
         ee = wb[UAE_EE_SHEET]
         for i in range(1, n):
             dest = UAE_EE_DATA_START + i
-            l_row = UAE_L_DATA_START + i
+            l_row = l_data_start + i
             _copy_row_style_and_formula(
                 ee,
                 UAE_EE_DATA_START,
                 dest,
                 max_col=40,
-                l_from=UAE_L_DATA_START,
+                l_from=l_data_start,
                 l_to=l_row,
             )
-            ee.cell(dest, 5).value = f"='{UAE_L_SHEET}'!B{l_row}"
+            # EE 公式（含姓名引用）同样只复制平移，不硬写 E 列
 
 
 # ---------- PN 多人：Labor×n + Expense×n（无 Office Rental）----------
@@ -390,42 +539,181 @@ def _count_pn_labor_slots(ws: Worksheet) -> int:
     return max(n, 1)
 
 
-def fit_uae_pn_employees(wb, employee_count: int) -> dict[str, int]:
-    """
-    PN 按人数扩行：Labor×n + Expense×n，重写 EOR/Service/Management/FX 引用。
-    母版默认 1 人：Labor16 / Expense17 / Service20 / Mgmt21 / FX B28。
-    """
-    if PN_SHEET not in wb.sheetnames:
-        return {}
-    ws = wb[PN_SHEET]
-    n = max(int(employee_count), 1)
-    if n > MAX_EMPLOYEES:
-        raise ValueError(f"员工数 {n} 超过模板上限 {MAX_EMPLOYEES}")
+def _pn_snapshot_row_formulas(ws: Worksheet, row: int, max_col: int = 6) -> dict[int, str]:
+    """快照一行公式文本（col → formula）。"""
+    out: dict[int, str] = {}
+    for col in range(1, max_col + 1):
+        text = _cell_formula_text(ws.cell(row, col).value)
+        if text:
+            out[col] = text
+    return out
 
-    old_n = _count_pn_labor_slots(ws)
+
+def _pn_stash_sheet_refs(formula: str) -> tuple[str, list[str]]:
+    placeholders: list[str] = []
+
+    def stash(match: re.Match[str]) -> str:
+        placeholders.append(match.group(0))
+        return f"__SHEETREF{len(placeholders) - 1}__"
+
+    # 'Sheet'!A1 或 Sheet!A1
+    s = re.sub(r"'(?:[^']+)'!\$?[A-Z]{1,3}\$?\d+", stash, formula)
+    s = re.sub(r"(?<![A-Z])[A-Za-z][A-Za-z0-9 ]*!\$?[A-Z]{1,3}\$?\d+", stash, s)
+    return s, placeholders
+
+
+def _pn_restore_sheet_refs(body: str, placeholders: list[str]) -> str:
+    for idx, ref in enumerate(placeholders):
+        body = body.replace(f"__SHEETREF{idx}__", ref)
+    return body
+
+
+def _pn_shift_local_rows(formula: str, from_row: int, to_row: int) -> str:
+    """只平移本表相对行引用；跨表引用原样保留。"""
+    if from_row == to_row or not (isinstance(formula, str) and formula.startswith("=")):
+        return formula
+    body, refs = _pn_stash_sheet_refs(formula)
+
+    def repl(m: re.Match[str]) -> str:
+        return f"{m.group(1)}{to_row}"
+
+    body = re.sub(
+        rf"(?<!\$)(?<![A-Z])([A-Z]{{1,3}}){from_row}(?!\d)",
+        repl,
+        body,
+    )
+    return _pn_restore_sheet_refs(body, refs)
+
+
+def _pn_retarget_uae_emp_row(formula: str, from_emp: int, to_emp: int) -> str:
+    """UAE!X{from_emp} → UAE!X{to_emp}；账期/合计等其它行号不动。"""
+    if from_emp == to_emp or not (isinstance(formula, str) and formula.startswith("=")):
+        return formula
+
+    def repl(m: re.Match[str]) -> str:
+        return f"{m.group(1)}{m.group(2)}{to_emp}"
+
+    return re.sub(
+        rf"(UAE!|'UAE'!)(\$?[A-Z]{{1,3}}\$?){from_emp}(?!\d)",
+        repl,
+        formula,
+    )
+
+
+def _pn_retarget_fx_row(formula: str, old_fx: int, new_fx: int) -> str:
+    if old_fx == new_fx or not (isinstance(formula, str) and formula.startswith("=")):
+        return formula
+    out = formula
+    out = re.sub(rf"\$B\${old_fx}(?!\d)", f"$B${new_fx}", out)
+    out = re.sub(rf"(?<!\$)B{old_fx}(?!\d)", f"B{new_fx}", out)
+    out = re.sub(
+        rf"('?PN'?!?)\$?B\$?{old_fx}(?!\d)",
+        lambda m: f"{m.group(1)}B{new_fx}" if "!" in m.group(1) else f"$B${new_fx}",
+        out,
+    )
+    # 'PN'!B28 / PN!B28
+    out = re.sub(rf"'PN'!\$?B\$?{old_fx}(?!\d)", f"'PN'!B{new_fx}", out)
+    out = re.sub(rf"(?<![A-Z])PN!\$?B\$?{old_fx}(?!\d)", f"PN!B{new_fx}", out)
+    return out
+
+
+def _pn_remap_local_rows(formula: str, remap: dict[int, int]) -> str:
+    """按行映射表平移本表引用（扩/缩行后修正合计区公式文本）。"""
+    if not remap or not (isinstance(formula, str) and formula.startswith("=")):
+        return formula
+    body, refs = _pn_stash_sheet_refs(formula)
+
+    def repl(m: re.Match[str]) -> str:
+        row = int(m.group(2))
+        new_row = remap.get(row, row)
+        return f"{m.group(1)}{new_row}"
+
+    body = re.sub(r"(?<!\$)(?<![A-Z])([A-Z]{1,3})(\d+)", repl, body)
+    # $A$12 这类绝对引用也跟行走（FX 旁合计常用）
+    body = re.sub(
+        r"\$([A-Z]{1,3})\$(\d+)",
+        lambda m: f"${m.group(1)}${remap.get(int(m.group(2)), int(m.group(2)))}",
+        body,
+    )
+    return _pn_restore_sheet_refs(body, refs)
+
+
+def _pn_expand_row_remap(
+    *,
+    labor_start: int,
+    expense_start_old: int,
+    svc_old: int,
+    delta: int,
+    max_row: int = 80,
+) -> dict[int, int]:
+    """
+    delta>0：先在 expense 前插 Labor，再在 Service 前插 Expense →
+      r < expense_start_old → 不动
+      expense_start_old <= r < svc_old → +delta
+      r >= svc_old → +2*delta
+    delta<0：对称收缩。
+    """
+    remap: dict[int, int] = {}
+    if delta == 0:
+        return remap
+    for r in range(1, max_row + 1):
+        if delta > 0:
+            if r < expense_start_old:
+                remap[r] = r
+            elif r < svc_old:
+                remap[r] = r + delta
+            else:
+                remap[r] = r + 2 * delta
+        else:
+            # 先删多余 Expense 再删多余 Labor（与 _pn_delete_rows 顺序一致）
+            shrink = -delta
+            if r < labor_start + (expense_start_old - labor_start - shrink):
+                # 简化：labor 保留 n 行后的映射在 delete 后由标签重找；这里给合计区用
+                pass
+            if r < expense_start_old:
+                # labor 区：删的是 labor_start+n .. expense-1，保留行号不变
+                remap[r] = r
+            elif r < svc_old:
+                # 原 expense 区整体上移 shrink（删 labor 后再删 expense 各 shrink）
+                remap[r] = r - shrink
+            else:
+                remap[r] = r - 2 * shrink
+    return remap
+
+
+def _pn_apply_detail_formulas(
+    ws: Worksheet,
+    *,
+    snapshot: dict[int, str],
+    template_row: int,
+    dest_row: int,
+    uae_from: int,
+    uae_to: int,
+    old_fx: int,
+    new_fx: int,
+) -> None:
+    for col, formula in snapshot.items():
+        text = _pn_shift_local_rows(formula, template_row, dest_row)
+        text = _pn_retarget_uae_emp_row(text, uae_from, uae_to)
+        text = _pn_retarget_fx_row(text, old_fx, new_fx)
+        cell = ws.cell(dest_row, col)
+        cell.value = text
+
+
+def _pn_patch_eor_sum(ws: Worksheet, eor_row: int, labor_start: int, last_detail: int) -> None:
+    """EOR 明细合计：若母版是 SUM，只改起止行；否则不动。"""
+    for col in (5, 6):
+        cell = ws.cell(eor_row, col)
+        text = _cell_formula_text(cell.value)
+        if not text:
+            continue
+        letter = "E" if col == 5 else "F"
+        if re.search(rf"SUM\(\s*{letter}\d+\s*:\s*{letter}\d+\s*\)", text, re.I):
+            cell.value = f"=SUM({letter}{labor_start}:{letter}{last_detail})"
+
+
+def _pn_layout_dict(ws: Worksheet, n: int) -> dict[str, int]:
     labor_start = _PN_LABOR_START
-    expense_start = labor_start + old_n
-    svc_row = _find_pn_row_by_label(ws, "Service Fee") or 20
-    delta = n - old_n
-
-    if delta > 0:
-        _pn_insert_rows(ws, expense_start, delta, fill_style_row=labor_start)
-        svc_row = _find_pn_row_by_label(ws, "Service Fee") or (svc_row + delta)
-        expense_start = labor_start + n
-        _pn_insert_rows(ws, svc_row, delta, fill_style_row=expense_start)
-    elif delta < 0:
-        expense_start = labor_start + old_n
-
-        def _pn_delete_rows(wss: Worksheet, idx: int, amount: int) -> None:
-            if amount <= 0:
-                return
-            merges = _collect_merges_from(wss, idx + amount)
-            wss.delete_rows(idx, amount)
-            _restore_merges(wss, merges, row_shift=-amount)
-
-        _pn_delete_rows(ws, expense_start + n, -delta)
-        _pn_delete_rows(ws, labor_start + n, -delta)
-
     expense_start = labor_start + n
     last_eor_detail = expense_start + n - 1
     eor_row = _find_pn_row_by_label(ws, "EOR/PEO Cost") or 15
@@ -436,100 +724,7 @@ def fit_uae_pn_employees(wb, employee_count: int) -> dict[str, int]:
         svc = last_eor_detail + 3
     if mgmt is None:
         mgmt = svc + 1
-
-    for i in range(n):
-        uae_row = UAE_DATA_START + i
-        labor_row = labor_start + i
-        expense_row = expense_start + i
-        if i > 0:
-            _copy_pn_row_style(ws, labor_start, labor_row)
-            _copy_pn_row_style(ws, expense_start, expense_row)
-        _ensure_merge_a_c(ws, labor_row)
-        _ensure_merge_a_c(ws, expense_row)
-
-        ws.cell(labor_row, 1).value = (
-            f'="- Labor cost for "&UAE!B{uae_row}&"  -  "&MONTH(UAE!B2)&"-"&YEAR(UAE!B2)'
-        )
-        e_labor = ws.cell(labor_row, 5)
-        e_labor.value = f"=UAE!I{uae_row}+UAE!S{uae_row}"
-        e_labor.number_format = _PN_AED_FMT
-        f_labor = ws.cell(labor_row, 6)
-        f_labor.value = f"=E{labor_row}/$B${fx_row}"
-        f_labor.number_format = _PN_USD_FMT
-
-        ws.cell(expense_row, 1).value = f'="- Expense claim for "&UAE!B{uae_row}'
-        e_exp = ws.cell(expense_row, 5)
-        e_exp.value = f"=UAE!AE{uae_row}"
-        e_exp.number_format = _PN_AED_FMT
-        f_exp = ws.cell(expense_row, 6)
-        f_exp.value = f"=E{expense_row}/$B${fx_row}"
-        f_exp.number_format = _PN_USD_FMT
-
-    e_eor = ws.cell(eor_row, 5)
-    e_eor.value = f"=SUM(E{labor_start}:E{last_eor_detail})"
-    e_eor.number_format = _PN_AED_FMT
-    f_eor = ws.cell(eor_row, 6)
-    f_eor.value = f"=SUM(F{labor_start}:F{last_eor_detail})"
-    f_eor.number_format = _PN_USD_FMT
-
-    e_svc = ws.cell(svc, 5)
-    e_svc.value = f"=SUM(E{mgmt}:E{mgmt + 1})"
-    e_svc.number_format = _PN_AED_FMT
-    f_svc = ws.cell(svc, 6)
-    f_svc.value = f"=SUM(F{mgmt}:F{mgmt + 1})"
-    f_svc.number_format = _PN_USD_FMT
-
-    # Management：UAE!H6 为 Recurring Fee 合计（多人）
-    ws.cell(mgmt, 1).value = '="- Management Fee - "&MONTH(UAE!B2)&"-"&YEAR(UAE!B2)'
-    e_mgmt = ws.cell(mgmt, 5)
-    e_mgmt.value = "=UAE!H6"
-    e_mgmt.number_format = _PN_AED_FMT
-    f_mgmt = ws.cell(mgmt, 6)
-    f_mgmt.value = f"=E{mgmt}/$B${fx_row}"
-    f_mgmt.number_format = _PN_USD_FMT
-    _ensure_merge_a_c(ws, svc)
-    _ensure_merge_a_c(ws, mgmt)
-
-    # 扩行后重写合计区（EOR/PEO Service Cost、FX 旁合计、Sub/Tax/Total）
     total_row = _find_pn_row_by_label(ws, "EOR/PEO Service Cost") or (mgmt + 4)
-    ws.cell(total_row, 5).value = f"=E{eor_row}+E{svc}"
-    ws.cell(total_row, 5).number_format = _PN_AED_FMT
-    ws.cell(total_row, 6).value = f"=F{eor_row}+F{svc}"
-    ws.cell(total_row, 6).number_format = _PN_USD_FMT
-
-    fx_row = _find_pn_row_by_label(ws, "FX rate") or fx_row
-    # FX 行右侧「EOR/PEO Service Cost」USD
-    ws.cell(fx_row, 6).value = f"=F{total_row}"
-    ws.cell(fx_row, 6).number_format = _PN_USD_FMT
-    # Sub Total / Tax / Total（相对 FX 行）
-    sub_row = fx_row + 5
-    tax_row = fx_row + 6
-    grand_row = fx_row + 7
-    # Outstanding..Bank = fx+1..fx+4，保持母版对 UAE!E22.. 的引用即可
-    ws.cell(sub_row, 6).value = f"=SUM(F{fx_row}:F{fx_row + 4})"
-    ws.cell(sub_row, 6).number_format = _PN_USD_FMT
-    tax_cell = ws.cell(tax_row, 6)
-    tax_cell.value = f"=UAE!F6/'PN'!B{fx_row}"
-    tax_cell.number_format = _PN_USD_FMT
-    ws.cell(grand_row, 6).value = f"=SUM(F{sub_row}:F{tax_row})"
-    ws.cell(grand_row, 6).number_format = _PN_USD_FMT
-
-    # Outstanding..Bank → UAE!E22..E25（扩行后行号仍指向地区表固定结算区）
-    for i, uae_e in enumerate((22, 23, 24, 25), start=1):
-        cell = ws.cell(fx_row + i, 6)
-        cell.value = f"=UAE!E{uae_e}"
-        cell.number_format = _PN_USD_FMT
-
-    # 明细行 USD 除数若仍指向旧 B28，一并改到当前 FX 行
-    for r in range(labor_start, last_eor_detail + 1):
-        fcell = ws.cell(r, 6)
-        if isinstance(fcell.value, str) and "$B$" in fcell.value:
-            fcell.value = f"=E{r}/$B${fx_row}"
-    for r in (mgmt,):
-        fcell = ws.cell(r, 6)
-        if isinstance(fcell.value, str):
-            fcell.value = f"=E{r}/$B${fx_row}"
-
     return {
         "labor_start": labor_start,
         "expense_start": expense_start,
@@ -542,9 +737,172 @@ def fit_uae_pn_employees(wb, employee_count: int) -> dict[str, int]:
     }
 
 
+def fit_uae_pn_employees(wb, employee_count: int) -> dict[str, int]:
+    """
+    PN 按人数扩/缩 Labor + Expense。
+
+    原则：母版公式是唯一真相——不发明 I/S/AE/H6 等列引用。
+    - 人数 == 母版槽位：整张 PN 公式不动，只返回布局。
+    - 人数变化：从母版首人 Labor/Expense 公式复制并平移行号；合计区按行映射修正文本。
+    """
+    if PN_SHEET not in wb.sheetnames:
+        return {}
+    ws = wb[PN_SHEET]
+    n = max(int(employee_count), 1)
+    if n > MAX_EMPLOYEES:
+        raise ValueError(f"员工数 {n} 超过模板上限 {MAX_EMPLOYEES}")
+
+    old_n = _count_pn_labor_slots(ws)
+    labor_start = _PN_LABOR_START
+    expense_start_old = labor_start + old_n
+    svc_old = _find_pn_row_by_label(ws, "Service Fee") or 20
+    fx_old = _find_pn_row_by_label(ws, "FX rate") or 28
+    delta = n - old_n
+
+    if delta == 0:
+        return _pn_layout_dict(ws, n)
+
+    labor_snap = _pn_snapshot_row_formulas(ws, labor_start)
+    expense_snap = _pn_snapshot_row_formulas(ws, expense_start_old)
+    # 合计/结算区：扩行前快照，扩行后按行映射写回（不换成硬编码业务公式）
+    summary_rows = {
+        "eor": _find_pn_row_by_label(ws, "EOR/PEO Cost"),
+        "svc": svc_old,
+        "mgmt": _find_pn_row_by_label(ws, "Management Fee"),
+        "total": _find_pn_row_by_label(ws, "EOR/PEO Service Cost"),
+        "fx": fx_old,
+    }
+    summary_snaps: dict[str, dict[int, str]] = {}
+    for key, row in summary_rows.items():
+        if row:
+            summary_snaps[key] = _pn_snapshot_row_formulas(ws, row)
+    settle_snaps: dict[int, dict[int, str]] = {}
+    for off in range(1, 8):
+        settle_snaps[off] = _pn_snapshot_row_formulas(ws, fx_old + off)
+
+    remap = _pn_expand_row_remap(
+        labor_start=labor_start,
+        expense_start_old=expense_start_old,
+        svc_old=svc_old,
+        delta=delta,
+        max_row=max(ws.max_row or 40, fx_old + 10),
+    )
+
+    if delta > 0:
+        _pn_insert_rows(ws, expense_start_old, delta, fill_style_row=labor_start)
+        svc_row = _find_pn_row_by_label(ws, "Service Fee") or (svc_old + delta)
+        expense_start = labor_start + n
+        _pn_insert_rows(ws, svc_row, delta, fill_style_row=expense_start)
+    else:
+
+        def _pn_delete_rows(wss: Worksheet, idx: int, amount: int) -> None:
+            if amount <= 0:
+                return
+            merges = _collect_merges_from(wss, idx + amount)
+            wss.delete_rows(idx, amount)
+            _restore_merges(wss, merges, row_shift=-amount)
+
+        _pn_delete_rows(ws, expense_start_old + n, -delta)
+        _pn_delete_rows(ws, labor_start + n, -delta)
+
+    layout = _pn_layout_dict(ws, n)
+    expense_start = layout["expense_start"]
+    last_eor_detail = expense_start + n - 1
+    fx_row = layout["fx_row"]
+    eor_row = layout["eor_row"]
+    svc = layout["svc_row"]
+    mgmt = layout["mgmt_row"]
+    total_row = layout["total_row"]
+
+    for i in range(n):
+        labor_row = labor_start + i
+        expense_row = expense_start + i
+        uae_to = UAE_DATA_START + i
+        if i > 0:
+            _copy_pn_row_style(ws, labor_start, labor_row)
+            _copy_pn_row_style(ws, expense_start, expense_row)
+        _ensure_merge_a_c(ws, labor_row)
+        _ensure_merge_a_c(ws, expense_row)
+        _pn_apply_detail_formulas(
+            ws,
+            snapshot=labor_snap,
+            template_row=labor_start,
+            dest_row=labor_row,
+            uae_from=UAE_DATA_START,
+            uae_to=uae_to,
+            old_fx=fx_old,
+            new_fx=fx_row,
+        )
+        _pn_apply_detail_formulas(
+            ws,
+            snapshot=expense_snap,
+            template_row=expense_start_old,
+            dest_row=expense_row,
+            uae_from=UAE_DATA_START,
+            uae_to=uae_to,
+            old_fx=fx_old,
+            new_fx=fx_row,
+        )
+
+    # 合计区：母版公式 + 行映射；EOR 的 SUM 起止扩到新明细末行
+    label_to_row = {
+        "eor": eor_row,
+        "svc": svc,
+        "mgmt": mgmt,
+        "total": total_row,
+        "fx": fx_row,
+    }
+    for key, snap in summary_snaps.items():
+        dest = label_to_row.get(key)
+        if not dest:
+            continue
+        for col, formula in snap.items():
+            text = _pn_remap_local_rows(formula, remap)
+            text = _pn_retarget_fx_row(text, fx_old, fx_row)
+            ws.cell(dest, col).value = text
+    for off, snap in settle_snaps.items():
+        dest = fx_row + off
+        for col, formula in snap.items():
+            text = _pn_remap_local_rows(formula, remap)
+            text = _pn_retarget_fx_row(text, fx_old, fx_row)
+            ws.cell(dest, col).value = text
+
+    _pn_patch_eor_sum(ws, eor_row, labor_start, last_eor_detail)
+    _ensure_merge_a_c(ws, svc)
+    _ensure_merge_a_c(ws, mgmt)
+
+    return layout
+
+
+def set_period(wb, employees: list[dict[str, Any]]) -> None:
+    if not employees or UAE_SHEET not in wb.sheetnames:
+        return
+    emp = employees[0]
+    uae = wb[UAE_SHEET]
+    _, data_start, _ = _uae_l_layout(target=True)
+    for key, col in (("From", 2), ("To", 3)):
+        cell = uae.cell(2, col)
+        existing = cell.value
+        # Connect 母版 UAE!B2 已引用 UAE-L!C2，勿强行覆盖公式格
+        if isinstance(existing, str) and existing.startswith("="):
+            cell.number_format = _DATE_FMT
+            continue
+        dt = coerce_datetime_for_excel(emp.get(key))
+        if dt is not None:
+            cell.value = dt
+            cell.number_format = _DATE_FMT
+        elif emp.get(key) is None:
+            # 兜底：指向 UAE-L 首名员工账期（Auxilium F/G）
+            from_col = "F" if col == 2 else "G"
+            cell.value = f"='{UAE_L_SHEET}'!{from_col}{data_start}"
+            cell.number_format = _DATE_FMT
+
+
 def set_recurring_fees(wb, employees: list[dict[str, Any]]) -> None:
-    """UAE!H = Admin Fee × 1.5（样例 1312.5→1968）。"""
+    """UAE!H = Admin Fee × 1.5（Auxilium）。Connect 无 Admin Fees，保留母版 Recurring 公式。"""
     if UAE_SHEET not in wb.sheetnames:
+        return
+    if _resolve_pdf_profile_id(_active_mapping()) == "connect_uae":
         return
     uae = wb[UAE_SHEET]
     for i, emp in enumerate(employees):
@@ -593,43 +951,43 @@ def _apply_vendor_plugins(wb, warnings: list[str], *, employee_count: int = 1) -
     ) or {}
 
 
-def set_period(wb, employees: list[dict[str, Any]]) -> None:
-    if not employees or UAE_SHEET not in wb.sheetnames:
-        return
-    emp = employees[0]
-    uae = wb[UAE_SHEET]
-    for key, col in (("From", 2), ("To", 3)):
-        val = emp.get(key)
-        if isinstance(val, datetime):
-            cell = uae.cell(2, col)
-            cell.value = val
-            cell.number_format = "yyyy/m/d"
-        elif val is None:
-            # 兜底：指向 UAE-L 首名员工账期
-            uae.cell(2, col).value = f"='{UAE_L_SHEET}'!{'F' if col == 2 else 'G'}{UAE_L_DATA_START}"
+def _retarget_pn_fx_refs_in_formula(formula: str, fx_row: int) -> str:
+    """母版公式里的 PN!B{n} / 'PN'!B{n} 统一指到当前 FX 行，保留原引用写法。"""
+    if not (isinstance(formula, str) and formula.startswith("=")):
+        return formula
+    fx = max(int(fx_row), 1)
+
+    def repl(m: re.Match[str]) -> str:
+        return f"{m.group(1)}B{fx}"
+
+    return re.sub(r"('PN'!|PN!)\$?B\$?\d+", repl, formula)
 
 
 def normalize_uae_other_fee_block(wb, *, fx_row: int = 28) -> None:
     """
     Other Fee 区（E22:E26）：
-    - E23/E24 母版常空（值误在 F 列）→ 补 0
-    - E25 Bank Charges 保留公式 =10+50/'PN'!B{fx}（多人扩行后 fx 行会下移，必须跟 PN 汇率格）
+    - 空单元格补 0；已有公式/数值不覆盖
+    - E25 Bank Charges：以母版为准（如 10+49.99/PN!B29），仅重定向到当前 FX 行
     """
     if UAE_SHEET not in wb.sheetnames:
         return
     uae = wb[UAE_SHEET]
+    fx = max(int(fx_row or 28), 1)
     for row, default in ((22, 0), (23, 0), (24, 0), (26, 0)):
         cell = uae.cell(row, 5)
         val = cell.value
         if val is None or val == "":
             cell.value = default
-        elif isinstance(val, str) and val.startswith("="):
-            # 空结算项勿留坏公式
-            cell.value = default
-    # Bank Charges：固定规则 10+50/汇率；汇率格随 PN 扩行变化
-    fx = max(int(fx_row or 28), 1)
-    uae.cell(25, 5).value = f"=10+50/'PN'!B{fx}"
-    uae.cell(21, 5).value = "=SUM(E22:E26)"
+    bank = uae.cell(25, 5)
+    text = _cell_formula_text(bank.value)
+    if text:
+        bank.value = _retarget_pn_fx_refs_in_formula(text, fx)
+    # 母版是常数（如默认模板 E25=10）则保持，不发明 10+50
+    e21 = uae.cell(21, 5)
+    if e21.value is None or e21.value == "":
+        e21.value = "=SUM(E22:E26)"
+    elif isinstance(e21.value, str) and e21.value.startswith("="):
+        pass
     for row in (23, 24):
         fcell = uae.cell(row, 6)
         if fcell.value == 0:
@@ -668,15 +1026,12 @@ def apply_uae_ee_codes(
 
     for i, emp in enumerate(employees):
         row = UAE_EE_DATA_START + i
-        # Client Code：有元数据则写入库值，否则公式指向 PN!B9
+        # Client Code：仅在有客户编号时写入数值；母版公式/空单元格一律不发明引用
         if client_code:
             ws.cell(row, 2).value = client_code
-        else:
-            ws.cell(row, 2).value = "=PN!$B$9"
-        # Client Name 始终跟 PN
-        ws.cell(row, 3).value = "=PN!$B$8"
+        # Client Name：母版公式保留（Connect 常用 UAE-L!C1；Auxilium 常用 PN!B8），勿覆盖
 
-        excel_names = [_norm(emp.get("Employee Name"))]
+        excel_names = [_emp_display_name(emp)]
         code, warn = match_ee_code([n for n in excel_names if n], directory)
         ws.cell(row, 4).value = code  # 匹配不到显式清空，避免母版残留
         if warn:
@@ -690,7 +1045,11 @@ def apply_fx(wb, *, fill_fx: bool = True, fx_row: int | None = None) -> float | 
     rates = fetch_usd_rates()
     fx = get_uae_pn_fx_rate(rates)
     row = fx_row or _find_pn_row_by_label(wb[PN_SHEET], "FX rate") or 28
-    wb[PN_SHEET].cell(row, 2).value = fx
+    cell = wb[PN_SHEET].cell(row, 2)
+    # 母版若是公式（如 =3.6725*0.97）则保留，勿覆盖成裸数值
+    if _cell_formula_text(cell.value):
+        return fx
+    cell.value = fx
     return fx
 
 
@@ -742,11 +1101,7 @@ def convert(
             if UAE_L_SHEET not in wb.sheetnames:
                 raise ValueError(f"母版缺少 {UAE_L_SHEET}")
             write_uae_l(wb[UAE_L_SHEET], employees)
-            # 首行姓名写入 UAE B9（Table 公式可能失效时兜底）
-            if UAE_SHEET in wb.sheetnames:
-                name = _norm(employees[0].get("Employee Name"))
-                if name:
-                    wb[UAE_SHEET].cell(UAE_DATA_START, 2).value = name
+            # UAE 姓名列若母版已是公式（='UAE-L'!B…）则保留，勿用文本覆盖
             set_period(wb, employees)
             expand_uae_employee_rows(wb, len(employees))
             set_recurring_fees(wb, employees)
@@ -776,6 +1131,7 @@ def convert(
             )
             # Table1/ArrayFormula → 普通 A1，避免核对页 LuckySheet/HF 一直转圈
             apply_luckysheet_compat_uae(wb)
+            ensure_uae_period_date_formats(wb)
             wb.save(output_path)
         finally:
             wb.close()

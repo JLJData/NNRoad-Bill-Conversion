@@ -129,7 +129,7 @@ def run_vendor_to_source_batch(
     convert_mapping: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """
-    供应商 PDF 和/或 Excel → 一份源表。
+    供应商 PDF/Excel → 一份源表。
     按扩展名分流；优先调用 profile 的 convert_sources / convert_excels / convert_pdfs。
     """
     paths = [Path(p) for p in source_paths]

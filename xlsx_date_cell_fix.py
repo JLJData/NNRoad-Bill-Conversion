@@ -51,6 +51,11 @@ def normalize_template_date_cells(xlsx_path: Path | str) -> int:
                 if not _is_excel_date_format(fmt):
                     continue
                 val = cell.value
+                # 公式格只保留公式，勿把缓存/文本误写成 datetime（会变成「公式变数值」）
+                if getattr(cell, "data_type", None) == "f":
+                    continue
+                if isinstance(val, str) and val.startswith("="):
+                    continue
                 if isinstance(val, datetime):
                     if val.hour or val.minute or val.second:
                         cell.value = datetime(val.year, val.month, val.day)
