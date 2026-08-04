@@ -173,9 +173,9 @@ def parse_connect_invoice(
     if not looks_like_connect_invoice(path, text):
         raise ValueError(f"不是 Connect Resources 税票: {path.name}")
 
-    mapping = resolve_convert_mapping("uae_payroll_calc", convert_mapping)
-    mapping = dict(mapping)
-    mapping["pdfProfileId"] = "connect_uae"
+    mapping_in = dict(convert_mapping) if isinstance(convert_mapping, dict) else {}
+    mapping_in["pdfProfileId"] = "connect_uae"
+    mapping = resolve_convert_mapping("uae_payroll_calc", mapping_in)
 
     inv_no = None
     m = _INV_NO_RE.search(text)

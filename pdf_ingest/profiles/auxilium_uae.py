@@ -601,7 +601,9 @@ def convert_excels(
     del pn_meta, registry_dir, fill_fx  # 仅产出 UAE-L，PN 由引擎填写
     from convert_mapping import resolve_convert_mapping
 
-    mapping = resolve_convert_mapping("uae_payroll_calc", convert_mapping)
+    mapping_in = dict(convert_mapping) if isinstance(convert_mapping, dict) else {}
+    mapping_in.setdefault("pdfProfileId", "auxilium_uae")
+    mapping = resolve_convert_mapping("uae_payroll_calc", mapping_in)
     rename = mapping.get("columnRename") if isinstance(mapping.get("columnRename"), dict) else {}
 
     paths = [Path(p).resolve() for p in excel_paths]

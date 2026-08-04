@@ -88,6 +88,7 @@ ENGINE_DEFAULTS: dict[str, dict[str, Any]] = {
         "skipSourceHeaders": ["Medical Insurance Allowance"],
     },
     "uk_payroll_calc": {
+        # 中性默认；TopSource / EOR 列名别名见 PROFILE_MAPPING_OVERLAYS
         "schemaVersion": 1,
         "sourceEmployeeSheet": {
             "sheet": "UK-L",
@@ -105,24 +106,7 @@ ENGINE_DEFAULTS: dict[str, dict[str, Any]] = {
             "labelColumn": 1,
             "amountColumn": 2,
         },
-        "columnRename": {
-            "Gross": "Gross Salary",
-            "Gross Pay": "Gross Salary",
-            "Employer's NIC": "ER' NIC",
-            "Employer NIC": "ER' NIC",
-            "ER NIC": "ER' NIC",
-            "Employer's Pension": "ER' Pension (Auto Enrolment)",
-            "Employer Pension": "ER' Pension (Auto Enrolment)",
-            "ER Pension": "ER' Pension (Auto Enrolment)",
-            "Employee NIC": "EE'NIC",
-            "EE NIC": "EE'NIC",
-            "Employee Pension": "EE' Pension (Auto Enrolment)",
-            "EE Pension": "EE' Pension (Auto Enrolment)",
-            "Apprenticeship Levy": "App Levy",
-            "APP Levy": "App Levy",
-            "Setup Fee": "Setup Fees",
-            "Payment Fee": "Payment Fees",
-        },
+        "columnRename": {},
         "formulaTemplates": {
             "applyDefaultToAllEmployees": False,
             "UK": {"defaultExampleRow": 9},
@@ -132,8 +116,117 @@ ENGINE_DEFAULTS: dict[str, dict[str, Any]] = {
         "skipSourceHeaders": [],
         "pnSheets": {"main": "UK", "ee": "UK EE", "l": "UK-L"},
     },
+    # UAE 引擎默认保持中性；供应商差异见 PROFILE_MAPPING_OVERLAYS
     "uae_payroll_calc": {
         "schemaVersion": 1,
+        "sourceEmployeeSheet": {
+            "sheet": "UAE-L",
+            "candidates": ["UAE-L"],
+            "headerRow": 2,
+            "dataStartRow": 3,
+            "nameHeaders": ["Employee Name", "English Name"],
+        },
+        "targetL": {
+            "sheet": "UAE-L",
+            "candidates": ["UAE-L"],
+            "headerRow": 2,
+            "dataStartRow": 3,
+        },
+        "columnRename": {},
+        "formulaTemplates": {
+            "applyDefaultToAllEmployees": True,
+            "UAE": {"defaultExampleRow": 9},
+            "UAE EE": {"defaultExampleRow": 10, "dataStartOffset": 1},
+        },
+        "employeeFormulaStyles": [],
+        "skipSourceHeaders": [],
+        "pnSheets": {"main": "UAE", "ee": "UAE EE", "l": "UAE-L"},
+    },
+}
+
+# 按 pdfProfileId 覆盖引擎默认（供应商专属：布局 / 列名对照 / 拆分）
+_UK_L_COLUMN_RENAME: dict[str, str] = {
+    "Gross": "Gross Salary",
+    "Gross Pay": "Gross Salary",
+    "Employer's NIC": "ER' NIC",
+    "Employer NIC": "ER' NIC",
+    "ER NIC": "ER' NIC",
+    "Employer's Pension": "ER' Pension (Auto Enrolment)",
+    "Employer Pension": "ER' Pension (Auto Enrolment)",
+    "ER Pension": "ER' Pension (Auto Enrolment)",
+    "Employee NIC": "EE'NIC",
+    "EE NIC": "EE'NIC",
+    "Employee Pension": "EE' Pension (Auto Enrolment)",
+    "EE Pension": "EE' Pension (Auto Enrolment)",
+    "Apprenticeship Levy": "App Levy",
+    "APP Levy": "App Levy",
+    "Setup Fee": "Setup Fees",
+    "Payment Fee": "Payment Fees",
+}
+
+_AUXILIUM_UAE_COLUMN_RENAME: dict[str, str] = {
+    "AX ID": "Emp ID",
+    "Basic (AED)": "EC - Basic Salary",
+    "Housing (AED)": "EC - Housing Allowance",
+    "Transport (AED)": "EC - Transport Allowance",
+    "Other (AED)": "EC - Other allowance",
+    "School (AED)": "EC - School Allowance",
+    "Food (AED)": "EC - Food Allowance",
+    "Mobile (AED)": "EC - Mobile Allowance",
+    "Localization (AED)": "EC - Localization",
+    "Gratuity Accrual (AED)": "EC - Gratuity Accrual",
+    "Admin Fee (AED)": "Admin Fees",
+    "Expenses (AED)": "Other Adjustments",
+    "Total Pay (AED)": "Total Payout",
+    "Employee Payout (AED)": "Employee payout",
+    "Invoice Total (AED)": "Invoice total",
+    "Medical Ins. (AED)": "Medical Insurance",
+    "Gratuity (AED)": "Gratuity",
+    "Leave (AED)": "Annual Leave",
+    "Workmen Comp (AED)": "Workmen Comp",
+    "GOSI (AED)": "GOSI",
+}
+
+PROFILE_MAPPING_OVERLAYS: dict[str, dict[str, Any]] = {
+    "topsource_uk": {
+        "sourceEmployeeSheet": {
+            "sheet": "UK-L",
+            "candidates": ["UK-L", "UK-L (2)", "UK-L (3)"],
+            "layout": "vertical_label_amount",
+            "labelColumn": 1,
+            "amountColumn": 2,
+            "nameHeaders": ["Employee Name"],
+            "nameLabel": "Employee Name",
+        },
+        "targetL": {
+            "sheet": "UK-L",
+            "candidates": ["UK-L"],
+            "layout": "vertical_label_amount",
+            "labelColumn": 1,
+            "amountColumn": 2,
+        },
+        "columnRename": _UK_L_COLUMN_RENAME,
+    },
+    "eor_uk": {
+        "sourceEmployeeSheet": {
+            "sheet": "UK-L",
+            "candidates": ["UK-L"],
+            "layout": "vertical_label_amount",
+            "labelColumn": 1,
+            "amountColumn": 2,
+            "nameHeaders": ["Employee Name"],
+            "nameLabel": "Employee Name",
+        },
+        "targetL": {
+            "sheet": "UK-L",
+            "candidates": ["UK-L"],
+            "layout": "vertical_label_amount",
+            "labelColumn": 1,
+            "amountColumn": 2,
+        },
+        "columnRename": _UK_L_COLUMN_RENAME,
+    },
+    "auxilium_uae": {
         "sourceEmployeeSheet": {
             "sheet": "UAE-L",
             "candidates": ["UAE-L"],
@@ -147,41 +240,8 @@ ENGINE_DEFAULTS: dict[str, dict[str, Any]] = {
             "headerRow": 2,
             "dataStartRow": 3,
         },
-        "columnRename": {
-            "AX ID": "Emp ID",
-            "Basic (AED)": "EC - Basic Salary",
-            "Housing (AED)": "EC - Housing Allowance",
-            "Transport (AED)": "EC - Transport Allowance",
-            "Other (AED)": "EC - Other allowance",
-            "School (AED)": "EC - School Allowance",
-            "Food (AED)": "EC - Food Allowance",
-            "Mobile (AED)": "EC - Mobile Allowance",
-            "Localization (AED)": "EC - Localization",
-            "Gratuity Accrual (AED)": "EC - Gratuity Accrual",
-            "Admin Fee (AED)": "Admin Fees",
-            "Expenses (AED)": "Other Adjustments",
-            "Total Pay (AED)": "Total Payout",
-            "Employee Payout (AED)": "Employee payout",
-            "Invoice Total (AED)": "Invoice total",
-            "Medical Ins. (AED)": "Medical Insurance",
-            "Gratuity (AED)": "Gratuity",
-            "Leave (AED)": "Annual Leave",
-            "Workmen Comp (AED)": "Workmen Comp",
-            "GOSI (AED)": "GOSI",
-        },
-        "formulaTemplates": {
-            "applyDefaultToAllEmployees": True,
-            "UAE": {"defaultExampleRow": 9},
-            "UAE EE": {"defaultExampleRow": 10, "dataStartOffset": 1},
-        },
-        "employeeFormulaStyles": [],
-        "skipSourceHeaders": [],
-        "pnSheets": {"main": "UAE", "ee": "UAE EE", "l": "UAE-L"},
+        "columnRename": _AUXILIUM_UAE_COLUMN_RENAME,
     },
-}
-
-# 按 pdfProfileId 覆盖引擎默认（Connect UAE-L 表头在第 7 行）
-PROFILE_MAPPING_OVERLAYS: dict[str, dict[str, Any]] = {
     "connect_uae": {
         "sourceEmployeeSheet": {
             "sheet": "UAE-L",

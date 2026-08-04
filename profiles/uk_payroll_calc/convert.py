@@ -5,7 +5,8 @@ UK-L 竖表源账单 → UK PN（引擎 uk_payroll_calc）
 用法:
   python -m profiles.uk_payroll_calc.convert <源.xlsx> [-o 输出.xlsx] [-t 母版.xlsx]
 
-源账单: sheet「UK-L」标签→金额（B 列）；可由 PDF ingest（eor_uk）产出。
+源账单: sheet「UK-L」标签→金额（B 列）；可由 PDF ingest（eor_uk / topsource_uk）产出。
+列名别名按 pdfProfileId overlay（convert_mapping.PROFILE_MAPPING_OVERLAYS）。
 默认母版: templates/uk/template.xlsx
 """
 from __future__ import annotations
@@ -87,8 +88,19 @@ def _as_float(value: Any) -> float | None:
         return None
 
 
+def _apply_uk_label_rename(label: str, rename: dict[str, Any] | None) -> str:
+    if not label or not isinstance(rename, dict) or not rename:
+        return label
+    if label in rename:
+        return str(rename[label])
+    low = {str(k).strip().lower(): v for k, v in rename.items() if k is not None}
+    hit = low.get(label.lower())
+    return str(hit) if hit else label
+
+
 def read_uk_l(ws: Worksheet) -> dict[str, Any]:
     """读取竖表：标签→金额，以及标题中的员工名 / FY。"""
+    rename = _active_mapping().get("columnRename")
     amounts: dict[str, float] = {}
     for row in range(1, (ws.max_row or 40) + 1):
         label = _norm(ws.cell(row, 1).value)
@@ -96,7 +108,7 @@ def read_uk_l(ws: Worksheet) -> dict[str, Any]:
             continue
         num = _as_float(ws.cell(row, 2).value)
         if num is not None:
-            amounts[label] = num
+            amounts[_apply_uk_label_rename(label, rename)] = num
 
     employee_name = None
     fy = None

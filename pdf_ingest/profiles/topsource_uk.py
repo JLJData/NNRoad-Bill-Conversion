@@ -97,6 +97,7 @@ class TopSourceUkParsed:
 
 
 # Excel 竖表标签别名 → UK-L 标准标签
+# 与 convert_mapping._UK_L_COLUMN_RENAME / topsource_uk overlay 对齐；PDF 路径已写标准标签。
 _LABEL_ALIASES: dict[str, str] = {
     "gross salary": "Gross Salary",
     "holiday pay": "Holiday Pay",
