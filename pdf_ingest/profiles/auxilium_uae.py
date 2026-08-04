@@ -4,7 +4,8 @@ Auxilium UAE Payroll Draft Excel → UAE-L 源表（profile: auxilium_uae）
 
 识别：表头含 AX ID / Payroll Draft / NNRoad (UAE)。
 多员工：跳过 TOTALS 行；Payroll Days 用工作日（不硬抄源 30）。
-Admin Fee 写入 UAE-L「Admin Fees」，引擎侧 ×1.5 填 Recurring Fee。
+Admin Fee 写入 UAE-L「Admin Fees」。Recurring Fee 默认跟母版；若映射配置了
+uaeRecurringFeeFixed 则写入该固定值（如 Omal）。
 """
 from __future__ import annotations
 

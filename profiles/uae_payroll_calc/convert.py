@@ -882,9 +882,8 @@ def set_period(wb, employees: list[dict[str, Any]]) -> None:
     _, data_start, _ = _uae_l_layout(target=True)
     for key, col in (("From", 2), ("To", 3)):
         cell = uae.cell(2, col)
-        existing = cell.value
-        # Connect 母版 UAE!B2 已引用 UAE-L!C2，勿强行覆盖公式格
-        if isinstance(existing, str) and existing.startswith("="):
+        # Connect 母版 UAE!B2/C2 已引用 UAE-L 账期；含 ArrayFormula 一律保留
+        if _cell_formula_text(cell.value):
             cell.number_format = _DATE_FMT
             continue
         dt = coerce_datetime_for_excel(emp.get(key))
@@ -898,22 +897,30 @@ def set_period(wb, employees: list[dict[str, Any]]) -> None:
             cell.number_format = _DATE_FMT
 
 
+def _mapping_recurring_fee_fixed(mapping: dict[str, Any] | None) -> float | None:
+    """后台映射 uaeRecurringFeeFixed：有值则覆盖 UAE!H；缺省则保留母版公式/数值。"""
+    if not isinstance(mapping, dict):
+        return None
+    raw = mapping.get("uaeRecurringFeeFixed")
+    if raw is None or raw == "":
+        return None
+    return _as_float(raw)
+
+
 def set_recurring_fees(wb, employees: list[dict[str, Any]]) -> None:
-    """UAE!H = Admin Fee × 1.5（Auxilium）。Connect 无 Admin Fees，保留母版 Recurring 公式。"""
-    if UAE_SHEET not in wb.sheetnames:
+    """
+    UAE!H Recurring Fee：
+    - 默认：不改，沿用客户母版公式/数值
+    - 映射配置了 uaeRecurringFeeFixed（如 Omal CNUS2025001）时：每人写入该固定值
+    """
+    if UAE_SHEET not in wb.sheetnames or not employees:
         return
-    if _resolve_pdf_profile_id(_active_mapping()) == "connect_uae":
+    fixed = _mapping_recurring_fee_fixed(_active_mapping())
+    if fixed is None:
         return
     uae = wb[UAE_SHEET]
-    for i, emp in enumerate(employees):
-        admin = _as_float(emp.get("EC - Admin Fees"))
-        if admin is None:
-            admin = _as_float(emp.get("Admin Fees"))
-        if admin is None:
-            admin = _as_float(emp.get("_admin_fee"))
-        if admin is None:
-            continue
-        fee = round(admin * 1.5, 6)
+    fee = round(float(fixed), 6)
+    for i in range(len(employees)):
         uae.cell(UAE_DATA_START + i, 8).value = fee
 
 
