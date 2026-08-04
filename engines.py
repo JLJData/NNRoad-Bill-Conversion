@@ -44,6 +44,12 @@ ENGINES: dict[str, ConvertEngine] = {
         module="profiles.uae_payroll_calc.convert",
         description="源账单 sheet「UAE-L」→ UAE PN；Excel 版式可选 Auxilium",
     ),
+    "pakistan_payroll_calc": ConvertEngine(
+        engine_id="pakistan_payroll_calc",
+        label="Pakistan Payroll Calculation",
+        module="profiles.pakistan_payroll_calc.convert",
+        description="源账单 sheet「Pakistan-L」→ Pakistan PN；PDF 版式可选 Panda Work Global",
+    ),
 }
 
 # 旧引擎 id 兼容

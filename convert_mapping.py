@@ -142,6 +142,33 @@ ENGINE_DEFAULTS: dict[str, dict[str, Any]] = {
         "skipSourceHeaders": [],
         "pnSheets": {"main": "UAE", "ee": "UAE EE", "l": "UAE-L"},
     },
+    # Pakistan 中性默认；Panda Work 见 PROFILE_MAPPING_OVERLAYS
+    "pakistan_payroll_calc": {
+        "schemaVersion": 1,
+        "sourceEmployeeSheet": {
+            "sheet": "Pakistan-L",
+            "candidates": ["Pakistan-L"],
+            "headerRow": 7,
+            "dataStartRow": 8,
+            "nameHeaders": ["Name of Employee", "Employee Name"],
+        },
+        "targetL": {
+            "sheet": "Pakistan-L",
+            "candidates": ["Pakistan-L"],
+            "headerRow": 7,
+            "dataStartRow": 8,
+        },
+        "columnRename": {},
+        "formulaTemplates": {
+            "applyDefaultToAllEmployees": True,
+            "Pakistan": {"defaultExampleRow": 9},
+            "Pakistan EE": {"defaultExampleRow": 10, "dataStartOffset": 1},
+        },
+        "employeeFormulaStyles": [],
+        "skipSourceHeaders": [],
+        "pnSheets": {"main": "Pakistan", "ee": "Pakistan EE", "l": "Pakistan-L"},
+        "quarterSplitMonths": 3,
+    },
 }
 
 # 按 pdfProfileId 覆盖引擎默认（供应商专属：布局 / 列名对照 / 拆分）
@@ -259,6 +286,23 @@ PROFILE_MAPPING_OVERLAYS: dict[str, dict[str, Any]] = {
         "columnRename": {},
         "connectSalarySplit": {},
     },
+    "panda_work_pk": {
+        "sourceEmployeeSheet": {
+            "sheet": "Pakistan-L",
+            "candidates": ["Pakistan-L"],
+            "headerRow": 7,
+            "dataStartRow": 8,
+            "nameHeaders": ["Name of Employee", "Employee Name"],
+        },
+        "targetL": {
+            "sheet": "Pakistan-L",
+            "candidates": ["Pakistan-L"],
+            "headerRow": 7,
+            "dataStartRow": 8,
+        },
+        "columnRename": {},
+        "quarterSplitMonths": 3,
+    },
 }
 
 
@@ -293,6 +337,8 @@ def resolve_convert_mapping(engine_id: str, raw: dict[str, Any] | None) -> dict[
             merged["columnRename"] = copy.deepcopy(overlay["columnRename"])
         if "connectSalarySplit" in overlay and "connectSalarySplit" not in (raw or {}):
             merged["connectSalarySplit"] = copy.deepcopy(overlay["connectSalarySplit"])
+        if "quarterSplitMonths" in overlay and "quarterSplitMonths" not in (raw or {}):
+            merged["quarterSplitMonths"] = copy.deepcopy(overlay["quarterSplitMonths"])
         merged["pdfProfileId"] = pid
     return merged
 

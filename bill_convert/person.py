@@ -19,12 +19,28 @@ def compact_person_name(value: object) -> str:
 
 
 def _name_tokens(value: str) -> list[str]:
-    return [t for t in norm_person_name(value).split(" ") if t]
+    """空白分词，并去掉标点（M. / I. → m / i）。"""
+    out: list[str] = []
+    for t in norm_person_name(value).split(" "):
+        cleaned = re.sub(r"[^a-z0-9]", "", t)
+        if cleaned:
+            out.append(cleaned)
+    return out
+
+
+def _token_covered(short_tok: str, long_tokens: set[str]) -> bool:
+    if short_tok in long_tokens:
+        return True
+    # 单字母缩写：匹配任一以该字母开头的 token（M → Muhammad）
+    if len(short_tok) == 1:
+        return any(lt.startswith(short_tok) for lt in long_tokens)
+    return False
 
 
 def score_person_name_match(excel_name: str, candidate_name: str) -> int:
     """
     精确 100；去空格后相同 100；一方包含另一方 80；较短名全部 token 在较长名中 70。
+    单字母 token 可匹配首字母（M. I. Ghazi ≈ Muhammad Ismail Ghazi）。
     """
     a = norm_person_name(excel_name)
     b = norm_person_name(candidate_name)
@@ -36,8 +52,16 @@ def score_person_name_match(excel_name: str, candidate_name: str) -> int:
         return 100
     if a in b or b in a:
         return 80
-    ta, tb = _name_tokens(a), set(_name_tokens(b))
-    if ta and all(t in tb for t in ta):
+    ta, tb = _name_tokens(a), _name_tokens(b)
+    if not ta or not tb:
+        return 0
+
+    def covered(short: list[str], long_tokens: list[str]) -> bool:
+        long_set = set(long_tokens)
+        return bool(short) and all(_token_covered(t, long_set) for t in short)
+
+    # 双向：缩写↔全名（token 数相同时也要试两侧）
+    if covered(ta, tb) or covered(tb, ta):
         return 70
     return 0
 

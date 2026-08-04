@@ -59,3 +59,8 @@ def get_uk_gbp_per_usd(rates: dict[str, float] | None = None) -> float:
 def get_uae_pn_fx_rate(rates: dict[str, float] | None = None) -> float:
     """UAE PN!B28：USD → AED（金额 AED / B28 → USD）。"""
     return round(get_usd_rate("AED", rates), 6)
+
+
+def get_pakistan_pn_fx_rate(rates: dict[str, float] | None = None) -> float:
+    """Pakistan PN!B33：USD → PKR（金额 PKR / B33 → USD）。"""
+    return round(get_usd_rate("PKR", rates), 6)

@@ -77,8 +77,9 @@ def run_pdf_to_source_batch(
     pn_meta: PnMeta | dict[str, Any] | None = None,
     registry_dir: Path | None = None,
     fill_fx: bool = True,
+    convert_mapping: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """多份 PDF → 一份源表（如 TopSource 一人一票 → 多张 UK-L）。"""
+    """多份 PDF → 一份源表（如 TopSource / Panda Work 一人一票）。"""
     paths = [Path(p) for p in pdf_paths]
     if not paths:
         raise ValueError("未提供 PDF")
@@ -96,6 +97,7 @@ def run_pdf_to_source_batch(
             pn_meta=pn_meta,
             registry_dir=registry_dir or output_path.parent,
             fill_fx=fill_fx,
+            convert_mapping=convert_mapping,
         )
 
     convert_fn = load_convert_fn(profile)
@@ -107,6 +109,7 @@ def run_pdf_to_source_batch(
         pn_meta=pn_meta,
         registry_dir=registry_dir or output_path.parent,
         fill_fx=fill_fx,
+        convert_mapping=convert_mapping,
     )
     if len(paths) > 1:
         warnings = list(result.get("warnings") or [])
@@ -180,4 +183,5 @@ def run_vendor_to_source_batch(
         pn_meta=pn_meta,
         registry_dir=registry_dir,
         fill_fx=fill_fx,
+        convert_mapping=convert_mapping,
     )

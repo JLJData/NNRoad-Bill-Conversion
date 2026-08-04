@@ -268,7 +268,7 @@ def inspect_pn_headers(
     if isinstance(candidates, list):
         spec["candidates"] = candidates
     else:
-        spec["candidates"] = [sheet_want, "China-L", "Hong Kong-L", "UK-L", "UAE-L", "TW-L"]
+        spec["candidates"] = [sheet_want, "China-L", "Hong Kong-L", "UK-L", "UAE-L", "Pakistan-L", "TW-L"]
 
     if not template_path.is_file():
         return {"ok": False, "message": f"母版文件不存在: {template_path}"}
@@ -461,6 +461,9 @@ def inspect_pn_headers(
 
     if engine_id == "uk_payroll_calc":
         return _inspect_uk_pn(template_path, mapping, spec, sheet_want)
+
+    if engine_id == "pakistan_payroll_calc":
+        return _inspect_pakistan_pn(template_path, mapping, spec, sheet_want)
 
     header_row = int(target.get("headerRow") or 7)
     wb = load_workbook(template_path, data_only=True, read_only=True)
@@ -660,6 +663,72 @@ def _inspect_uk_pn(
                 "ukEeDataStartRow": ee_start,
                 "defaultUkRow": int(uk_tpl.get("defaultExampleRow") or uk_start),
                 "defaultUkEeRow": int(ee_tpl.get("defaultExampleRow") or ee_start),
+            },
+        }
+    except Exception as exc:
+        return {"ok": False, "message": str(exc)}
+
+
+def _inspect_pakistan_pn(
+    template_path: Path,
+    mapping: dict[str, Any],
+    spec: dict[str, Any],
+    sheet_want: str,
+) -> dict[str, Any]:
+    from profiles.pakistan_payroll_calc import convert as pk_mod
+
+    target = mapping.get("targetL") if isinstance(mapping.get("targetL"), dict) else {}
+    try:
+        wb = load_workbook(template_path, data_only=True, read_only=True)
+        sheet_names = list(wb.sheetnames)
+        name = find_sheet_name(sheet_names, spec)
+        if not name:
+            wb.close()
+            return {
+                "ok": False,
+                "message": f"母版中未找到 sheet「{sheet_want}」",
+                "sheetNames": sheet_names,
+            }
+        header_row = int(target.get("headerRow") or pk_mod.PK_L_HEADER_ROW)
+        data_start = int(target.get("dataStartRow") or pk_mod.PK_L_DATA_START)
+        headers = _header_cells(wb[name], header_row)
+        wb.close()
+
+        wb_f = load_workbook(template_path, data_only=False, read_only=False)
+        pk_start = pk_mod.PK_DATA_START
+        ee_start = pk_mod.PK_EE_DATA_START
+        pk_examples: list[dict[str, Any]] = []
+        ee_examples: list[dict[str, Any]] = []
+        if pk_mod.PK_SHEET in wb_f.sheetnames:
+            pk_examples = list_formula_example_rows(
+                wb_f[pk_mod.PK_SHEET],
+                pk_start,
+                marker_col=2,
+            )
+        if pk_mod.PK_EE_SHEET in wb_f.sheetnames:
+            ee_examples = list_formula_example_rows(
+                wb_f[pk_mod.PK_EE_SHEET],
+                ee_start,
+                marker_col=5,
+            )
+        wb_f.close()
+        ft = mapping.get("formulaTemplates") if isinstance(mapping.get("formulaTemplates"), dict) else {}
+        pk_tpl = ft.get("Pakistan") if isinstance(ft.get("Pakistan"), dict) else {}
+        ee_tpl = ft.get("Pakistan EE") if isinstance(ft.get("Pakistan EE"), dict) else {}
+        return {
+            "ok": True,
+            "sheetName": name,
+            "headerRow": header_row,
+            "dataStartRow": data_start,
+            "autoDetectedLayout": False,
+            "headers": headers,
+            "formulaExampleRows": {
+                "Pakistan": pk_examples,
+                "Pakistan EE": ee_examples,
+                "pakistanDataStartRow": pk_start,
+                "pakistanEeDataStartRow": ee_start,
+                "defaultPakistanRow": int(pk_tpl.get("defaultExampleRow") or pk_start),
+                "defaultPakistanEeRow": int(ee_tpl.get("defaultExampleRow") or ee_start),
             },
         }
     except Exception as exc:

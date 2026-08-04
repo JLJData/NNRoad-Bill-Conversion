@@ -418,6 +418,9 @@ def needed_example_rows_for_styles(
             "chinaExampleRow",
             "twExampleRow",
             "hkExampleRow",
+            "uaeExampleRow",
+            "pakistanExampleRow",
+            "ukExampleRow",
         )
         ee_r = _pick_int_field(
             entry,
@@ -426,6 +429,9 @@ def needed_example_rows_for_styles(
             "chinaEeExampleRow",
             "twEeExampleRow",
             "hkEeExampleRow",
+            "uaeEeExampleRow",
+            "pakistanEeExampleRow",
+            "ukEeExampleRow",
         )
         if main_r is not None:
             main_needed.add(main_r)
@@ -440,6 +446,9 @@ def needed_example_rows_for_styles(
             "chinaExampleRow",
             "twExampleRow",
             "hkExampleRow",
+            "uaeExampleRow",
+            "pakistanExampleRow",
+            "ukExampleRow",
         )
         ee_r = _pick_int_field(
             entry,
@@ -448,6 +457,9 @@ def needed_example_rows_for_styles(
             "chinaEeExampleRow",
             "twEeExampleRow",
             "hkEeExampleRow",
+            "uaeEeExampleRow",
+            "pakistanEeExampleRow",
+            "ukEeExampleRow",
         )
         if main_r is not None:
             main_needed.add(main_r)
@@ -534,6 +546,9 @@ def apply_employee_formula_styles(
             "chinaExampleRow",
             "twExampleRow",
             "hkExampleRow",
+            "uaeExampleRow",
+            "pakistanExampleRow",
+            "ukExampleRow",
         )
         ee_over = _pick_int_field(
             entry,
@@ -542,6 +557,9 @@ def apply_employee_formula_styles(
             "chinaEeExampleRow",
             "twEeExampleRow",
             "hkEeExampleRow",
+            "uaeEeExampleRow",
+            "pakistanEeExampleRow",
+            "ukEeExampleRow",
         )
         if main_over is not None or ee_over is not None:
             src_main = main_over if main_over is not None else main_def

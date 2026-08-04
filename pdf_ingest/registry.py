@@ -71,6 +71,19 @@ PDF_PROFILES: dict[str, PdfProfile] = {
             "connect resources llc",
         ),
     ),
+    "panda_work_pk": PdfProfile(
+        profile_id="panda_work_pk",
+        label="Panda Work Global",
+        region="Pakistan",
+        module="pdf_ingest.profiles.panda_work_pk",
+        description="Panda Work Global：季度发票 PDF（一人一票）→ Pakistan-L；再经 pakistan_payroll_calc → PN",
+        engine_ids=("pakistan_payroll_calc",),
+        detect_keywords=(
+            "panda work global",
+            "pandaworkglobal.com",
+            "panda work global (private) limited",
+        ),
+    ),
 }
 
 

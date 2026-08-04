@@ -162,3 +162,11 @@ def fix_hk_row_hk_ee_refs(ws_hk: Worksheet, dst_row: int, ee_row: int) -> None:
 
 def fix_ee_row_hk_refs(ws_ee: Worksheet, dst_row: int, hk_row: int) -> None:
     fix_sheet_cross_refs(ws_ee, dst_row, other_sheet="Hong Kong", other_row=hk_row, quoted=False)
+
+
+def fix_pakistan_row_pakistan_ee_refs(ws_pk: Worksheet, dst_row: int, ee_row: int) -> None:
+    fix_sheet_cross_refs(ws_pk, dst_row, other_sheet="Pakistan EE", other_row=ee_row, quoted=True)
+
+
+def fix_ee_row_pakistan_refs(ws_ee: Worksheet, dst_row: int, pk_row: int) -> None:
+    fix_sheet_cross_refs(ws_ee, dst_row, other_sheet="Pakistan", other_row=pk_row, quoted=True)
