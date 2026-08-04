@@ -40,6 +40,7 @@ from bill_convert.header_scan import find_header_row_by_markers
 from bill_convert.headers import build_header_cols, build_header_map, resolve_target_col as _resolve_target_col
 from bill_convert.meta_period import parse_period, payroll_month_start, read_summary_meta as _read_summary_meta
 from bill_convert.person import norm_person_name as _norm_person_name
+from bill_convert.person import score_person_name_match as score_ee_name_match
 from bill_convert.target_l_layout import (
     find_target_l_header_row,
     resolve_target_l_layout,
@@ -419,28 +420,6 @@ def apply_tw_business_tax(
         cell = ws_tw.cell(tw_row, _TW_BUSINESS_TAX_COL)
         cell.value = f"=ROUND('TW-L'!BO{tw_l_row}*(5/100),0)"
         cell.number_format = "#,##0"
-
-
-def _name_tokens(value: str) -> list[str]:
-    return [t for t in _norm_person_name(value).split(" ") if t]
-
-
-def score_ee_name_match(excel_name: str, candidate_name: str) -> int:
-    """
-    评分：精确 100；一方包含另一方 80；Excel 全部 token 都在系统名中 70（Pin Han ⊆ Pin Han Wang）。
-    """
-    a = _norm_person_name(excel_name)
-    b = _norm_person_name(candidate_name)
-    if not a or not b:
-        return 0
-    if a == b:
-        return 100
-    if a in b or b in a:
-        return 80
-    ta, tb = _name_tokens(a), set(_name_tokens(b))
-    if ta and all(t in tb for t in ta):
-        return 70
-    return 0
 
 
 def match_ee_code(

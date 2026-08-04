@@ -13,19 +13,26 @@ def norm_person_name(value: object) -> str:
     return re.sub(r"\s+", " ", s)
 
 
+def compact_person_name(value: object) -> str:
+    """匹配用：去掉全部空白后的姓名（Kevin Will maser == Kevin Willmaser）。"""
+    return re.sub(r"\s+", "", norm_person_name(value))
+
+
 def _name_tokens(value: str) -> list[str]:
     return [t for t in norm_person_name(value).split(" ") if t]
 
 
 def score_person_name_match(excel_name: str, candidate_name: str) -> int:
     """
-    精确 100；一方包含另一方 80；较短名全部 token 在较长名中 70（如 Wen kai ⊆ Wen Kai Yang）。
+    精确 100；去空格后相同 100；一方包含另一方 80；较短名全部 token 在较长名中 70。
     """
     a = norm_person_name(excel_name)
     b = norm_person_name(candidate_name)
     if not a or not b:
         return 0
     if a == b:
+        return 100
+    if compact_person_name(a) == compact_person_name(b):
         return 100
     if a in b or b in a:
         return 80
@@ -56,7 +63,7 @@ def person_name_labels_match(
 
 
 def bill_employee_like_entry(emp: dict, entry: dict, *, min_score: int = 70) -> bool:
-    # TW: CN/EN Name；China: 姓名；HK: Name of Employee / EE Name / Name
+    # TW: CN/EN Name；China: 姓名；HK: Name of Employee / EE Name / Name；UAE: Employee/English Name
     bill = [
         emp.get("CN Name"),
         emp.get("EN Name"),
@@ -64,6 +71,8 @@ def bill_employee_like_entry(emp: dict, entry: dict, *, min_score: int = 70) -> 
         emp.get("Name of Employee"),
         emp.get("EE Name"),
         emp.get("Name"),
+        emp.get("Employee Name"),
+        emp.get("English Name"),
     ]
     cfg = [entry.get("cnName"), entry.get("enName")]
     return person_name_labels_match(
