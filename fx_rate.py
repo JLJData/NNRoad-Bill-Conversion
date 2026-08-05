@@ -64,3 +64,12 @@ def get_uae_pn_fx_rate(rates: dict[str, float] | None = None) -> float:
 def get_pakistan_pn_fx_rate(rates: dict[str, float] | None = None) -> float:
     """Pakistan PN!B33：USD → PKR（金额 PKR / B33 → USD）。"""
     return round(get_usd_rate("PKR", rates), 6)
+
+
+# Italy 母版常见 =EUR*0.97（与 HK 调整系数同思路）
+ITALY_FX_ADJUSTMENT = 0.97
+
+
+def get_italy_pn_fx_rate(rates: dict[str, float] | None = None) -> float:
+    """Italy PN!B28：USD → EUR，再乘调整系数 0.97（金额 EUR / B28 → USD）。"""
+    return round(get_usd_rate("EUR", rates) * ITALY_FX_ADJUSTMENT, 10)

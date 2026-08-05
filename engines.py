@@ -50,6 +50,12 @@ ENGINES: dict[str, ConvertEngine] = {
         module="profiles.pakistan_payroll_calc.convert",
         description="源账单 sheet「Pakistan-L」→ Pakistan PN；PDF 版式可选 Panda Work Global",
     ),
+    "italy_payroll_calc": ConvertEngine(
+        engine_id="italy_payroll_calc",
+        label="Italy Payroll Calculation",
+        module="profiles.italy_payroll_calc.convert",
+        description="源账单 sheet「Italy-L」→ Italy PN；Excel 版式可选 SafeGuard",
+    ),
 }
 
 # 旧引擎 id 兼容

@@ -27,6 +27,12 @@ _EOMONTH_TODAY_RE = re.compile(
 )
 _EOMONTH_HEAD_RE = re.compile(r"EOMONTH\s*\(", re.IGNORECASE)
 _TODAY_RE = re.compile(r"TODAY\s*\(\s*\)", re.IGNORECASE)
+# Excel 数组写法 SUMPRODUCT(($A$1:$B$1="Y")*($A2:$B2)) → SUMIF；HF/LuckySheet 不算数组乘
+_SUMPRODUCT_YN_ARRAY_RE = re.compile(
+    r"SUMPRODUCT\s*\(\s*\(\s*(\$?[A-Z]{1,3}\$?\d+:\$?[A-Z]{1,3}\$?\d+)\s*=\s*\"Y\"\s*\)\s*"
+    r"\*\s*\(\s*(\$?[A-Z]{1,3}\$?\d+:\$?[A-Z]{1,3}\$?\d+)\s*\)\s*\)",
+    re.IGNORECASE,
+)
 
 
 def fix_pn_illegal_concat_formulas(ws: Worksheet) -> int:
@@ -173,6 +179,25 @@ def fix_workbook_lucky_formulas(wb) -> int:
     return n
 
 
+def fix_sumproduct_yn_array_formulas(ws: Worksheet) -> int:
+    """
+    Italy-L Fee 等：SUMPRODUCT(($K$8:$W$8=\"Y\")*($K11:$W11))
+    Excel 数组乘法；HyperFormula/LuckySheet 会「计算失败」。
+    语义等价改写为 SUMIF(criteria_range,\"Y\",sum_range)。
+    """
+    n = 0
+    for row in ws.iter_rows():
+        for cell in row:
+            v = cell.value
+            if not (isinstance(v, str) and v.startswith("=") and "SUMPRODUCT" in v.upper()):
+                continue
+            nv = _SUMPRODUCT_YN_ARRAY_RE.sub(r'SUMIF(\1,"Y",\2)', v)
+            if nv != v:
+                cell.value = nv
+                n += 1
+    return n
+
+
 def apply_luckysheet_compat(wb, *, pn_sheet: str | None = "PN") -> dict[str, int]:
     """转换写盘前统一兼容修复。"""
     stats = {
@@ -181,9 +206,14 @@ def apply_luckysheet_compat(wb, *, pn_sheet: str | None = "PN") -> dict[str, int
         "formula_normalize": 0,
         "table_refs": 0,
         "ref_errors": 0,
+        "sumproduct_yn": 0,
     }
     if pn_sheet and pn_sheet in wb.sheetnames:
         stats["amp_plus"] = fix_pn_illegal_concat_formulas(wb[pn_sheet])
+    # Italy-L / 同类 Fee 公式
+    for sheet_name in wb.sheetnames:
+        if sheet_name.endswith("-L") or sheet_name in ("Italy-L",):
+            stats["sumproduct_yn"] += fix_sumproduct_yn_array_formulas(wb[sheet_name])
     # 再扫一遍全表（含 China!BH 的 =+、China!B2 EOMONTH、PN 残留 &+）
     stats["formula_normalize"] = fix_workbook_lucky_formulas(wb)
     return stats

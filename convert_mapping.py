@@ -169,6 +169,32 @@ ENGINE_DEFAULTS: dict[str, dict[str, Any]] = {
         "pnSheets": {"main": "Pakistan", "ee": "Pakistan EE", "l": "Pakistan-L"},
         "quarterSplitMonths": 3,
     },
+    # Italy 中性默认；SafeGuard 见 PROFILE_MAPPING_OVERLAYS
+    "italy_payroll_calc": {
+        "schemaVersion": 1,
+        "sourceEmployeeSheet": {
+            "sheet": "Italy-L",
+            "candidates": ["Italy-L"],
+            "headerRow": 10,
+            "dataStartRow": 11,
+            "nameHeaders": ["Employee Name"],
+        },
+        "targetL": {
+            "sheet": "Italy-L",
+            "candidates": ["Italy-L"],
+            "headerRow": 10,
+            "dataStartRow": 11,
+        },
+        "columnRename": {},
+        "formulaTemplates": {
+            "applyDefaultToAllEmployees": True,
+            "Italy": {"defaultExampleRow": 9},
+            "Italy EE": {"defaultExampleRow": 10, "dataStartOffset": 1},
+        },
+        "employeeFormulaStyles": [],
+        "skipSourceHeaders": [],
+        "pnSheets": {"main": "Italy", "ee": "Italy EE", "l": "Italy-L"},
+    },
 }
 
 # 按 pdfProfileId 覆盖引擎默认（供应商专属：布局 / 列名对照 / 拆分）
@@ -302,6 +328,22 @@ PROFILE_MAPPING_OVERLAYS: dict[str, dict[str, Any]] = {
         },
         "columnRename": {},
         "quarterSplitMonths": 3,
+    },
+    "safeguard_italy": {
+        "sourceEmployeeSheet": {
+            "sheet": "Italy-L",
+            "candidates": ["Italy-L"],
+            "headerRow": 10,
+            "dataStartRow": 11,
+            "nameHeaders": ["Employee Name"],
+        },
+        "targetL": {
+            "sheet": "Italy-L",
+            "candidates": ["Italy-L"],
+            "headerRow": 10,
+            "dataStartRow": 11,
+        },
+        "columnRename": {},
     },
 }
 

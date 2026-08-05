@@ -84,6 +84,20 @@ PDF_PROFILES: dict[str, PdfProfile] = {
             "panda work global (private) limited",
         ),
     ),
+    "safeguard_italy": PdfProfile(
+        profile_id="safeguard_italy",
+        label="SafeGuard",
+        region="Italy",
+        module="pdf_ingest.profiles.safeguard_italy",
+        description="SafeGuard (SGWI)：Payroll Excel → Italy-L；再经 italy_payroll_calc → PN",
+        engine_ids=("italy_payroll_calc",),
+        detect_keywords=(
+            "sgwi",
+            "safeguard",
+            "sgwi vat code",
+            "sgwi chargable",
+        ),
+    ),
 }
 
 
