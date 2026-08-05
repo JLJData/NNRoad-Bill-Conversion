@@ -62,6 +62,12 @@ ENGINES: dict[str, ConvertEngine] = {
         module="profiles.india_payroll_calc.convert",
         description="源账单 sheet「India-L」→ India PN；PDF 版式可选 Biz Solutions",
     ),
+    "cyprus_payroll_calc": ConvertEngine(
+        engine_id="cyprus_payroll_calc",
+        label="Cyprus Payroll Calculation",
+        module="profiles.cyprus_payroll_calc.convert",
+        description="源账单 sheet「Cyprus-L」→ Cyprus PN；PDF 版式可选 A&T Technical",
+    ),
 }
 
 # 旧引擎 id 兼容

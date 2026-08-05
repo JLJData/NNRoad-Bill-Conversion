@@ -222,6 +222,33 @@ ENGINE_DEFAULTS: dict[str, dict[str, Any]] = {
         "skipSourceHeaders": [],
         "pnSheets": {"main": "India", "ee": "India EE", "l": "India-L"},
     },
+    # Cyprus 中性默认；A&T Technical 见 PROFILE_MAPPING_OVERLAYS
+    "cyprus_payroll_calc": {
+        "schemaVersion": 1,
+        "sourceEmployeeSheet": {
+            "sheet": "Cyprus-L",
+            "candidates": ["Cyprus-L"],
+            "headerRow": 7,
+            "dataStartRow": 8,
+            "nameHeaders": ["Name of Employee", "Employee Name"],
+            "nameColumn": 2,
+        },
+        "targetL": {
+            "sheet": "Cyprus-L",
+            "candidates": ["Cyprus-L"],
+            "headerRow": 7,
+            "dataStartRow": 8,
+        },
+        "columnRename": {},
+        "formulaTemplates": {
+            "applyDefaultToAllEmployees": True,
+            "Cyprus": {"defaultExampleRow": 9},
+            "Cyprus EE": {"defaultExampleRow": 10, "dataStartOffset": 0},
+        },
+        "employeeFormulaStyles": [],
+        "skipSourceHeaders": [],
+        "pnSheets": {"main": "Cyprus", "ee": "Cyprus EE", "l": "Cyprus-L"},
+    },
 }
 
 # 按 pdfProfileId 覆盖引擎默认（供应商专属：布局 / 列名对照 / 拆分）
@@ -386,6 +413,23 @@ PROFILE_MAPPING_OVERLAYS: dict[str, dict[str, Any]] = {
             "candidates": ["India-L"],
             "headerRow": 4,
             "dataStartRow": 10,
+        },
+        "columnRename": {},
+    },
+    "at_technical_cyprus": {
+        "sourceEmployeeSheet": {
+            "sheet": "Cyprus-L",
+            "candidates": ["Cyprus-L"],
+            "headerRow": 7,
+            "dataStartRow": 8,
+            "nameHeaders": ["Name of Employee", "Employee Name"],
+            "nameColumn": 2,
+        },
+        "targetL": {
+            "sheet": "Cyprus-L",
+            "candidates": ["Cyprus-L"],
+            "headerRow": 7,
+            "dataStartRow": 8,
         },
         "columnRename": {},
     },

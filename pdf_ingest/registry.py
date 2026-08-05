@@ -113,6 +113,20 @@ PDF_PROFILES: dict[str, PdfProfile] = {
             "payroll management services",
         ),
     ),
+    "at_technical_cyprus": PdfProfile(
+        profile_id="at_technical_cyprus",
+        label="A&T Technical",
+        region="Cyprus",
+        module="pdf_ingest.profiles.at_technical_cyprus",
+        description="A&T：Invoice + Payroll Calculation PDF → Cyprus-L；Recurring Fee 见 mapping.cyprusRecurringFee",
+        engine_ids=("cyprus_payroll_calc",),
+        detect_keywords=(
+            "a & t professional technical",
+            "a&t professional technical",
+            "admin@a-t.com.cy",
+            "at professional technical management",
+        ),
+    ),
 }
 
 
