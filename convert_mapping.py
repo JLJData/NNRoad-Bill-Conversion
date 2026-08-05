@@ -195,6 +195,33 @@ ENGINE_DEFAULTS: dict[str, dict[str, Any]] = {
         "skipSourceHeaders": [],
         "pnSheets": {"main": "Italy", "ee": "Italy EE", "l": "Italy-L"},
     },
+    # India 中性默认；Biz Solutions 见 PROFILE_MAPPING_OVERLAYS
+    "india_payroll_calc": {
+        "schemaVersion": 1,
+        "sourceEmployeeSheet": {
+            "sheet": "India-L",
+            "candidates": ["India-L"],
+            "headerRow": 4,
+            "dataStartRow": 10,
+            "nameHeaders": ["Employee Name", "Name"],
+            "nameColumn": 2,
+        },
+        "targetL": {
+            "sheet": "India-L",
+            "candidates": ["India-L"],
+            "headerRow": 4,
+            "dataStartRow": 10,
+        },
+        "columnRename": {},
+        "formulaTemplates": {
+            "applyDefaultToAllEmployees": True,
+            "India": {"defaultExampleRow": 9},
+            "India EE": {"defaultExampleRow": 9, "dataStartOffset": 0},
+        },
+        "employeeFormulaStyles": [],
+        "skipSourceHeaders": [],
+        "pnSheets": {"main": "India", "ee": "India EE", "l": "India-L"},
+    },
 }
 
 # 按 pdfProfileId 覆盖引擎默认（供应商专属：布局 / 列名对照 / 拆分）
@@ -345,6 +372,23 @@ PROFILE_MAPPING_OVERLAYS: dict[str, dict[str, Any]] = {
         },
         "columnRename": {},
     },
+    "biz_solutions_india": {
+        "sourceEmployeeSheet": {
+            "sheet": "India-L",
+            "candidates": ["India-L"],
+            "headerRow": 4,
+            "dataStartRow": 10,
+            "nameHeaders": ["Employee Name", "Name"],
+            "nameColumn": 2,
+        },
+        "targetL": {
+            "sheet": "India-L",
+            "candidates": ["India-L"],
+            "headerRow": 4,
+            "dataStartRow": 10,
+        },
+        "columnRename": {},
+    },
 }
 
 
@@ -361,7 +405,13 @@ def resolve_convert_mapping(engine_id: str, raw: dict[str, Any] | None) -> dict[
         merged = base
     else:
         override = copy.deepcopy(raw)
-        for whole_key in ("columnRename", "skipSourceHeaders"):
+        for whole_key in (
+            "columnRename",
+            "skipSourceHeaders",
+            "connectSalarySplit",
+            "indiaSalarySplit",
+            "indiaSalarySplits",
+        ):
             if whole_key in override:
                 base[whole_key] = copy.deepcopy(override.pop(whole_key))
         merged = _deep_merge(base, override)

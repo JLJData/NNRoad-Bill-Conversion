@@ -56,6 +56,12 @@ ENGINES: dict[str, ConvertEngine] = {
         module="profiles.italy_payroll_calc.convert",
         description="源账单 sheet「Italy-L」→ Italy PN；Excel 版式可选 SafeGuard",
     ),
+    "india_payroll_calc": ConvertEngine(
+        engine_id="india_payroll_calc",
+        label="India Payroll Calculation",
+        module="profiles.india_payroll_calc.convert",
+        description="源账单 sheet「India-L」→ India PN；PDF 版式可选 Biz Solutions",
+    ),
 }
 
 # 旧引擎 id 兼容

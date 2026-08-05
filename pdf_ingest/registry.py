@@ -98,6 +98,21 @@ PDF_PROFILES: dict[str, PdfProfile] = {
             "sgwi chargable",
         ),
     ),
+    "biz_solutions_india": PdfProfile(
+        profile_id="biz_solutions_india",
+        label="Biz Solutions",
+        region="India",
+        module="pdf_ingest.profiles.biz_solutions_india",
+        description="Biz Solutions：Tax Invoice PDF → India-L；薪资拆分+PT/IIT 见 mapping.indiaSalarySplit",
+        engine_ids=("india_payroll_calc",),
+        detect_keywords=(
+            "biz solutions",
+            "biz/26-",
+            "biz/25-",
+            "outsource payroll services",
+            "payroll management services",
+        ),
+    ),
 }
 
 

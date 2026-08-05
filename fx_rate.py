@@ -73,3 +73,12 @@ ITALY_FX_ADJUSTMENT = 0.97
 def get_italy_pn_fx_rate(rates: dict[str, float] | None = None) -> float:
     """Italy PN!B28：USD → EUR，再乘调整系数 0.97（金额 EUR / B28 → USD）。"""
     return round(get_usd_rate("EUR", rates) * ITALY_FX_ADJUSTMENT, 10)
+
+
+# India 母版常见 =ROUND(INR*0.97,2)
+INDIA_FX_ADJUSTMENT = 0.97
+
+
+def get_india_pn_fx_rate(rates: dict[str, float] | None = None) -> float:
+    """India PN!B28：USD → INR，再乘调整系数 0.97（金额 INR / B28 → USD）。"""
+    return round(get_usd_rate("INR", rates) * INDIA_FX_ADJUSTMENT, 2)
