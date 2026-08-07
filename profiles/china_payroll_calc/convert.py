@@ -41,6 +41,7 @@ from bill_convert.formula_layout import (
     tw_l_row_for_data_row,
 )
 from bill_convert.formula_layout import _default_example_row as default_example_row_for_mapping
+from bill_convert.headers import list_qualified_header_cells
 
 DEFAULT_TEMPLATE = get_region_template("China")
 
@@ -124,13 +125,27 @@ def extract_by_label_col_a(ws: Worksheet, label: str, value_col: int) -> Any:
 
 
 def read_calc_employees(ws: Worksheet) -> list[dict[str, Any]]:
-    headers = build_header_map(ws, 1)
-    if "姓名" not in headers:
+    qualified = list_qualified_header_cells(ws, 1)
+    headers = {str(h["key"]): int(h["col"]) for h in qualified}
+    child_to_keys: dict[str, list[str]] = {}
+    for h in qualified:
+        child_to_keys.setdefault(str(h["child"]), []).append(str(h["key"]))
+
+    def _col_for(label: str) -> int | None:
+        if label in headers:
+            return headers[label]
+        for qk in child_to_keys.get(label, []):
+            if qk in headers:
+                return headers[qk]
+        return None
+
+    name_col = _col_for("姓名")
+    if name_col is None:
         raise ValueError("「计算结果」sheet 第 1 行须包含表头「姓名」")
 
     employees: list[dict[str, Any]] = []
     for row in range(2, (ws.max_row or 0) + 1):
-        name = clean_value(ws.cell(row, headers["姓名"]).value)
+        name = clean_value(ws.cell(row, name_col).value)
         if name is None:
             continue
         record: dict[str, Any] = {}

@@ -220,6 +220,26 @@ def _strip_currency_noise(key: str) -> str:
     return re.sub(r"(aed|usd|sar|eur|gbp)$", "", key)
 
 
+def _header_alias_keys(header: str) -> set[str]:
+    """表头可匹配集合：完整 key、去 #n、以及「父/子」的子段。"""
+    raw = str(header or "").strip()
+    if not raw:
+        return set()
+    out: set[str] = set()
+    k = _header_key(raw)
+    if k:
+        out.add(k)
+    base = raw.split("#", 1)[0]
+    bk = _header_key(base)
+    if bk:
+        out.add(bk)
+    if "/" in base:
+        child = _header_key(base.rsplit("/", 1)[-1])
+        if child:
+            out.add(child)
+    return out
+
+
 def _find_header_col(
     headers: list[str],
     *aliases: str,
@@ -231,6 +251,7 @@ def _find_header_col(
     （忽略大小写/空格/标点，如 Emp ID ≡ EmpID；不做包含、去币种等模糊匹配）。
     occurrence: 同名第几次（0=左起第一次；用于 EC Basic vs Actual Basic）。
     used: 已占用列会跳过，继续找下一个同名候选（避免 Overtime 2 占住后 EC - OT2 落空）。
+    支持资格化表头「父/子」「子#2」：别名既可匹配完整 key，也可匹配子列名。
     """
     want_keys = [_header_key(a) for a in aliases if a and str(a).strip()]
     want_keys = [k for k in want_keys if k]
@@ -239,7 +260,11 @@ def _find_header_col(
     want_set = set(want_keys)
     used = used if used is not None else set()
 
-    matches = [i for i, h in enumerate(headers, start=1) if _header_key(h) in want_set]
+    matches = [
+        i
+        for i, h in enumerate(headers, start=1)
+        if want_set & _header_alias_keys(h)
+    ]
     if not matches:
         return None
     # 优先取第 occurrence 个同名列（未占用时）
@@ -462,7 +487,14 @@ def parse_auxilium_payroll_draft(
         raise FileNotFoundError(f"Excel 不存在: {path}")
     wb = load_workbook(path, data_only=True)
     try:
-        ws, header_row, headers = _pick_payroll_draft_sheet(wb)
+        ws, header_row, _headers_raw = _pick_payroll_draft_sheet(wb)
+        from bill_convert.headers import list_qualified_header_cells
+
+        qualified = list_qualified_header_cells(ws, header_row)
+        max_col = max((int(h["col"]) for h in qualified), default=0)
+        headers = [""] * max_col
+        for h in qualified:
+            headers[int(h["col"]) - 1] = str(h["key"])
         data_start = header_row + 1
         colmap = _build_colmap(headers, column_rename=column_rename)
         id_col = colmap.get("id")

@@ -37,7 +37,14 @@ from bill_convert.formula_layout import (
 )
 from bill_convert.formula_layout import _default_example_row as _default_example_row_for_mapping
 from bill_convert.header_scan import find_header_row_by_markers
-from bill_convert.headers import build_header_cols, build_header_map, resolve_target_col as _resolve_target_col
+from bill_convert.headers import (
+    build_header_cols,
+    build_header_map,
+    build_qualified_header_cols,
+    list_qualified_header_cells,
+    resolve_header_cols,
+    resolve_target_col as _resolve_target_col,
+)
 from bill_convert.meta_period import parse_period, payroll_month_start, read_summary_meta as _read_summary_meta
 from bill_convert.person import norm_person_name as _norm_person_name
 from bill_convert.person import score_person_name_match as score_ee_name_match
@@ -92,12 +99,8 @@ SKIP_SOURCE_HEADERS = frozenset({
 SICK_LEAVE_PAY_HEADER = "病假扣薪\nSick Leave\n(half pay)"
 SICK_LEAVE_HOURS_HEADER = "病假時數 Sick Leave Hours"
 
-# 源表头 → 目标 TW-L 表头（按名称匹配，非位置）
-SOURCE_TO_TARGET_HEADER: dict[str, str] = {
-    "時薪 Hourly Rate": "Full Pay/Hourly Rate",
-    "時數\nHours Worked": "Employment day/Hours Worked",
-    "健保級距\nInsured Salary Grading - HI": "健保投保級距Insured Salary Grading - HI",
-}
+# 列名对照仅来自 Office 保存的 columnRename；引擎不再内置默认别名。
+SOURCE_TO_TARGET_HEADER: dict[str, str] = {}
 
 NAME_HEADERS = ("CN Name", "EN Name")
 PC_HEADER_KEYS = frozenset({"BU", "CN Name", "EN Name"})
@@ -126,19 +129,51 @@ def _skip_source_headers() -> frozenset[str]:
 
 
 def _column_rename_map() -> dict[str, str]:
-    base = {norm(k): v for k, v in SOURCE_TO_TARGET_HEADER.items()}
     extra = _active_mapping().get("columnRename") or {}
-    if isinstance(extra, dict):
-        for k, v in extra.items():
-            base[norm(str(k))] = str(v)
-    return base
+    if not isinstance(extra, dict):
+        return {}
+    return {
+        norm(str(k)): str(v)
+        for k, v in extra.items()
+        if k is not None and v is not None and str(k).strip() and str(v).strip()
+    }
+
+
+def _explicit_rename_targets(rename: dict[str, str] | None = None) -> set[str]:
+    """已被「列名对照」显式占用的目标列名（规范化）。"""
+    m = rename if rename is not None else _column_rename_map()
+    out: set[str] = set()
+    for v in m.values():
+        nv = norm(v)
+        if not nv:
+            continue
+        out.add(nv)
+        base = nv.split("#", 1)[0]
+        out.add(base)
+        out.add(base.rsplit("/", 1)[-1])
+    return out
 
 
 def map_source_header(source_header: str) -> str | None:
+    """
+    源列 → 目标列。
+    - 有显式 columnRename：用对照结果
+    - 否则同名自动匹配；但若目标名已被其它源列显式对照占用，则跳过（避免 Total 盖掉 Hours→Total）
+    """
     h = norm(source_header)
     if not h or h in _skip_source_headers():
         return None
-    return _column_rename_map().get(h, h)
+    rename = _column_rename_map()
+    if h in rename:
+        return rename[h]
+    claimed = _explicit_rename_targets(rename)
+    if h in claimed:
+        return None
+    base = h.split("#", 1)[0]
+    child = base.rsplit("/", 1)[-1]
+    if base in claimed or child in claimed:
+        return None
+    return h
 
 
 def _target_l_auto_detect_layout() -> bool:
@@ -215,7 +250,12 @@ def read_summary_meta(wb, meta_spec: dict[str, Any] | None = None) -> dict[str, 
 
 
 def read_pc_employees(ws: Worksheet, header_row: int) -> list[dict[str, Any]]:
-    source_headers = build_header_map(ws, header_row)
+    # 源表用资格化表头（父子/同名消歧）；姓名标志列仍按子列名匹配
+    qualified = list_qualified_header_cells(ws, header_row)
+    source_headers = {str(h["key"]): int(h["col"]) for h in qualified}
+    child_to_keys: dict[str, list[str]] = {}
+    for h in qualified:
+        child_to_keys.setdefault(str(h["child"]), []).append(str(h["key"]))
     spec = _source_employee_spec()
     sheet_label = str(spec.get("sheet") or PC_SHEET)
     name_keys = spec.get("nameHeaders")
@@ -223,7 +263,16 @@ def read_pc_employees(ws: Worksheet, header_row: int) -> list[dict[str, Any]]:
         name_header_list = tuple(str(x) for x in name_keys)
     else:
         name_header_list = NAME_HEADERS
-    name_cols = [source_headers[norm(h)] for h in name_header_list if norm(h) in source_headers]
+    name_cols: list[int] = []
+    for h in name_header_list:
+        nk = norm(h)
+        if nk in source_headers:
+            name_cols.append(source_headers[nk])
+            continue
+        for qk in child_to_keys.get(nk, []):
+            if qk in source_headers:
+                name_cols.append(source_headers[qk])
+                break
     if not name_cols:
         raise ValueError(f"「{sheet_label}」表头行须包含 {' 或 '.join(name_header_list)}")
 
@@ -234,7 +283,12 @@ def read_pc_employees(ws: Worksheet, header_row: int) -> list[dict[str, Any]]:
             continue
 
         record: dict[str, Any] = {}
-        for src_hdr, col in source_headers.items():
+        rename = _column_rename_map()
+        # 先写显式对照，再写同名自动匹配，避免后者覆盖前者
+        ordered = list(source_headers.items())
+        explicit_first = [(s, c) for s, c in ordered if norm(s) in rename]
+        auto_rest = [(s, c) for s, c in ordered if norm(s) not in rename]
+        for src_hdr, col in explicit_first + auto_rest:
             target_hdr = map_source_header(src_hdr)
             if target_hdr is None:
                 continue
@@ -244,6 +298,9 @@ def read_pc_employees(ws: Worksheet, header_row: int) -> list[dict[str, Any]]:
                     dt = coerce_datetime_for_excel(val)
                     if dt is not None:
                         val = dt
+                # 显式对照优先：自动匹配不覆盖已有键
+                if target_hdr in record and norm(src_hdr) not in rename:
+                    continue
                 record[target_hdr] = val
         employees.append(record)
 
@@ -256,10 +313,10 @@ def read_pc_employees(ws: Worksheet, header_row: int) -> list[dict[str, Any]]:
 
 def apply_sick_leave_formula(ws: Worksheet, row: int, target_cols: dict[str, list[int]]) -> None:
     """有病假时数时写入公式 =-H{row}*T{row}/2，与母版一致"""
-    pay_cols = target_cols.get(SICK_LEAVE_PAY_HEADER)
+    pay_cols = resolve_header_cols(target_cols, SICK_LEAVE_PAY_HEADER)
     if not pay_cols:
         return
-    hours_cols = target_cols.get(SICK_LEAVE_HOURS_HEADER)
+    hours_cols = resolve_header_cols(target_cols, SICK_LEAVE_HOURS_HEADER)
     hours_col = resolve_target_col(hours_cols) if hours_cols else None
     hours = ws.cell(row, hours_col).value if hours_col else None
     try:
@@ -289,7 +346,10 @@ def write_tw_l(ws: Worksheet, employees: list[dict[str, Any]], meta: dict[str, A
     header_row = layout["header_row"]
     data_start_row = layout["data_start_row"]
     summary_row = layout["summary_row"]
-    target_cols = build_header_cols(ws, header_row)
+    # 与映射下拉同一套资格化表头，避免「父/子」对照写不进母版
+    target_cols = build_qualified_header_cols(ws, header_row)
+    if not target_cols:
+        target_cols = build_header_cols(ws, header_row)
     if not target_cols:
         raise ValueError(f"「{TW_L_SHEET}」第 {header_row} 行表头为空")
 
@@ -310,7 +370,7 @@ def write_tw_l(ws: Worksheet, employees: list[dict[str, Any]], meta: dict[str, A
     for idx, emp in enumerate(employees):
         row = data_start_row + idx
         for hdr, val in emp.items():
-            cols = target_cols.get(hdr)
+            cols = resolve_header_cols(target_cols, str(hdr))
             col = resolve_target_col(cols) if cols else None
             if col is not None:
                 out_val = val

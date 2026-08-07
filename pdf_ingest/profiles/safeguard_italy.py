@@ -80,12 +80,34 @@ def _money(value: Any) -> float | None:
 
 
 def _header_map(ws: Worksheet, header_row: int) -> dict[str, int]:
-    out: dict[str, int] = {}
-    for col in range(1, (ws.max_column or 1) + 1):
-        h = _norm(ws.cell(header_row, col).value)
-        if h and h not in out:
-            out[h] = col
-    return out
+    from bill_convert.headers import build_qualified_header_map
+
+    return build_qualified_header_map(ws, header_row)
+
+
+def _col_by_label(headers: dict[str, int], *labels: str) -> int | None:
+    want = {_norm(x) for x in labels if x}
+    if not want:
+        return None
+    for label in want:
+        if label in headers:
+            return headers[label]
+    for key, col in headers.items():
+        base = str(key).split("#", 1)[0]
+        child = base.rsplit("/", 1)[-1]
+        if _norm(key) in want or _norm(base) in want or _norm(child) in want:
+            return col
+    return None
+
+
+def _static_target_for_source(src_h: str) -> str | None:
+    src_key = _norm(src_h)
+    tgt = _STATIC_HEADER_MAP.get(src_h) or _STATIC_HEADER_MAP.get(src_key)
+    if tgt:
+        return tgt
+    base = src_key.split("#", 1)[0]
+    child = base.rsplit("/", 1)[-1]
+    return _STATIC_HEADER_MAP.get(child) or _STATIC_HEADER_MAP.get(base)
 
 
 def _find_header_row(ws: Worksheet) -> int:
@@ -176,8 +198,8 @@ def parse_safeguard_italy_excel(excel_path: Path) -> list[dict[str, Any]]:
 
         # 姓名：优先 A 列非空；否则 Employee Name
         name_col_a = 1
-        name_header_col = headers.get("Employee Name")
-        id_col = headers.get("Employee ID")
+        name_header_col = _col_by_label(headers, "Employee Name")
+        id_col = _col_by_label(headers, "Employee ID")
 
         salary_h = _salary_src_header(headers)
         vac_h = _vac_accrual_header(headers)
@@ -205,7 +227,7 @@ def parse_safeguard_italy_excel(excel_path: Path) -> list[dict[str, Any]]:
 
             for src_h, col in headers.items():
                 src_key = _norm(src_h)
-                tgt = _STATIC_HEADER_MAP.get(src_h) or _STATIC_HEADER_MAP.get(src_key)
+                tgt = _static_target_for_source(src_h)
                 if not tgt:
                     continue
                 tgt = _norm(tgt)
@@ -213,7 +235,14 @@ def parse_safeguard_italy_excel(excel_path: Path) -> list[dict[str, Any]]:
                 if val is None or val == "":
                     continue
                 num = _money(val)
+                child_key = src_key.split("#", 1)[0].rsplit("/", 1)[-1]
                 if src_key in (
+                    "po number",
+                    "currency",
+                    "sgwi minimum currency",
+                    "fee minimum currency",
+                    "applied sgwi minimum currency",
+                ) or child_key in (
                     "po number",
                     "currency",
                     "sgwi minimum currency",

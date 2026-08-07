@@ -7,22 +7,27 @@ from typing import Any
 
 from openpyxl import load_workbook
 
+from bill_convert.headers import list_qualified_header_cells
 from bill_convert.template_rows import list_formula_example_rows as _list_formula_example_rows
 from convert_mapping import find_sheet_name, resolve_convert_mapping
 from xlsx_convert_utils import norm
 
 
 def _header_cells(ws, header_row: int) -> list[dict[str, str]]:
+    """供应商/源表表头：父子消歧后的唯一 key（见 list_qualified_header_cells）。"""
     out: list[dict[str, str]] = []
-    seen: set[str] = set()
-    for col in range(1, (ws.max_column or 0) + 1):
-        raw = ws.cell(header_row, col).value
-        key = norm(raw)
-        if not key or key in seen:
-            continue
-        seen.add(key)
-        label = str(raw).replace("\r\n", "\n").strip() if raw is not None else key
-        out.append({"key": key, "label": label})
+    for h in list_qualified_header_cells(ws, header_row):
+        item: dict[str, str] = {
+            "key": str(h["key"]),
+            "label": str(h.get("label") or h["key"]),
+        }
+        child = str(h.get("child") or "").strip()
+        if child:
+            item["child"] = child
+        parent = str(h.get("parent") or "").strip()
+        if parent:
+            item["parent"] = parent
+        out.append(item)
     return out
 
 
@@ -120,25 +125,39 @@ def _inspect_fixed_header_source(
         }
     ws = wb[name]
     headers = _header_cells(ws, header_row)
-    header_map: dict[str, int] = {}
-    for col in range(1, (ws.max_column or 0) + 1):
-        key = norm(ws.cell(header_row, col).value)
-        if key and key not in header_map:
-            header_map[key] = col
+    header_map = {str(h["key"]): int(h["col"]) for h in list_qualified_header_cells(ws, header_row)}
+    child_to_key: dict[str, str] = {}
+    for h in headers:
+        child = str(h.get("child") or h["key"])
+        child_to_key.setdefault(child, h["key"])
 
     employees: list[dict[str, str]] = []
     data_start = int(src_spec.get("dataStartRow") or (header_row + 1))
     name_keys = [str(x).strip() for x in name_headers if str(x).strip()] or (
-        ["姓名"] if "姓名" in header_map else (
-            ["Name of Employee"] if "Name of Employee" in header_map else []
+        ["姓名"] if "姓名" in header_map or "姓名" in child_to_key else (
+            ["Name of Employee"]
+            if "Name of Employee" in header_map or "Name of Employee" in child_to_key
+            else []
         )
     )
+
+    def _col_for_name(label: str) -> int | None:
+        if label in header_map:
+            return header_map[label]
+        qk = child_to_key.get(label)
+        if qk and qk in header_map:
+            return header_map[qk]
+        return None
+
     if name_keys:
-        primary = next((k for k in name_keys if k in header_map), None)
-        secondary = next((k for k in name_keys if k != primary and k in header_map), None)
+        primary = next((k for k in name_keys if _col_for_name(k) is not None), None)
+        secondary = next(
+            (k for k in name_keys if k != primary and _col_for_name(k) is not None),
+            None,
+        )
         if primary:
-            pcol = header_map[primary]
-            scol = header_map.get(secondary) if secondary else None
+            pcol = _col_for_name(primary)
+            scol = _col_for_name(secondary) if secondary else None
             for row in range(data_start, (ws.max_row or data_start) + 1):
                 cn = ws.cell(row, pcol).value
                 cn_s = str(cn).strip() if cn is not None else ""
@@ -278,7 +297,8 @@ def inspect_pn_headers(
 
         tw_mod._ACTIVE_MAPPING = mapping
         try:
-            wb = load_workbook(template_path, data_only=True, read_only=True)
+            # 非 read_only：需读合并单元格以正确识别父表头（避免 Total 等被误挂父级）
+            wb = load_workbook(template_path, data_only=True, read_only=False)
             sheet_names = list(wb.sheetnames)
             try:
                 name = tw_mod.resolve_tw_l_sheet_name(sheet_names)
@@ -337,7 +357,7 @@ def inspect_pn_headers(
 
         cn_mod._ACTIVE_MAPPING = mapping
         try:
-            wb = load_workbook(template_path, data_only=True, read_only=True)
+            wb = load_workbook(template_path, data_only=True, read_only=False)
             sheet_names = list(wb.sheetnames)
             name = find_sheet_name(sheet_names, spec)
             if not name:
@@ -399,7 +419,7 @@ def inspect_pn_headers(
 
         hk_mod._ACTIVE_MAPPING = mapping
         try:
-            wb = load_workbook(template_path, data_only=True, read_only=True)
+            wb = load_workbook(template_path, data_only=True, read_only=False)
             sheet_names = list(wb.sheetnames)
             name = find_sheet_name(sheet_names, spec)
             if not name:
@@ -466,7 +486,7 @@ def inspect_pn_headers(
         return _inspect_pakistan_pn(template_path, mapping, spec, sheet_want)
 
     header_row = int(target.get("headerRow") or 7)
-    wb = load_workbook(template_path, data_only=True, read_only=True)
+    wb = load_workbook(template_path, data_only=True, read_only=False)
     sheet_names = list(wb.sheetnames)
     name = find_sheet_name(sheet_names, spec)
     if not name:
@@ -547,7 +567,7 @@ def _inspect_uae_pn(
 
     target = mapping.get("targetL") if isinstance(mapping.get("targetL"), dict) else {}
     try:
-        wb = load_workbook(template_path, data_only=True, read_only=True)
+        wb = load_workbook(template_path, data_only=True, read_only=False)
         sheet_names = list(wb.sheetnames)
         name = find_sheet_name(sheet_names, spec)
         if not name:
@@ -679,7 +699,7 @@ def _inspect_pakistan_pn(
 
     target = mapping.get("targetL") if isinstance(mapping.get("targetL"), dict) else {}
     try:
-        wb = load_workbook(template_path, data_only=True, read_only=True)
+        wb = load_workbook(template_path, data_only=True, read_only=False)
         sheet_names = list(wb.sheetnames)
         name = find_sheet_name(sheet_names, spec)
         if not name:

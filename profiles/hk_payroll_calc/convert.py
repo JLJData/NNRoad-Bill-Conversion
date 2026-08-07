@@ -35,6 +35,7 @@ from bill_convert.formula_layout import (
     tw_l_row_for_data_row,
 )
 from bill_convert.formula_layout import _default_example_row as default_example_row_for_mapping
+from bill_convert.headers import list_qualified_header_cells
 from convert_mapping import find_sheet_name, resolve_convert_mapping
 from fx_rate import fetch_usd_rates, get_hk_pn_fx_rate
 from pn_meta import PnMeta, apply_pn_meta
@@ -94,7 +95,7 @@ def _column_rename() -> dict[str, str]:
     raw = _active_mapping().get("columnRename") or {}
     if not isinstance(raw, dict):
         return {}
-    return {str(k).strip(): str(v).strip() for k, v in raw.items() if k and v}
+    return {norm(str(k)): str(v).strip() for k, v in raw.items() if k and v}
 
 
 def _skip_source_headers() -> set[str]:
@@ -109,7 +110,20 @@ def map_source_header(source_header: str) -> str | None:
     if not h or h in _skip_source_headers():
         return None
     rename = _column_rename()
-    return rename.get(h, h)
+    if h in rename:
+        return rename[h]
+    claimed = {norm(v) for v in rename.values()}
+    for v in list(claimed):
+        base = v.split("#", 1)[0]
+        claimed.add(base)
+        claimed.add(base.rsplit("/", 1)[-1])
+    if h in claimed:
+        return None
+    base = h.split("#", 1)[0]
+    child = base.rsplit("/", 1)[-1]
+    if base in claimed or child in claimed:
+        return None
+    return h
 
 
 def build_header_map(ws: Worksheet, header_row: int) -> dict[str, int]:
@@ -137,7 +151,11 @@ def normalize_company_name(value: Any) -> Any:
 
 def read_hk_l_employees(ws: Worksheet) -> list[dict[str, Any]]:
     header_row, data_start = _hk_l_layout()
-    source_headers = build_header_map(ws, header_row)
+    qualified = list_qualified_header_cells(ws, header_row)
+    source_headers = {str(h["key"]): int(h["col"]) for h in qualified}
+    child_to_keys: dict[str, list[str]] = {}
+    for h in qualified:
+        child_to_keys.setdefault(str(h["child"]), []).append(str(h["key"]))
     name_col = None
     src_spec = _active_mapping().get("sourceEmployeeSheet") if isinstance(_active_mapping().get("sourceEmployeeSheet"), dict) else {}
     name_headers = src_spec.get("nameHeaders") if isinstance(src_spec.get("nameHeaders"), list) else list(NAME_HEADERS)
@@ -145,6 +163,12 @@ def read_hk_l_employees(ws: Worksheet) -> list[dict[str, Any]]:
         key = norm(nh)
         if key in source_headers:
             name_col = source_headers[key]
+            break
+        for qk in child_to_keys.get(key, []):
+            if qk in source_headers:
+                name_col = source_headers[qk]
+                break
+        if name_col is not None:
             break
     if name_col is None:
         raise ValueError(f"「Hong Kong-L」第 {header_row} 行须包含员工姓名表头（如 Name of Employee）")
@@ -155,7 +179,11 @@ def read_hk_l_employees(ws: Worksheet) -> list[dict[str, Any]]:
         if name is None:
             continue
         record: dict[str, Any] = {}
-        for src_hdr, col in source_headers.items():
+        rename = _column_rename()
+        ordered = list(source_headers.items())
+        explicit_first = [(s, c) for s, c in ordered if norm(s) in rename]
+        auto_rest = [(s, c) for s, c in ordered if norm(s) not in rename]
+        for src_hdr, col in explicit_first + auto_rest:
             target_hdr = map_source_header(src_hdr)
             if target_hdr is None:
                 continue
@@ -165,6 +193,8 @@ def read_hk_l_employees(ws: Worksheet) -> list[dict[str, Any]]:
                     dt = coerce_datetime_for_excel(val)
                     if dt is not None:
                         val = dt
+                if target_hdr in record and norm(src_hdr) not in rename:
+                    continue
                 record[target_hdr] = val
         employees.append(record)
 

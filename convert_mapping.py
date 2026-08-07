@@ -35,11 +35,7 @@ ENGINE_DEFAULTS: dict[str, dict[str, Any]] = {
             "headerRow": 7,
             "dataStartRow": 9,
         },
-        "columnRename": {
-            "時薪 Hourly Rate": "Full Pay/Hourly Rate",
-            "時數\nHours Worked": "Employment day/Hours Worked",
-            "健保級距\nInsured Salary Grading - HI": "健保投保級距Insured Salary Grading - HI",
-        },
+        "columnRename": {},
         "formulaTemplates": {
             "applyDefaultToAllEmployees": True,
             "TW": {"detectStrategy": "alignTwL", "defaultExampleRow": 9},
@@ -76,16 +72,14 @@ ENGINE_DEFAULTS: dict[str, dict[str, Any]] = {
             "nameHeaders": ["Name of Employee", "EE Name", "Name"],
         },
         "targetL": {"sheet": "Hong Kong-L", "headerRow": 7, "dataStartRow": 8},
-        "columnRename": {
-            "Basic Salary": "Base Salary",
-        },
+        "columnRename": {},
         "formulaTemplates": {
             "applyDefaultToAllEmployees": True,
             "Hong Kong": {"defaultExampleRow": 9},
             "Hong Kong EE": {"defaultExampleRow": 10, "dataStartOffset": 1},
         },
         "employeeFormulaStyles": [],
-        "skipSourceHeaders": ["Medical Insurance Allowance"],
+        "skipSourceHeaders": [],
     },
     "uk_payroll_calc": {
         # 中性默认；TopSource / EOR 列名别名见 PROFILE_MAPPING_OVERLAYS
@@ -251,48 +245,8 @@ ENGINE_DEFAULTS: dict[str, dict[str, Any]] = {
     },
 }
 
-# 按 pdfProfileId 覆盖引擎默认（供应商专属：布局 / 列名对照 / 拆分）
-_UK_L_COLUMN_RENAME: dict[str, str] = {
-    "Gross": "Gross Salary",
-    "Gross Pay": "Gross Salary",
-    "Employer's NIC": "ER' NIC",
-    "Employer NIC": "ER' NIC",
-    "ER NIC": "ER' NIC",
-    "Employer's Pension": "ER' Pension (Auto Enrolment)",
-    "Employer Pension": "ER' Pension (Auto Enrolment)",
-    "ER Pension": "ER' Pension (Auto Enrolment)",
-    "Employee NIC": "EE'NIC",
-    "EE NIC": "EE'NIC",
-    "Employee Pension": "EE' Pension (Auto Enrolment)",
-    "EE Pension": "EE' Pension (Auto Enrolment)",
-    "Apprenticeship Levy": "App Levy",
-    "APP Levy": "App Levy",
-    "Setup Fee": "Setup Fees",
-    "Payment Fee": "Payment Fees",
-}
-
-_AUXILIUM_UAE_COLUMN_RENAME: dict[str, str] = {
-    "AX ID": "Emp ID",
-    "Basic (AED)": "EC - Basic Salary",
-    "Housing (AED)": "EC - Housing Allowance",
-    "Transport (AED)": "EC - Transport Allowance",
-    "Other (AED)": "EC - Other allowance",
-    "School (AED)": "EC - School Allowance",
-    "Food (AED)": "EC - Food Allowance",
-    "Mobile (AED)": "EC - Mobile Allowance",
-    "Localization (AED)": "EC - Localization",
-    "Gratuity Accrual (AED)": "EC - Gratuity Accrual",
-    "Admin Fee (AED)": "Admin Fees",
-    "Expenses (AED)": "Other Adjustments",
-    "Total Pay (AED)": "Total Payout",
-    "Employee Payout (AED)": "Employee payout",
-    "Invoice Total (AED)": "Invoice total",
-    "Medical Ins. (AED)": "Medical Insurance",
-    "Gratuity (AED)": "Gratuity",
-    "Leave (AED)": "Annual Leave",
-    "Workmen Comp (AED)": "Workmen Comp",
-    "GOSI (AED)": "GOSI",
-}
+# 列名对照不再内置默认：须在 Office「转换映射」中配置并保存。
+# （历史别名曾用于 UK / Auxilium，已移除以免覆盖用户清空的映射。）
 
 PROFILE_MAPPING_OVERLAYS: dict[str, dict[str, Any]] = {
     "topsource_uk": {
@@ -312,7 +266,7 @@ PROFILE_MAPPING_OVERLAYS: dict[str, dict[str, Any]] = {
             "labelColumn": 1,
             "amountColumn": 2,
         },
-        "columnRename": _UK_L_COLUMN_RENAME,
+        "columnRename": {},
     },
     "eor_uk": {
         "sourceEmployeeSheet": {
@@ -331,7 +285,7 @@ PROFILE_MAPPING_OVERLAYS: dict[str, dict[str, Any]] = {
             "labelColumn": 1,
             "amountColumn": 2,
         },
-        "columnRename": _UK_L_COLUMN_RENAME,
+        "columnRename": {},
     },
     "auxilium_uae": {
         "sourceEmployeeSheet": {
@@ -347,7 +301,7 @@ PROFILE_MAPPING_OVERLAYS: dict[str, dict[str, Any]] = {
             "headerRow": 2,
             "dataStartRow": 3,
         },
-        "columnRename": _AUXILIUM_UAE_COLUMN_RENAME,
+        "columnRename": {},
     },
     "connect_uae": {
         "sourceEmployeeSheet": {
@@ -469,8 +423,7 @@ def resolve_convert_mapping(engine_id: str, raw: dict[str, Any] | None) -> dict[
         for key in ("sourceEmployeeSheet", "targetL"):
             if key in overlay:
                 merged[key] = copy.deepcopy(overlay[key])
-        if "columnRename" in overlay and "columnRename" not in (raw or {}):
-            merged["columnRename"] = copy.deepcopy(overlay["columnRename"])
+        # columnRename 不从 profile overlay 注入：只认配置里保存的映射
         if "connectSalarySplit" in overlay and "connectSalarySplit" not in (raw or {}):
             merged["connectSalarySplit"] = copy.deepcopy(overlay["connectSalarySplit"])
         if "quarterSplitMonths" in overlay and "quarterSplitMonths" not in (raw or {}):
