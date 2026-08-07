@@ -351,7 +351,6 @@ PROFILE_MAPPING_OVERLAYS: dict[str, dict[str, Any]] = {
             "headerRow": 10,
             "dataStartRow": 11,
         },
-        "columnRename": {},
     },
     "biz_solutions_india": {
         "sourceEmployeeSheet": {

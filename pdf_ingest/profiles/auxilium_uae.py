@@ -380,16 +380,29 @@ def _pick_payroll_draft_sheet(wb) -> tuple[Any, int, list[str]]:
 
 
 def _vendor_names_for_targets(column_rename: dict[str, str] | None, *targets: str) -> list[str]:
-    """columnRename 为 供应商列→UAE-L列；取映射到指定 UAE-L 列的供应商列名。"""
+    """
+    columnRename 为 供应商列→UAE-L列；取映射到指定 UAE-L 列的供应商列名。
+
+    右侧目标可能是资格化 key（母版第 1 行父级 + 第 2 行子列），例如：
+    「Standard Salary Rates/EC - Basic Salary」「c/Emp ID」。
+    须与引擎字段裸名「EC - Basic Salary」「Emp ID」按完整 key / 子段均可命中。
+    """
     if not column_rename:
         return []
-    want = {_header_key(t) for t in targets if t}
+    want: set[str] = set()
+    for t in targets:
+        if not t or not str(t).strip():
+            continue
+        want |= _header_alias_keys(str(t).strip())
+    if not want:
+        return []
     out: list[str] = []
     seen: set[str] = set()
     for src, tgt in column_rename.items():
         if not src or not tgt:
             continue
-        if _header_key(tgt) in want or str(tgt).strip() in targets:
+        tgt_s = str(tgt).strip()
+        if tgt_s in targets or (want & _header_alias_keys(tgt_s)):
             key = str(src).strip()
             if key and key not in seen:
                 seen.add(key)

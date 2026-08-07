@@ -236,7 +236,11 @@ def looks_like_italy_l_workbook(path: Path) -> bool:
         wb.close()
 
 
-def parse_italy_l_employees(ws: Worksheet) -> list[dict[str, Any]]:
+def parse_italy_l_employees(
+    ws: Worksheet,
+    *,
+    column_rename: dict[str, str] | None = None,
+) -> list[dict[str, Any]]:
     header_row, data_start, name_headers = _italy_l_layout(target=False)
     headers = _header_map(ws, header_row)
     if not headers:
@@ -261,6 +265,18 @@ def parse_italy_l_employees(ws: Worksheet) -> list[dict[str, Any]]:
             meta["_pay_period"] = val
             meta["Pay Period"] = val
 
+    rename = column_rename if isinstance(column_rename, dict) else {}
+    # 复用 SafeGuard 对照逻辑：显式 columnRename 覆盖同名
+    from pdf_ingest.profiles.safeguard_italy import (
+        _explicit_rename_targets,
+        _find_source_col,
+        _put_cell_value,
+        _resolve_target_for_source,
+        _strip_target_label,
+    )
+
+    claimed = _explicit_rename_targets(rename)
+
     employees: list[dict[str, Any]] = []
     max_row = max(ws.max_row or data_start, data_start)
     for row in range(data_start, max_row + 1):
@@ -276,16 +292,39 @@ def parse_italy_l_employees(ws: Worksheet) -> list[dict[str, Any]]:
             continue
         emp: dict[str, Any] = dict(meta)
         emp["Employee Name"] = name
+
+        def _cell_val(col: int) -> Any:
+            return ws.cell(row, col).value
+
+        # 1) 同名（跳过公式格、已被对照占用的目标）
         for h, col in headers.items():
             if col in name_cols:
                 continue
-            val = ws.cell(row, col).value
+            val = _cell_val(col)
             if _cell_formula_text(val):
-                # 读公式格时尽量取不到缓存值；留给写回母版公式
                 continue
             if val is None or val == "":
                 continue
-            emp[h] = val
+            tgt = _resolve_target_for_source(h, None) or h
+            if tgt in claimed or str(tgt).lower() in claimed:
+                continue
+            _put_cell_value(emp, tgt, val)
+
+        # 2) 显式 columnRename 覆盖
+        for src, tgt_raw in rename.items():
+            if not src or not tgt_raw:
+                continue
+            col = _find_source_col(headers, str(src))
+            if not col:
+                continue
+            val = _cell_val(col)
+            if _cell_formula_text(val):
+                continue
+            tgt = _strip_target_label(str(tgt_raw))
+            if not tgt:
+                continue
+            _put_cell_value(emp, tgt, val)
+
         employees.append(emp)
     return employees
 
@@ -614,7 +653,12 @@ def convert(
                     l_name = ITALY_L_SHEET
                 else:
                     raise ValueError(f"未找到 Italy-L，现有: {src_wb.sheetnames}")
-            employees = parse_italy_l_employees(src_wb[l_name])
+            employees = parse_italy_l_employees(
+                src_wb[l_name],
+                column_rename=_active_mapping().get("columnRename")
+                if isinstance(_active_mapping().get("columnRename"), dict)
+                else None,
+            )
         finally:
             src_wb.close()
 

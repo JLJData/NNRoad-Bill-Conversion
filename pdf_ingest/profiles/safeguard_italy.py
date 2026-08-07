@@ -6,6 +6,7 @@ SafeGuard (SGWI) Italy Payroll Excel → Italy-L（profile: safeguard_italy）
   姓名取供应商账单姓名列（通常 A 列，如 Matteo Cupi）
   Vacation Accruals → Italy-L「Vacation Leave」；「Vacation Accruals」置 0
   Fee Min 不写死：由后台 mapping.italyFeeMin 在引擎阶段写入
+  列映射：仅 Office columnRename + 同名自动匹配（无内置别名表）
 
 用法:
   python -m pdf_ingest.profiles.safeguard_italy <源.xlsx> [-o 输出.xlsx]
@@ -26,35 +27,17 @@ from pn_meta import PnMeta
 from region_templates import get_region_template
 
 ITALY_L_SHEET = "Italy-L"
-SRC_SHEET_CANDIDATES = ("Calculation", "calculation")
+SRC_SHEET_CANDIDATES = ("Calculation", "calculation", "Italy-L")
 
-# 源表头 → Italy-L 表头（不含动态 Salary / Vacation 特殊处理）
-# 目标名须与 Italy-L _norm 后表头一致（去首尾空白）
-_STATIC_HEADER_MAP: dict[str, str] = {
-    "PO Number": "PO Number",
-    "SGWI %age Markup": "Fee %age Markup",
-    "Fee %age Markup": "Fee %age Markup",
-    "SGWI Minimum Currency": "Fee Minimum Currency",
-    "Fee Minimum Currency": "Fee Minimum Currency",
-    "Applied SGWI Minimum Currency": "Applied SGWI Minimum Currency",
-    "Currency": "Currency",
-    "Social Cost": "Social Cost",
-    "Social contributions for accruals": "Social contributions for accruals",
-    "13th and 14th Accrual": "13th and 14th Accrual",
-    "Monthly Permitted Leave (Permessi Hours Ex-Fs)": "Monthly Permitted Leave (Permessi Hours Ex-Fs)",
-    "Monthly Permitted Leave ROL Accrual": "Monthly Permitted Leave ROL Accrual",
-    "Unemployment Fund (TFR) Accrual": "Unemployment Fund (TFR) Accrual",
-    "Overheads": "Overheads",
-    "Bilateral Trade Association": "Bilateral Trade Association",
-    "Social Contributions Employer (INPS) April": "Social Contributions Employer (INPS) April",
-    "Unemployment Fund (TFR) Accrual April": "Unemployment Fund (TFR) Accrual April",
-}
+# 列名对照不再内置：须在 Office「转换映射」columnRename 配置。
+# 未配置时仅「源列名与 Italy-L 列名同名」自动匹配；SGWI→Fee 等改名必须显式配置。
 
 
 def _norm(value: Any) -> str:
     if value is None:
         return ""
-    return str(value).replace("\n", " ").strip()
+    text = str(value).replace("\n", " ").replace("\r", " ").replace("\xa0", " ").replace("\uFEFF", "")
+    return re.sub(r"\s+", " ", text).strip()
 
 
 def _as_float(value: Any) -> float | None:
@@ -86,28 +69,117 @@ def _header_map(ws: Worksheet, header_row: int) -> dict[str, int]:
 
 
 def _col_by_label(headers: dict[str, int], *labels: str) -> int | None:
-    want = {_norm(x) for x in labels if x}
+    want = {_norm(x).lower() for x in labels if x}
     if not want:
         return None
-    for label in want:
-        if label in headers:
-            return headers[label]
     for key, col in headers.items():
         base = str(key).split("#", 1)[0]
         child = base.rsplit("/", 1)[-1]
-        if _norm(key) in want or _norm(base) in want or _norm(child) in want:
+        cands = {_norm(key).lower(), _norm(base).lower(), _norm(child).lower()}
+        if cands & want:
             return col
     return None
 
 
-def _static_target_for_source(src_h: str) -> str | None:
-    src_key = _norm(src_h)
-    tgt = _STATIC_HEADER_MAP.get(src_h) or _STATIC_HEADER_MAP.get(src_key)
-    if tgt:
-        return tgt
-    base = src_key.split("#", 1)[0]
-    child = base.rsplit("/", 1)[-1]
-    return _STATIC_HEADER_MAP.get(child) or _STATIC_HEADER_MAP.get(base)
+def _header_lookup_keys(header: str) -> list[str]:
+    """完整 key / 去 #n / 子段，供 columnRename 命中（含小写便于大小写不敏感）。"""
+    k = _norm(header)
+    if not k:
+        return []
+    out: list[str] = [k]
+    base = k.split("#", 1)[0]
+    if base and base not in out:
+        out.append(base)
+    if "/" in base:
+        child = base.rsplit("/", 1)[-1]
+        if child and child not in out:
+            out.append(child)
+    # 小写副本，匹配时不区分大小写
+    for x in list(out):
+        low = x.lower()
+        if low not in out:
+            out.append(low)
+    return out
+
+
+def _strip_target_label(tgt: str) -> str:
+    """资格化目标取子段，写 Italy-L 用裸列名。"""
+    raw = _norm(tgt)
+    if not raw:
+        return ""
+    base = raw.split("#", 1)[0]
+    return base.rsplit("/", 1)[-1] or raw
+
+
+def _rename_target_for_source(src_h: str, column_rename: dict[str, str] | None) -> str | None:
+    """columnRename：供应商列 → Italy-L 列；支持资格化「父/子」与子段命中。"""
+    if not isinstance(column_rename, dict) or not column_rename:
+        return None
+    src_keys = set(_header_lookup_keys(src_h))
+    for src, tgt in column_rename.items():
+        if not src or not tgt:
+            continue
+        if _norm(src) in src_keys or _norm(src).lower() in src_keys:
+            return _norm(tgt)
+    for src, tgt in column_rename.items():
+        if not src or not tgt:
+            continue
+        if set(_header_lookup_keys(src)) & src_keys:
+            return _norm(tgt)
+    return None
+
+
+def _explicit_rename_targets(column_rename: dict[str, str] | None) -> set[str]:
+    """已被列名对照占用的 Italy-L 列（规范化裸名）。保留供外部诊断。"""
+    out: set[str] = set()
+    if not isinstance(column_rename, dict):
+        return out
+    for v in column_rename.values():
+        t = _strip_target_label(str(v))
+        if t:
+            out.add(t)
+            out.add(t.lower())
+    return out
+
+
+def _resolve_target_for_source(src_h: str, column_rename: dict[str, str] | None = None) -> str | None:
+    """
+    1) 显式 columnRename
+    2) 同名自动匹配（源列子名 = Italy-L 列名）
+    """
+    renamed = _rename_target_for_source(src_h, column_rename)
+    if renamed:
+        return _strip_target_label(renamed) or None
+
+    keys = _header_lookup_keys(src_h)
+    if not keys:
+        return None
+    same = keys[-1] if "/" in keys[0] else keys[0]
+    return _norm(same) or None
+
+
+def _find_source_col(headers: dict[str, int], src_name: str) -> int | None:
+    """按对照左侧列名反查源列（支持父/子资格化）。"""
+    return _col_by_label(headers, src_name)
+
+
+def _put_cell_value(emp: dict[str, Any], tgt: str, val: Any) -> None:
+    if not tgt or val is None or val == "":
+        return
+    num = _money(val)
+    tgt_l = tgt.lower()
+    if tgt_l in (
+        "po number",
+        "currency",
+        "sgwi minimum currency",
+        "fee minimum currency",
+        "applied sgwi minimum currency",
+    ):
+        emp[tgt] = val
+    elif num is not None:
+        emp[tgt] = num
+    else:
+        emp[tgt] = val
 
 
 def _find_header_row(ws: Worksheet) -> int:
@@ -187,14 +259,31 @@ def _vac_accrual_header(headers: dict[str, int]) -> str | None:
     return None
 
 
-def parse_safeguard_italy_excel(excel_path: Path) -> list[dict[str, Any]]:
+def parse_safeguard_italy_excel(
+    excel_path: Path,
+    *,
+    column_rename: dict[str, str] | None = None,
+) -> list[dict[str, Any]]:
     path = Path(excel_path).resolve()
     wb = load_workbook(path, data_only=True)
+    # 无缓存公式值时 data_only 为空；再开一份取单元格常量
+    wb_raw = load_workbook(path, data_only=False)
     try:
         ws = _find_sheet(wb)
+        ws_raw = _find_sheet(wb_raw)
         header_row = _find_header_row(ws)
         headers = _header_map(ws, header_row)
         meta = _read_meta(ws, header_row)
+        rename = column_rename if isinstance(column_rename, dict) else {}
+
+        def _cell_val(row: int, col: int) -> Any:
+            v = ws.cell(row, col).value
+            if v is not None and v != "":
+                return v
+            raw = ws_raw.cell(row, col).value
+            if isinstance(raw, (int, float)):
+                return raw
+            return v
 
         # 姓名：优先 A 列非空；否则 Employee Name
         name_col_a = 1
@@ -207,13 +296,13 @@ def parse_safeguard_italy_excel(excel_path: Path) -> list[dict[str, Any]]:
         employees: list[dict[str, Any]] = []
         data_start = header_row + 1
         for row in range(data_start, (ws.max_row or data_start) + 1):
-            name = _norm(ws.cell(row, name_col_a).value)
+            name = _norm(_cell_val(row, name_col_a))
             if not name and name_header_col:
-                name = _norm(ws.cell(row, name_header_col).value)
+                name = _norm(_cell_val(row, name_header_col))
             if not name:
                 # 有的版式姓名不在 A，但有 Employee ID
-                if id_col and ws.cell(row, id_col).value not in (None, ""):
-                    name = _norm(ws.cell(row, id_col).value)
+                if id_col and _cell_val(row, id_col) not in (None, ""):
+                    name = _norm(_cell_val(row, id_col))
                 else:
                     continue
             low = name.lower()
@@ -223,57 +312,85 @@ def parse_safeguard_italy_excel(excel_path: Path) -> list[dict[str, Any]]:
             emp: dict[str, Any] = dict(meta)
             emp["Employee Name"] = name
             if id_col:
-                emp["_employee_id"] = ws.cell(row, id_col).value
+                emp["_employee_id"] = _cell_val(row, id_col)
 
+            # 显式对照占用的目标列：同名源列不再写入这些目标，避免对照被同名盖回
+            claimed = _explicit_rename_targets(rename)
+
+            # 1) 先同名自动匹配（跳过已被对照占用的目标）
             for src_h, col in headers.items():
-                src_key = _norm(src_h)
-                tgt = _static_target_for_source(src_h)
+                if salary_h and src_h == salary_h:
+                    continue
+                if vac_h and src_h == vac_h:
+                    continue
+                tgt = _resolve_target_for_source(src_h, None)
                 if not tgt:
                     continue
-                tgt = _norm(tgt)
-                val = ws.cell(row, col).value
-                if val is None or val == "":
+                if tgt in claimed or tgt.lower() in claimed:
                     continue
-                num = _money(val)
-                child_key = src_key.split("#", 1)[0].rsplit("/", 1)[-1]
-                if src_key in (
-                    "po number",
-                    "currency",
-                    "sgwi minimum currency",
-                    "fee minimum currency",
-                    "applied sgwi minimum currency",
-                ) or child_key in (
-                    "po number",
-                    "currency",
-                    "sgwi minimum currency",
-                    "fee minimum currency",
-                    "applied sgwi minimum currency",
-                ):
-                    emp[tgt] = val
-                elif num is not None:
-                    emp[tgt] = num
-                else:
-                    emp[tgt] = val
+                _put_cell_value(emp, tgt, _cell_val(row, col))
+
+            # 2) 显式 columnRename：按源表头匹配（比按配置 key 反查更稳）
+            applied_rename = 0
+            for src_h, col in headers.items():
+                if salary_h and src_h == salary_h:
+                    continue
+                if vac_h and src_h == vac_h:
+                    continue
+                renamed = _rename_target_for_source(src_h, rename)
+                if not renamed:
+                    continue
+                tgt = _strip_target_label(renamed)
+                if not tgt:
+                    continue
+                _put_cell_value(emp, tgt, _cell_val(row, col))
+                applied_rename += 1
+            # 兜底：配置 key 在表头中能反查到、但上面未命中时
+            for src, tgt_raw in rename.items():
+                if not src or not tgt_raw:
+                    continue
+                col = _find_source_col(headers, str(src))
+                if not col:
+                    continue
+                src_h = next((h for h, c in headers.items() if c == col), str(src))
+                if salary_h and src_h == salary_h:
+                    continue
+                if vac_h and src_h == vac_h:
+                    continue
+                if _rename_target_for_source(src_h, rename):
+                    continue  # 已在上一步写过
+                tgt = _strip_target_label(str(tgt_raw))
+                if not tgt:
+                    continue
+                _put_cell_value(emp, tgt, _cell_val(row, col))
+                applied_rename += 1
+            emp["_rename_applied"] = applied_rename
 
             if salary_h:
-                from profiles.italy_payroll_calc.convert import salary_header_for_period
+                salary_rename = _rename_target_for_source(salary_h, rename)
+                if salary_rename:
+                    title = _strip_target_label(salary_rename)
+                else:
+                    from profiles.italy_payroll_calc.convert import salary_header_for_period
 
-                title = _norm(salary_header_for_period(meta.get("_pay_period")) or salary_h)
-                emp[title] = _money(ws.cell(row, headers[salary_h]).value)
+                    title = _norm(salary_header_for_period(meta.get("_pay_period")) or salary_h)
+                _put_cell_value(emp, title, _cell_val(row, headers[salary_h]))
 
-            # Vacation Accruals → Vacation Leave；Accruals 置 0
+            # Vacation Accruals → Vacation Leave；Accruals 置 0（列名对照可覆盖 Leave 目标）
             if vac_h:
-                vac_val = _money(ws.cell(row, headers[vac_h]).value) or 0.0
-                emp["Vacation Leave"] = vac_val
+                vac_val = _cell_val(row, headers[vac_h])
+                vac_rename = _rename_target_for_source(vac_h, rename)
+                leave_tgt = _strip_target_label(vac_rename) if vac_rename else "Vacation Leave"
+                _put_cell_value(emp, leave_tgt, vac_val if vac_val not in (None, "") else 0.0)
                 emp["Vacation Accruals"] = 0.0
             else:
                 emp.setdefault("Vacation Accruals", 0.0)
 
             # Fee Min 留给 mapping；源 SGWI Min 仅作参考字段
             if "SGWI Min" in headers:
-                emp["_source_fee_min"] = _money(ws.cell(row, headers["SGWI Min"]).value)
+                emp["_source_fee_min"] = _money(_cell_val(row, headers["SGWI Min"]))
             if "Fee Min" in headers:
-                emp["_source_fee_min"] = _money(ws.cell(row, headers["Fee Min"]).value)
+                emp["_source_fee_min"] = _money(_cell_val(row, headers["Fee Min"]))
 
             employees.append(emp)
 
@@ -282,6 +399,7 @@ def parse_safeguard_italy_excel(excel_path: Path) -> list[dict[str, Any]]:
         return employees
     finally:
         wb.close()
+        wb_raw.close()
 
 
 def convert_excels(
@@ -302,6 +420,12 @@ def convert_excels(
     mapping_in = dict(convert_mapping) if isinstance(convert_mapping, dict) else {}
     mapping_in.setdefault("pdfProfileId", "safeguard_italy")
     mapping = resolve_convert_mapping("italy_payroll_calc", mapping_in)
+    rename = mapping.get("columnRename") if isinstance(mapping.get("columnRename"), dict) else {}
+    rename = {str(k): str(v) for k, v in rename.items() if k and v and str(k).strip() != str(v).strip()}
+    print(
+        f"[italy-rename] vendor-to-source entries={len(rename)} "
+        f"keys={list(rename.keys())[:8]}"
+    )
 
     paths = [Path(p).resolve() for p in excel_paths]
     if not paths:
@@ -312,7 +436,8 @@ def convert_excels(
 
     output_path = Path(output_path).resolve()
     italy_l_flags = [looks_like_italy_l_workbook(p) for p in paths]
-    if all(italy_l_flags):
+    # 已是 Italy-L 且无需列名对照时才原样拷贝；有 columnRename 必须重解析，否则对照不生效
+    if all(italy_l_flags) and not rename:
         if len(paths) > 1:
             raise ValueError("多份已是 Italy-L 的 Excel 无法自动合并，请只传一份")
         output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -332,12 +457,28 @@ def convert_excels(
 
     employees: list[dict[str, Any]] = []
     warnings: list[str] = []
+    if not rename:
+        warnings.append("columnRename 为空：仅同名列匹配。请确认已在映射里配置并点「保存映射」。")
+    else:
+        warnings.append(f"columnRename 已加载 {len(rename)} 条对照")
     for p in paths:
-        if looks_like_italy_l_workbook(p):
+        if looks_like_italy_l_workbook(p) and not rename:
             raise ValueError("请不要混传已成型 Italy-L 与 SafeGuard 源账单")
-        if not looks_like_safeguard_italy(p):
+        if not looks_like_safeguard_italy(p) and not looks_like_italy_l_workbook(p):
             warnings.append(f"文件可能不是 SafeGuard Italy 账单，仍尝试解析: {p.name}")
-        employees.extend(parse_safeguard_italy_excel(p))
+        elif looks_like_italy_l_workbook(p) and rename:
+            warnings.append(f"源表含 Italy-L 且配置了列名对照，已按对照重解析: {p.name}")
+        employees.extend(parse_safeguard_italy_excel(p, column_rename=rename))
+    if employees and rename:
+        applied = int(employees[0].get("_rename_applied") or 0)
+        if applied <= 0:
+            warnings.append(
+                "columnRename 已配置但未命中任何源列，请核对供应商列名是否与示例表头一致"
+            )
+        else:
+            warnings.append(f"columnRename 本批命中写入 {applied} 次（按源列计）")
+    for e in employees:
+        e.pop("_rename_applied", None)
 
     tpl = (template_path or get_region_template("Italy")).resolve()
     if not tpl.is_file():

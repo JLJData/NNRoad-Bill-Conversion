@@ -1,0 +1,21 @@
+---
+description: 供应商源可配置接入：老 profile 冻结；新 PDF/竖表 Excel 走规则包
+globs: pdf_ingest/**/*,mapping_inspect.py,convert_mapping.py,docs/pdf-configurable-ingest*
+alwaysApply: false
+---
+
+# 供应商源可配置接入（后续规划）
+
+完整思路见：`docs/pdf-configurable-ingest-roadmap.md`。
+
+## 必须遵守
+
+- **已上线硬编码 profile（eor_uk、现网 topsource PDF/Excel）默认冻结**：不迁移、不为「统一」重构；只修明确 bug。
+- **新供应商**走可配置规则包 + 标准中间模型；上线前多样例试跑与金额勾稽。
+- 配置轨优先序：**Excel 竖表（TopSource 发票类）→ 新 PDF**；TopSource Excel ≠ Auxilium 横表 columnRename。
+- 识别未命中时失败提示，**禁止**新供应商误进老 profile。
+- 映射 UI 横表 rename/inspect ≠ PDF 抽取 ≠ 竖表标签映射；分源类型配置。
+
+## 非目标（一期）
+
+任意扫描件零配置、生产用 LLM 直接出账、强行把老 EOR/TopSource 改成规则包。

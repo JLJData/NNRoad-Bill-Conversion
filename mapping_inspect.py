@@ -50,6 +50,8 @@ def inspect_source_headers(
         return _inspect_uae_source(source_path, mapping)
     if engine_id == "uk_payroll_calc":
         return _inspect_uk_vertical_source(source_path, mapping)
+    if engine_id == "italy_payroll_calc":
+        return _inspect_italy_source(source_path, mapping)
 
     return {"ok": False, "message": f"引擎「{engine_id}」暂不支持表头识别"}
 
@@ -260,6 +262,81 @@ def _inspect_uae_source(source_path: Path, mapping: dict[str, Any]) -> dict[str,
         }
 
 
+def _inspect_italy_source(source_path: Path, mapping: dict[str, Any]) -> dict[str, Any]:
+    """
+    Italy 映射样例：
+    1) 有 Calculation → 优先读供应商原始表头（与 convert 选 sheet 一致）
+    2) 仅有 Italy-L → 读 Italy-L 表头
+    """
+    source_path = Path(source_path)
+    try:
+        wb = load_workbook(source_path, data_only=True, read_only=True)
+        sheet_names = list(wb.sheetnames)
+        wb.close()
+    except Exception as exc:
+        return {"ok": False, "message": f"无法打开源表: {exc}"}
+
+    # 与 safeguard._find_sheet 一致：有 Calculation 时不要误用 Italy-L 表头做对照
+    has_calculation = any(n.lower() == "calculation" for n in sheet_names)
+    if has_calculation:
+        try:
+            from pdf_ingest.profiles import safeguard_italy as sg
+            from bill_convert.headers import build_qualified_header_map
+
+            wb = load_workbook(source_path, data_only=True)
+            try:
+                ws = sg._find_sheet(wb)
+                header_row = sg._find_header_row(ws)
+                headers = _header_cells(ws, header_row)
+                headers_map = build_qualified_header_map(ws, header_row)
+                employees: list[dict[str, str]] = []
+                name_col = sg._col_by_label(headers_map, "Employee Name") or 1
+                id_col = sg._col_by_label(headers_map, "Employee ID")
+                data_start = header_row + 1
+                for row in range(data_start, min((ws.max_row or data_start), data_start + 40) + 1):
+                    name_s = str(ws.cell(row, name_col).value or "").strip()
+                    if not name_s and name_col != 1:
+                        name_s = str(ws.cell(row, 1).value or "").strip()
+                    id_s = str(ws.cell(row, id_col).value or "").strip() if id_col else ""
+                    if not name_s and not id_s:
+                        continue
+                    low = name_s.lower()
+                    if "invoice total" in low or low.startswith("sgwi"):
+                        continue
+                    employees.append({"cnName": "", "enName": name_s or id_s})
+                return {
+                    "ok": True,
+                    "sheetName": ws.title,
+                    "headerRow": header_row,
+                    "headers": headers,
+                    "employees": employees,
+                    "sourceKind": "vendor_safeguard_italy",
+                    "hint": (
+                        "已识别 SafeGuard Calculation 表头。请在「列名对照」配置后点「保存映射」；"
+                        "未保存的对照不会用于转换。"
+                    ),
+                }
+            finally:
+                wb.close()
+        except Exception as exc:
+            return {
+                "ok": False,
+                "message": f"已找到 Calculation，但解析表头失败: {exc}",
+                "sheetNames": sheet_names,
+            }
+
+    if find_sheet_name(sheet_names, {"sheet": "Italy-L", "candidates": ["Italy-L"]}):
+        return _inspect_fixed_header_source(
+            source_path, mapping, default_sheet="Italy-L", default_row=10
+        )
+
+    return {
+        "ok": False,
+        "message": "未找到 Calculation 或 Italy-L 工作表",
+        "sheetNames": sheet_names,
+    }
+
+
 def list_formula_example_rows(
     ws,
     data_start_row: int,
@@ -287,7 +364,18 @@ def inspect_pn_headers(
     if isinstance(candidates, list):
         spec["candidates"] = candidates
     else:
-        spec["candidates"] = [sheet_want, "China-L", "Hong Kong-L", "UK-L", "UAE-L", "Pakistan-L", "TW-L"]
+        spec["candidates"] = [
+            sheet_want,
+            "China-L",
+            "Hong Kong-L",
+            "UK-L",
+            "UAE-L",
+            "Pakistan-L",
+            "Italy-L",
+            "India-L",
+            "Cyprus-L",
+            "TW-L",
+        ]
 
     if not template_path.is_file():
         return {"ok": False, "message": f"母版文件不存在: {template_path}"}
@@ -484,6 +572,9 @@ def inspect_pn_headers(
 
     if engine_id == "pakistan_payroll_calc":
         return _inspect_pakistan_pn(template_path, mapping, spec, sheet_want)
+
+    if engine_id == "italy_payroll_calc":
+        return _inspect_italy_pn(template_path, mapping, spec, sheet_want)
 
     header_row = int(target.get("headerRow") or 7)
     wb = load_workbook(template_path, data_only=True, read_only=False)
@@ -749,6 +840,71 @@ def _inspect_pakistan_pn(
                 "pakistanEeDataStartRow": ee_start,
                 "defaultPakistanRow": int(pk_tpl.get("defaultExampleRow") or pk_start),
                 "defaultPakistanEeRow": int(ee_tpl.get("defaultExampleRow") or ee_start),
+            },
+        }
+    except Exception as exc:
+        return {"ok": False, "message": str(exc)}
+
+def _inspect_italy_pn(
+    template_path: Path,
+    mapping: dict[str, Any],
+    spec: dict[str, Any],
+    sheet_want: str,
+) -> dict[str, Any]:
+    from profiles.italy_payroll_calc import convert as italy_mod
+
+    target = mapping.get("targetL") if isinstance(mapping.get("targetL"), dict) else {}
+    try:
+        wb = load_workbook(template_path, data_only=True, read_only=False)
+        sheet_names = list(wb.sheetnames)
+        name = find_sheet_name(sheet_names, spec)
+        if not name:
+            wb.close()
+            return {
+                "ok": False,
+                "message": f"母版中未找到 sheet「{sheet_want}」",
+                "sheetNames": sheet_names,
+            }
+        header_row = int(target.get("headerRow") or italy_mod.ITALY_L_HEADER_ROW)
+        data_start = int(target.get("dataStartRow") or italy_mod.ITALY_L_DATA_START)
+        headers = _header_cells(wb[name], header_row)
+        wb.close()
+
+        wb_f = load_workbook(template_path, data_only=False, read_only=False)
+        italy_start = italy_mod.ITALY_DATA_START
+        ee_start = italy_mod.ITALY_EE_DATA_START
+        italy_examples: list[dict[str, Any]] = []
+        ee_examples: list[dict[str, Any]] = []
+        if italy_mod.ITALY_SHEET in wb_f.sheetnames:
+            italy_examples = list_formula_example_rows(
+                wb_f[italy_mod.ITALY_SHEET],
+                italy_start,
+                marker_col=2,
+            )
+        if italy_mod.ITALY_EE_SHEET in wb_f.sheetnames:
+            ee_examples = list_formula_example_rows(
+                wb_f[italy_mod.ITALY_EE_SHEET],
+                ee_start,
+                marker_col=5,
+            )
+        wb_f.close()
+        ft = mapping.get("formulaTemplates") if isinstance(mapping.get("formulaTemplates"), dict) else {}
+        italy_tpl = ft.get("Italy") if isinstance(ft.get("Italy"), dict) else {}
+        ee_tpl = ft.get("Italy EE") if isinstance(ft.get("Italy EE"), dict) else {}
+        return {
+            "ok": True,
+            "sheetName": name,
+            "headerRow": header_row,
+            "dataStartRow": data_start,
+            "autoDetectedLayout": False,
+            "headers": headers,
+            "formulaExampleRows": {
+                "Italy": italy_examples,
+                "Italy EE": ee_examples,
+                "italyDataStartRow": italy_start,
+                "italyEeDataStartRow": ee_start,
+                "defaultItalyRow": int(italy_tpl.get("defaultExampleRow") or italy_start),
+                "defaultItalyEeRow": int(ee_tpl.get("defaultExampleRow") or ee_start),
             },
         }
     except Exception as exc:
