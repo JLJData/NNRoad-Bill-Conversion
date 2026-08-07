@@ -182,7 +182,7 @@ def _put_cell_value(emp: dict[str, Any], tgt: str, val: Any) -> None:
         emp[tgt] = val
 
 
-def _find_header_row(ws: Worksheet) -> int:
+def _find_header_row_fallback(ws: Worksheet) -> int:
     for r in range(1, min(20, (ws.max_row or 1) + 1)):
         labels = {_norm(ws.cell(r, c).value).lower() for c in range(1, min(15, (ws.max_column or 1) + 1))}
         if "employee id" in labels or "employee name" in labels:
@@ -190,6 +190,21 @@ def _find_header_row(ws: Worksheet) -> int:
         if "po number" in labels and ("currency" in labels or "sgwi min" in labels):
             return r
     raise ValueError("未找到 SafeGuard 员工表头行（Employee ID / Employee Name）")
+
+
+def _find_header_row(
+    ws: Worksheet,
+    *,
+    source_spec: dict[str, Any] | None = None,
+) -> int:
+    from bill_convert.header_scan import resolve_header_row
+
+    return resolve_header_row(
+        ws,
+        spec=source_spec,
+        sheet_label=str((source_spec or {}).get("sheet") or ws.title or "SafeGuard"),
+        fallback=lambda: _find_header_row_fallback(ws),
+    )
 
 
 def _find_sheet(wb) -> Worksheet:
@@ -263,6 +278,7 @@ def parse_safeguard_italy_excel(
     excel_path: Path,
     *,
     column_rename: dict[str, str] | None = None,
+    source_spec: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     path = Path(excel_path).resolve()
     wb = load_workbook(path, data_only=True)
@@ -271,7 +287,7 @@ def parse_safeguard_italy_excel(
     try:
         ws = _find_sheet(wb)
         ws_raw = _find_sheet(wb_raw)
-        header_row = _find_header_row(ws)
+        header_row = _find_header_row(ws, source_spec=source_spec)
         headers = _header_map(ws, header_row)
         meta = _read_meta(ws, header_row)
         rename = column_rename if isinstance(column_rename, dict) else {}
@@ -422,9 +438,15 @@ def convert_excels(
     mapping = resolve_convert_mapping("italy_payroll_calc", mapping_in)
     rename = mapping.get("columnRename") if isinstance(mapping.get("columnRename"), dict) else {}
     rename = {str(k): str(v) for k, v in rename.items() if k and v and str(k).strip() != str(v).strip()}
+    source_spec = (
+        mapping.get("sourceEmployeeSheet")
+        if isinstance(mapping.get("sourceEmployeeSheet"), dict)
+        else {}
+    )
     print(
         f"[italy-rename] vendor-to-source entries={len(rename)} "
-        f"keys={list(rename.keys())[:8]}"
+        f"keys={list(rename.keys())[:8]} "
+        f"markers={source_spec.get('headerMarkerKeys')}"
     )
 
     paths = [Path(p).resolve() for p in excel_paths]
@@ -468,7 +490,9 @@ def convert_excels(
             warnings.append(f"文件可能不是 SafeGuard Italy 账单，仍尝试解析: {p.name}")
         elif looks_like_italy_l_workbook(p) and rename:
             warnings.append(f"源表含 Italy-L 且配置了列名对照，已按对照重解析: {p.name}")
-        employees.extend(parse_safeguard_italy_excel(p, column_rename=rename))
+        employees.extend(
+            parse_safeguard_italy_excel(p, column_rename=rename, source_spec=source_spec)
+        )
     if employees and rename:
         applied = int(employees[0].get("_rename_applied") or 0)
         if applied <= 0:

@@ -342,9 +342,28 @@ def _row_looks_like_payroll_header(headers: list[str]) -> bool:
     return moneyish >= 3
 
 
-def _detect_header_row(ws: Worksheet, *, scan_max: int = 30) -> tuple[int, list[str]] | None:
-    """扫描前若干行定位表头；不强制 AX ID。"""
+def _detect_header_row(
+    ws: Worksheet,
+    *,
+    scan_max: int = 30,
+    marker_keys: frozenset[str] | None = None,
+) -> tuple[int, list[str]] | None:
+    """扫描前若干行定位表头；配置了标志列时优先按标志列定位。"""
     max_col = min(max(ws.max_column or 1, 1), 100)
+    if marker_keys and len(marker_keys) >= 2:
+        try:
+            from bill_convert.header_scan import find_header_row_by_markers
+
+            row = find_header_row_by_markers(
+                ws,
+                marker_keys=marker_keys,
+                max_scan=scan_max,
+                sheet_label=ws.title or "Payroll Draft",
+            )
+            headers = [_norm(_cell(ws, row, c)) for c in range(1, max_col + 1)]
+            return row, headers
+        except ValueError:
+            return None
     for row in range(1, min((ws.max_row or 1), scan_max) + 1):
         headers = [_norm(_cell(ws, row, c)) for c in range(1, max_col + 1)]
         if _row_looks_like_payroll_header(headers):
@@ -352,7 +371,12 @@ def _detect_header_row(ws: Worksheet, *, scan_max: int = 30) -> tuple[int, list[
     return None
 
 
-def _pick_payroll_draft_sheet(wb) -> tuple[Any, int, list[str]]:
+def _pick_payroll_draft_sheet(
+    wb,
+    *,
+    marker_keys: frozenset[str] | None = None,
+    scan_max: int = 30,
+) -> tuple[Any, int, list[str]]:
     """优先活动表，否则扫全部 sheet。"""
     candidates = []
     active = wb.active
@@ -360,7 +384,7 @@ def _pick_payroll_draft_sheet(wb) -> tuple[Any, int, list[str]]:
     last_sample: list[str] = []
     last_title = ""
     for ws in ordered:
-        found = _detect_header_row(ws)
+        found = _detect_header_row(ws, scan_max=scan_max, marker_keys=marker_keys)
         if found is not None:
             header_row, headers = found
             candidates.append((ws, header_row, headers))
@@ -374,7 +398,7 @@ def _pick_payroll_draft_sheet(wb) -> tuple[Any, int, list[str]]:
     if candidates:
         return candidates[0]
     raise ValueError(
-        f"未识别为 Auxilium/UAE Payroll Draft（各 sheet 前 30 行未见员工/薪酬表头）。"
+        f"未识别为 Auxilium/UAE Payroll Draft（各 sheet 前 {scan_max} 行未见员工/薪酬表头）。"
         f"sheet「{last_title}」样例: {last_sample or '（空）'}"
     )
 
@@ -494,13 +518,23 @@ def parse_auxilium_payroll_draft(
     excel_path: Path,
     *,
     column_rename: dict[str, str] | None = None,
+    source_spec: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     path = Path(excel_path).resolve()
     if not path.is_file():
         raise FileNotFoundError(f"Excel 不存在: {path}")
+    from bill_convert.header_scan import marker_keys_from_spec
+
+    spec = source_spec if isinstance(source_spec, dict) else {}
+    markers = marker_keys_from_spec(spec)
+    scan_max = int(spec.get("headerScanMaxRow") or 30)
     wb = load_workbook(path, data_only=True)
     try:
-        ws, header_row, _headers_raw = _pick_payroll_draft_sheet(wb)
+        ws, header_row, _headers_raw = _pick_payroll_draft_sheet(
+            wb,
+            marker_keys=markers or None,
+            scan_max=scan_max,
+        )
         from bill_convert.headers import list_qualified_header_cells
 
         qualified = list_qualified_header_cells(ws, header_row)
@@ -650,6 +684,11 @@ def convert_excels(
     mapping_in.setdefault("pdfProfileId", "auxilium_uae")
     mapping = resolve_convert_mapping("uae_payroll_calc", mapping_in)
     rename = mapping.get("columnRename") if isinstance(mapping.get("columnRename"), dict) else {}
+    source_spec = (
+        mapping.get("sourceEmployeeSheet")
+        if isinstance(mapping.get("sourceEmployeeSheet"), dict)
+        else {}
+    )
 
     paths = [Path(p).resolve() for p in excel_paths]
     if not paths:
@@ -685,7 +724,9 @@ def convert_excels(
             raise ValueError("请不要混传已成型 UAE-L 与 Payroll Draft")
         if not looks_like_auxilium_payroll_draft(p):
             warnings.append(f"文件可能不是 Auxilium Payroll Draft，仍尝试解析: {p.name}")
-        employees.extend(parse_auxilium_payroll_draft(p, column_rename=rename))
+        employees.extend(
+            parse_auxilium_payroll_draft(p, column_rename=rename, source_spec=source_spec)
+        )
 
     tpl = (template_path or get_region_template("UAE")).resolve()
     if not tpl.is_file():
