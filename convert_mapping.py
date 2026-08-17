@@ -135,6 +135,17 @@ ENGINE_DEFAULTS: dict[str, dict[str, Any]] = {
         "employeeFormulaStyles": [],
         "skipSourceHeaders": [],
         "pnSheets": {"main": "UAE", "ee": "UAE EE", "l": "UAE-L"},
+        # 固定值写格：唯一约定。转换引擎与 Office「同步母版」都读这里，勿在 Java 再写死格子。
+        "fixedValueWrites": [
+            {
+                "id": "uaeRecurringFee",
+                "valueKey": "uaeRecurringFeeFixed",
+                "sheet": "UAE",
+                "columnLetter": "H",
+                "dataStartRow": 9,
+                "scope": "eachEmployee",
+            }
+        ],
     },
     # Pakistan 中性默认；Panda Work 见 PROFILE_MAPPING_OVERLAYS
     "pakistan_payroll_calc": {
@@ -188,6 +199,17 @@ ENGINE_DEFAULTS: dict[str, dict[str, Any]] = {
         "employeeFormulaStyles": [],
         "skipSourceHeaders": [],
         "pnSheets": {"main": "Italy", "ee": "Italy EE", "l": "Italy-L"},
+        "fixedValueWrites": [
+            {
+                "id": "italyFeeMin",
+                "valueKey": "italyFeeMin",
+                "sheet": "Italy-L",
+                "headerNames": ["Fee Min", "SGWI Min"],
+                "headerRow": 10,
+                "dataStartRow": 11,
+                "scope": "eachEmployee",
+            }
+        ],
     },
     # India 中性默认；Biz Solutions 见 PROFILE_MAPPING_OVERLAYS
     "india_payroll_calc": {
@@ -242,6 +264,16 @@ ENGINE_DEFAULTS: dict[str, dict[str, Any]] = {
         "employeeFormulaStyles": [],
         "skipSourceHeaders": [],
         "pnSheets": {"main": "Cyprus", "ee": "Cyprus EE", "l": "Cyprus-L"},
+        "fixedValueWrites": [
+            {
+                "id": "cyprusRecurringFee",
+                "valueKey": "cyprusRecurringFee",
+                "sheet": "Cyprus",
+                "columnLetter": "I",
+                "dataStartRow": 9,
+                "scope": "eachEmployee",
+            }
+        ],
     },
 }
 
@@ -428,6 +460,13 @@ def resolve_convert_mapping(engine_id: str, raw: dict[str, Any] | None) -> dict[
         if "quarterSplitMonths" in overlay and "quarterSplitMonths" not in (raw or {}):
             merged["quarterSplitMonths"] = copy.deepcopy(overlay["quarterSplitMonths"])
         merged["pdfProfileId"] = pid
+    # 写格约定始终以引擎默认为准，避免 Office 存过的 mapping 把格子钉死。
+    engine_writes = (ENGINE_DEFAULTS.get(engine_id) or {}).get("fixedValueWrites")
+    if isinstance(merged, dict):
+        if engine_writes is not None:
+            merged["fixedValueWrites"] = copy.deepcopy(engine_writes)
+        else:
+            merged.pop("fixedValueWrites", None)
     return merged
 
 

@@ -9,7 +9,7 @@ Cyprus-L → Cyprus PN（引擎 cyprus_payroll_calc）
 默认母版: templates/cyprus/template.xlsx
 
 原则：PN / Cyprus / Cyprus EE 以母版公式为准；只写 Cyprus-L 数据与必要元数据。
-Recurring Fee：mapping.cyprusRecurringFee 有值才写入 Cyprus!I（每人同值）。
+Recurring Fee：mapping.cyprusRecurringFee 有值才写；格子见 mapping.fixedValueWrites。
 """
 from __future__ import annotations
 
@@ -27,6 +27,7 @@ from openpyxl import load_workbook
 from openpyxl.worksheet.formula import ArrayFormula
 from openpyxl.worksheet.worksheet import Worksheet
 
+from bill_convert.fixed_value_writes import apply_fixed_value_writes
 from bill_convert.formula_copy import shift_row_formula
 from convert_mapping import find_sheet_name, resolve_convert_mapping
 from fx_rate import fetch_usd_rates, get_cyprus_pn_fx_rate
@@ -49,7 +50,6 @@ CYPRUS_L_DATA_START = 8
 CYPRUS_L_PERIOD_ROW = 2
 CYPRUS_DATA_START = 9
 CYPRUS_EE_DATA_START = 10
-CYPRUS_RECURRING_FEE_COL = 9  # I
 MAX_EMPLOYEES = 20
 _DATE_FMT = "yyyy/m/d"
 
@@ -121,27 +121,6 @@ def _norm(value: Any) -> str:
     if value is None:
         return ""
     return str(value).replace("\n", " ").strip()
-
-
-def _as_float(value: Any) -> float | None:
-    if value is None or value == "":
-        return None
-    if isinstance(value, (int, float)) and not isinstance(value, bool):
-        return float(value)
-    text = str(value).strip().replace("\xa0", "").replace(" ", "")
-    if not text:
-        return None
-    # EU: 3.695,92 / US: 3,695.92
-    if re.search(r",\d{2}$", text) and "." in text:
-        text = text.replace(".", "").replace(",", ".")
-    elif text.count(",") == 1 and "." not in text:
-        text = text.replace(",", ".")
-    else:
-        text = text.replace(",", "")
-    try:
-        return float(text)
-    except ValueError:
-        return None
 
 
 def _cell_formula_text(value: Any) -> str | None:
@@ -494,26 +473,9 @@ def expand_cyprus_employee_rows(wb, employee_count: int) -> None:
                     cell.value = _retarget_l_refs(cell.value, l_data_start, l_row)
 
 
-def _mapping_recurring_fee(mapping: dict[str, Any] | None) -> float | None:
-    if not isinstance(mapping, dict):
-        return None
-    raw = mapping.get("cyprusRecurringFee")
-    if raw is None or raw == "":
-        return None
-    return _as_float(raw)
-
-
 def set_recurring_fees(wb, employees: list[dict[str, Any]]) -> None:
-    """Cyprus!I Recurring Fee：mapping.cyprusRecurringFee 有值才覆盖（每人同值）。"""
-    if CYPRUS_SHEET not in wb.sheetnames or not employees:
-        return
-    fixed = _mapping_recurring_fee(_active_mapping())
-    if fixed is None:
-        return
-    cyprus = wb[CYPRUS_SHEET]
-    fee = round(float(fixed), 6)
-    for i in range(len(employees)):
-        cyprus.cell(CYPRUS_DATA_START + i, CYPRUS_RECURRING_FEE_COL).value = fee
+    """Cyprus Recurring Fee：格子见 mapping.fixedValueWrites（convert_mapping）。"""
+    apply_fixed_value_writes(wb, employees, _active_mapping())
 
 
 def _find_pn_row_by_label(ws: Worksheet, keyword: str, col: int = 1) -> int | None:

@@ -4,13 +4,15 @@
 
 启动:
   pip install -r requirements.txt
-  python convert_api.py
-  # 或: uvicorn convert_api:app --host 0.0.0.0 --port 8765
+  # 建议仅本机：uvicorn convert_api:app --host 127.0.0.1 --port 8765
+  # 环境变量 CONVERT_API_KEY：非空则除 /health 外须带请求头 X-Api-Key
+  # CONVERT_DISABLE_DOCS=1 或已设 API Key 时关闭 /docs
 
 接口:
   GET  /health
   GET  /engines
   GET  /pdf-profiles
+  GET  /mapping/defaults?engineId=&pdfProfileId=  引擎默认映射（含 fixedValueWrites）
   POST /convert  multipart: file, engine_id, region, template(可选), pn_meta(json可选), employee_directory(json数组可选)
   POST /pdf-to-source  multipart: file, profile_id(可选自动识别), pn_meta(json可选), template(可选)
   POST /pdf-to-source-batch  multipart: files[], profile_id, …
@@ -23,19 +25,17 @@ from __future__ import annotations
 
 import base64
 import json
+import os
 import tempfile
 import traceback
 from pathlib import Path
 
-
-def _b64_json_header(payload: object) -> str:
-    raw = json.dumps(payload, ensure_ascii=True, separators=(",", ":")).encode("utf-8")
-    return base64.b64encode(raw).decode("ascii")
-
-from fastapi import FastAPI, File, Form, HTTPException, Query, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
 from starlette.background import BackgroundTask
+from starlette.responses import Response
 
+from convert_mapping import resolve_convert_mapping
 from mapping_inspect import inspect_pn_headers, inspect_source_headers
 from convert_runner import parse_employee_directory_payload, parse_pn_meta_payload, parse_convert_mapping_payload, run_convert
 from excel_com_snapshot import snapshot_workbook
@@ -44,13 +44,51 @@ from engines import list_engines
 from pdf_ingest.registry import list_pdf_profiles
 from pdf_ingest.runner import run_pdf_to_source, run_pdf_to_source_batch, run_vendor_to_source_batch
 from region_templates import list_regions, get_region_template
-app = FastAPI(title="HROne Bill Convert Service", version="1.0.0")
+
+CONVERT_API_KEY = os.environ.get("CONVERT_API_KEY", "").strip()
+_DISABLE_DOCS = os.environ.get("CONVERT_DISABLE_DOCS", "").strip() in ("1", "true", "True", "yes")
+_DOCS_OFF = _DISABLE_DOCS or bool(CONVERT_API_KEY)
+_BLOCKED_UPLOAD_SUFFIXES = {".html", ".htm", ".shtml", ".xhtml", ".svg"}
+
+app = FastAPI(
+    title="HROne Bill Convert Service",
+    version="1.0.0",
+    docs_url=None if _DOCS_OFF else "/docs",
+    redoc_url=None if _DOCS_OFF else "/redoc",
+    openapi_url=None if _DOCS_OFF else "/openapi.json",
+)
 BASE_DIR = Path(__file__).resolve().parent
+
+
+def _b64_json_header(payload: object) -> str:
+    raw = json.dumps(payload, ensure_ascii=True, separators=(",", ":")).encode("utf-8")
+    return base64.b64encode(raw).decode("ascii")
+
+
+def _assert_safe_upload(upload: UploadFile | None) -> None:
+    if upload is None or not upload.filename:
+        return
+    suffix = Path(upload.filename).suffix.lower()
+    if suffix in _BLOCKED_UPLOAD_SUFFIXES:
+        raise HTTPException(status_code=400, detail=f"blocked file type: {suffix}")
+
+
+@app.middleware("http")
+async def require_api_key(request: Request, call_next) -> Response:
+    path = request.url.path
+    if path == "/health" or path.startswith("/health/"):
+        return await call_next(request)
+    if not CONVERT_API_KEY:
+        return await call_next(request)
+    key = request.headers.get("X-Api-Key", "").strip()
+    if key != CONVERT_API_KEY:
+        return JSONResponse(status_code=401, content={"ok": False, "msg": "unauthorized"})
+    return await call_next(request)
 
 
 @app.get("/health")
 def health():
-    return {"ok": True, "service": "bill-convert"}
+    return {"ok": True, "service": "bill-convert", "auth": bool(CONVERT_API_KEY)}
 
 
 @app.get("/engines")
@@ -80,6 +118,24 @@ def engines():
     }
 
 
+@app.get("/mapping/defaults")
+def mapping_defaults(
+    engineId: str | None = Query(None),
+    engine_id: str | None = Query(None),
+    pdfProfileId: str | None = Query(None),
+    pdf_profile_id: str | None = Query(None),
+):
+    eid = (engineId or engine_id or "").strip()
+    if not eid:
+        raise HTTPException(status_code=400, detail="engineId required")
+    pid = (pdfProfileId or pdf_profile_id or "").strip()
+    raw: dict = {}
+    if pid:
+        raw["pdfProfileId"] = pid
+    mapping = resolve_convert_mapping(eid, raw)
+    return {"engineId": eid, "pdfProfileId": pid or None, "mapping": mapping}
+
+
 @app.get("/pdf-profiles")
 def pdf_profiles():
     return {
@@ -105,6 +161,8 @@ async def pdf_to_source(
     template: UploadFile | None = File(None),
 ):
     """供应商 PDF → 地区源 Excel（当前：eor_uk → UK-L）。"""
+    _assert_safe_upload(file)
+    _assert_safe_upload(template)
     suffix = Path(file.filename or "bill.pdf").suffix.lower() or ".pdf"
     if suffix != ".pdf":
         raise HTTPException(status_code=400, detail=f"仅支持 .pdf，当前: {suffix}")
@@ -179,6 +237,9 @@ async def pdf_to_source_batch(
     template: UploadFile | None = File(None),
 ):
     """多份供应商 PDF → 一份地区源 Excel（如 TopSource 一人一票）。"""
+    for f in files:
+        _assert_safe_upload(f)
+    _assert_safe_upload(template)
     if not files:
         raise HTTPException(status_code=400, detail="请至少上传一个 PDF")
 
@@ -262,6 +323,7 @@ async def vendor_plugins_ingest_file(
     """
     from bill_convert.vendor_plugins.registry import get_plugins_for_profile
 
+    _assert_safe_upload(file)
     tmp_dir = Path(tempfile.mkdtemp(prefix="vendor_ingest_"))
     try:
         suffix = Path(file.filename or "file.bin").suffix.lower() or ""
@@ -311,6 +373,9 @@ async def vendor_to_source_batch(
     template: UploadFile | None = File(None),
 ):
     """供应商 PDF/Excel → 一份地区源表（按扩展名自动走 PDF 或 Excel 解析）。"""
+    for f in files:
+        _assert_safe_upload(f)
+    _assert_safe_upload(template)
     if not files:
         raise HTTPException(status_code=400, detail="请至少上传一个源文件")
 
@@ -421,6 +486,8 @@ async def convert(
     convert_mapping: str | None = Form(None),
     output_prefix: str | None = Form(None),
 ):
+    _assert_safe_upload(file)
+    _assert_safe_upload(template)
     suffix = Path(file.filename or "source.xlsx").suffix.lower() or ".xlsx"
     if suffix not in (".xlsx", ".xlsm"):
         raise HTTPException(status_code=400, detail=f"仅支持 Excel（.xlsx/.xlsm），当前: {suffix}")
@@ -535,6 +602,7 @@ async def excel_snapshot(
     本机桌面 Excel COM 重算后抽取公式格结果（模板发布业务基准）。
     仅 Windows + 已安装 Excel + pywin32。
     """
+    _assert_safe_upload(file)
     suffix = Path(file.filename or "source.xlsx").suffix.lower() or ".xlsx"
     if suffix not in (".xlsx", ".xlsm", ".xls"):
         raise HTTPException(status_code=400, detail=f"仅支持 Excel，当前: {suffix}")
@@ -568,6 +636,7 @@ async def hf_snapshot(
     max_cells: int = Form(300),
 ):
     """Node HyperFormula 重算快照（模板三引擎 / 随机压测）。"""
+    _assert_safe_upload(file)
     suffix = Path(file.filename or "source.xlsx").suffix.lower() or ".xlsx"
     if suffix not in (".xlsx", ".xlsm", ".xls"):
         raise HTTPException(status_code=400, detail=f"仅支持 Excel，当前: {suffix}")
@@ -598,6 +667,7 @@ async def mapping_inspect_source(
     convert_mapping: str | None = Form(None),
 ):
     """上传样例源账单，按当前映射识别表头（供下拉）。"""
+    _assert_safe_upload(file)
     suffix = Path(file.filename or "source.xlsx").suffix.lower() or ".xlsx"
     if suffix not in (".xlsx", ".xlsm"):
         raise HTTPException(status_code=400, detail=f"仅支持 .xlsx/.xlsm，当前: {suffix}")
@@ -631,6 +701,7 @@ async def mapping_inspect_pn(
     template: UploadFile | None = File(None),
 ):
     """解析 PN 母版 targetL 表头行（生效母版或地区默认）。"""
+    _assert_safe_upload(template)
     try:
         mapping = parse_convert_mapping_payload(convert_mapping)
     except Exception as exc:

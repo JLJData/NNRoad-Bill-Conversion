@@ -23,6 +23,7 @@ from openpyxl import load_workbook
 from openpyxl.worksheet.formula import ArrayFormula
 from openpyxl.worksheet.worksheet import Worksheet
 
+from bill_convert.fixed_value_writes import apply_fixed_value_writes
 from bill_convert.formula_copy import shift_row_formula
 from convert_mapping import find_sheet_name, resolve_convert_mapping
 from fx_rate import fetch_usd_rates, get_uae_pn_fx_rate
@@ -88,20 +89,6 @@ def _norm(value: Any) -> str:
     if value is None:
         return ""
     return str(value).replace("\n", " ").strip()
-
-
-def _as_float(value: Any) -> float | None:
-    if value is None or value == "":
-        return None
-    if isinstance(value, (int, float)):
-        return float(value)
-    text = str(value).strip().replace(",", "").replace("AED", "").replace("\xa0", "")
-    if not text:
-        return None
-    try:
-        return float(text)
-    except ValueError:
-        return None
 
 
 def _header_map(ws: Worksheet, header_row: int) -> dict[str, int]:
@@ -897,31 +884,9 @@ def set_period(wb, employees: list[dict[str, Any]]) -> None:
             cell.number_format = _DATE_FMT
 
 
-def _mapping_recurring_fee_fixed(mapping: dict[str, Any] | None) -> float | None:
-    """后台映射 uaeRecurringFeeFixed：有值则覆盖 UAE!H；缺省则保留母版公式/数值。"""
-    if not isinstance(mapping, dict):
-        return None
-    raw = mapping.get("uaeRecurringFeeFixed")
-    if raw is None or raw == "":
-        return None
-    return _as_float(raw)
-
-
 def set_recurring_fees(wb, employees: list[dict[str, Any]]) -> None:
-    """
-    UAE!H Recurring Fee：
-    - 默认：不改，沿用客户母版公式/数值
-    - 映射配置了 uaeRecurringFeeFixed（如 Omal CNUS2025001）时：每人写入该固定值
-    """
-    if UAE_SHEET not in wb.sheetnames or not employees:
-        return
-    fixed = _mapping_recurring_fee_fixed(_active_mapping())
-    if fixed is None:
-        return
-    uae = wb[UAE_SHEET]
-    fee = round(float(fixed), 6)
-    for i in range(len(employees)):
-        uae.cell(UAE_DATA_START + i, 8).value = fee
+    """UAE Recurring Fee：格子见 mapping.fixedValueWrites（convert_mapping）。"""
+    apply_fixed_value_writes(wb, employees, _active_mapping())
 
 
 def _resolve_pdf_profile_id(mapping: dict[str, Any] | None) -> str | None:

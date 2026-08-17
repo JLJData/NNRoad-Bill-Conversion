@@ -6,6 +6,10 @@ __pycache__/
 .venv/
 venv/
 .env
+.env.*
+!.env.example
+env/*.env
+!env/*.env.example
 
 # 本地运行态（PN 发票序号）
 .pn_invoice_seq.json

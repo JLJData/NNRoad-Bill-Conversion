@@ -9,7 +9,7 @@ Italy-L 横向源账单 → Italy PN（引擎 italy_payroll_calc）
 默认母版: templates/italy/template.xlsx
 
 原则：PN / Italy / Italy EE 以母版公式为准；只写 Italy-L 数据与必要元数据。
-Fee Min：mapping.italyFeeMin 有值才写入 Italy-L「Fee Min」列，供母版服务费公式引用。
+Fee Min：mapping.italyFeeMin 有值才写；格子见 mapping.fixedValueWrites。
 """
 from __future__ import annotations
 
@@ -27,6 +27,7 @@ from openpyxl import load_workbook
 from openpyxl.worksheet.formula import ArrayFormula
 from openpyxl.worksheet.worksheet import Worksheet
 
+from bill_convert.fixed_value_writes import apply_fixed_value_writes
 from bill_convert.formula_copy import shift_row_formula
 from convert_mapping import find_sheet_name, resolve_convert_mapping
 from fx_rate import fetch_usd_rates, get_italy_pn_fx_rate
@@ -113,20 +114,6 @@ def _norm(value: Any) -> str:
     if value is None:
         return ""
     return str(value).replace("\n", " ").strip()
-
-
-def _as_float(value: Any) -> float | None:
-    if value is None or value == "":
-        return None
-    if isinstance(value, (int, float)):
-        return float(value)
-    text = str(value).strip().replace(",", "").replace("\xa0", "")
-    if not text:
-        return None
-    try:
-        return float(text)
-    except ValueError:
-        return None
 
 
 def _header_map(ws: Worksheet, header_row: int) -> dict[str, int]:
@@ -512,32 +499,9 @@ def expand_italy_employee_rows(wb, employee_count: int) -> None:
             )
 
 
-def _mapping_fee_min(mapping: dict[str, Any] | None) -> float | None:
-    """后台映射 italyFeeMin：有值则写入 Italy-L Fee Min；缺省不改。"""
-    if not isinstance(mapping, dict):
-        return None
-    raw = mapping.get("italyFeeMin")
-    if raw is None or raw == "":
-        return None
-    return _as_float(raw)
-
-
 def set_fee_min(wb, employees: list[dict[str, Any]]) -> None:
-    """Italy-L「Fee Min」列：仅当 mapping.italyFeeMin 有值时覆盖。"""
-    if ITALY_L_SHEET not in wb.sheetnames or not employees:
-        return
-    fixed = _mapping_fee_min(_active_mapping())
-    if fixed is None:
-        return
-    ws = wb[ITALY_L_SHEET]
-    header_row, data_start, _ = _italy_l_layout(target=True)
-    headers = _header_map(ws, header_row)
-    fee_col = headers.get("Fee Min") or headers.get("SGWI Min")
-    if not fee_col:
-        return
-    fee = round(float(fixed), 6)
-    for i in range(len(employees)):
-        ws.cell(data_start + i, fee_col).value = fee
+    """Italy-L Fee Min：格子见 mapping.fixedValueWrites（convert_mapping）。"""
+    apply_fixed_value_writes(wb, employees, _active_mapping())
 
 
 def set_period(wb, employees: list[dict[str, Any]]) -> None:
