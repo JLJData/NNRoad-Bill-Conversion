@@ -861,9 +861,61 @@ def _convert_impl(
     clear_excess_hk_formula_rows(wb, len(employees))
 
     pn_layout = fit_pn_employees(wb[PN_SHEET], len(employees))
-    rates = fetch_usd_rates()
-    fx_rate = get_hk_pn_fx_rate(rates)
     fx_row = int(pn_layout.get("fx_row") or 28)
+    fx_rate = None
+    fx_source = None
+    # 优先供应商源表 Hong Kong!B3（Exchange rate HKD per USD）
+    try:
+        src_wb = load_workbook(source_path, data_only=True)
+        try:
+            hk_name = None
+            for n in src_wb.sheetnames:
+                if n.strip().lower() in ("hong kong", "hongkong"):
+                    hk_name = n
+                    break
+            if hk_name:
+                raw = src_wb[hk_name]["B3"].value
+                if isinstance(raw, (int, float)) and float(raw) > 0:
+                    fx_rate = float(raw)
+                    fx_source = "vendor:Hong Kong!B3"
+        finally:
+            src_wb.close()
+    except Exception:
+        pass
+    if fx_rate is None:
+        try:
+            # 公式未缓存时再读非 data_only
+            src_wb = load_workbook(source_path, data_only=False)
+            try:
+                hk_name = None
+                for n in src_wb.sheetnames:
+                    if n.strip().lower() in ("hong kong", "hongkong"):
+                        hk_name = n
+                        break
+                if hk_name:
+                    cell = src_wb[hk_name]["B3"].value
+                    text = str(cell or "").strip()
+                    if text.startswith("="):
+                        # 常见 =7.81*0.97：取乘积若可解析，否则回退 API
+                        body = text[1:].replace(" ", "")
+                        if "*" in body:
+                            parts = body.split("*")
+                            try:
+                                fx_rate = float(parts[0]) * float(parts[1])
+                                fx_source = "vendor:Hong Kong!B3(formula)"
+                            except ValueError:
+                                fx_rate = None
+                    elif isinstance(cell, (int, float)) and float(cell) > 0:
+                        fx_rate = float(cell)
+                        fx_source = "vendor:Hong Kong!B3"
+            finally:
+                src_wb.close()
+        except Exception:
+            pass
+    if fx_rate is None:
+        rates = fetch_usd_rates()
+        fx_rate = get_hk_pn_fx_rate(rates)
+        fx_source = "api:HKD*0.97"
     wb[PN_SHEET].cell(fx_row, 2).value = fx_rate
     retarget_pn_fx_refs(wb, fx_row)
 
@@ -888,7 +940,7 @@ def _convert_impl(
         "company_name": parsed["meta"].get("company_name"),
         "period": (parsed["meta"].get("period_from"), parsed["meta"].get("period_to")),
         "fx_rate": fx_rate,
-        "fx_source": "api:HKD*0.97",
+        "fx_source": fx_source,
         "output": str(output_path),
         "pn_meta": applied_pn.to_dict() if applied_pn else None,
         "warnings": warnings,

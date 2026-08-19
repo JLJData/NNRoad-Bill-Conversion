@@ -512,15 +512,21 @@ def apply_india_ee_codes(
     return warnings
 
 
-def apply_fx(wb, *, fill_fx: bool = True, fx_row: int | None = None) -> float | None:
+def apply_fx(wb, *, fill_fx: bool = True, fx_row: int | None = None, convert_mapping: dict | None = None) -> float | None:
     if not fill_fx or PN_SHEET not in wb.sheetnames:
         return None
-    rates = fetch_usd_rates()
-    fx = get_india_pn_fx_rate(rates)
+    from fx_policy import api_fx_for_currency, fx_policy, resolve_vendor_currency
+
+    policy = fx_policy(convert_mapping)
+    mode = str(policy.get("mode") or "api").strip().lower()
+    if mode == "none":
+        return None
     row = fx_row or _find_pn_row_by_label(wb[PN_SHEET], "FX rate") or 28
     cell = wb[PN_SHEET].cell(row, 2)
-    if _cell_formula_text(cell.value):
-        return fx
+    currency = resolve_vendor_currency(convert_mapping, str(policy.get("defaultCurrency") or "INR")) or "INR"
+    adjustment = float(policy.get("adjustment") or 0.97)
+    digits = int(policy.get("roundDigits") or 2)
+    fx = round(api_fx_for_currency(currency, adjustment=adjustment, invert=False), digits)
     cell.value = fx
     return fx
 
@@ -606,7 +612,9 @@ def convert(
                     f"India PN 多人明细行扩行暂定：已扩 India/India EE（{len(employees)} 人），请人工核对 PN"
                 )
             try:
-                fx = apply_fx(wb, fill_fx=fill_fx, fx_row=pn_layout.get("fx_row"))
+                fx = apply_fx(
+                    wb, fill_fx=fill_fx, fx_row=pn_layout.get("fx_row"), convert_mapping=_ACTIVE_MAPPING
+                )
             except Exception as exc:
                 warnings.append(f"写入 PN 汇率失败: {exc}")
 

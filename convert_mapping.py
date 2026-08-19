@@ -43,6 +43,7 @@ ENGINE_DEFAULTS: dict[str, dict[str, Any]] = {
         },
         "employeeFormulaStyles": [],
         "skipSourceHeaders": [],
+        "fxPolicy": {"mode": "vendor_bill", "fallback": "api", "defaultCurrency": "TWD"},
     },
     "china_payroll_calc": {
         "schemaVersion": 1,
@@ -61,6 +62,7 @@ ENGINE_DEFAULTS: dict[str, dict[str, Any]] = {
         },
         "employeeFormulaStyles": [],
         "skipSourceHeaders": [],
+        "fxPolicy": {"mode": "vendor_bill", "fallback": "api", "defaultCurrency": "CNY"},
     },
     "hk_payroll_calc": {
         "schemaVersion": 1,
@@ -80,6 +82,14 @@ ENGINE_DEFAULTS: dict[str, dict[str, Any]] = {
         },
         "employeeFormulaStyles": [],
         "skipSourceHeaders": [],
+        "fxPolicy": {
+            "mode": "vendor_bill",
+            "sourceSheetHints": ["Hong Kong"],
+            "sourceCell": "B3",
+            "fallback": "api",
+            "defaultCurrency": "HKD",
+            "adjustment": 0.97,
+        },
     },
     "uk_payroll_calc": {
         # 中性默认；TopSource / EOR 列名别名见 PROFILE_MAPPING_OVERLAYS
@@ -109,6 +119,8 @@ ENGINE_DEFAULTS: dict[str, dict[str, Any]] = {
         "employeeFormulaStyles": [],
         "skipSourceHeaders": [],
         "pnSheets": {"main": "UK", "ee": "UK EE", "l": "UK-L"},
+        # 默认网上；TopSource/EOR 版式 overlay 覆盖
+        "fxPolicy": {"mode": "api", "defaultCurrency": "GBP", "invert": True, "fallback": "api"},
     },
     # UAE 引擎默认保持中性；供应商差异见 PROFILE_MAPPING_OVERLAYS
     "uae_payroll_calc": {
@@ -144,8 +156,26 @@ ENGINE_DEFAULTS: dict[str, dict[str, Any]] = {
                 "columnLetter": "H",
                 "dataStartRow": 9,
                 "scope": "eachEmployee",
-            }
+            },
+            {
+                "id": "uaePnFxRate",
+                "valueKey": "uaePnFxBase",
+                "sheet": "PN",
+                "columnLetter": "B",
+                "labelContains": "FX rate",
+                "scope": "singleCell",
+                "writeAsFormula": True,
+                "remark": "固定汇率公式 =基准*系数；映射存 uaePnFxBase / uaePnFxAdjustment",
+            },
         ],
+        "fxPolicy": {
+            "mode": "fixed",
+            "baseKey": "uaePnFxBase",
+            "adjustmentKey": "uaePnFxAdjustment",
+            "defaultBase": 3.6725,
+            "defaultAdjustment": 0.97,
+            "writeFormula": True,
+        },
     },
     # Pakistan 中性默认；Panda Work 见 PROFILE_MAPPING_OVERLAYS
     "pakistan_payroll_calc": {
@@ -210,6 +240,12 @@ ENGINE_DEFAULTS: dict[str, dict[str, Any]] = {
                 "scope": "eachEmployee",
             }
         ],
+        "fxPolicy": {
+            "mode": "api",
+            "useVendorCurrency": True,
+            "defaultCurrency": "EUR",
+            "adjustment": 0.97,
+        },
     },
     # India 中性默认；Biz Solutions 见 PROFILE_MAPPING_OVERLAYS
     "india_payroll_calc": {
@@ -237,6 +273,13 @@ ENGINE_DEFAULTS: dict[str, dict[str, Any]] = {
         "employeeFormulaStyles": [],
         "skipSourceHeaders": [],
         "pnSheets": {"main": "India", "ee": "India EE", "l": "India-L"},
+        "fxPolicy": {
+            "mode": "api",
+            "useVendorCurrency": True,
+            "defaultCurrency": "INR",
+            "adjustment": 0.97,
+            "roundDigits": 2,
+        },
     },
     # Cyprus 中性默认；A&T Technical 见 PROFILE_MAPPING_OVERLAYS
     "cyprus_payroll_calc": {
@@ -274,6 +317,7 @@ ENGINE_DEFAULTS: dict[str, dict[str, Any]] = {
                 "scope": "eachEmployee",
             }
         ],
+        "fxPolicy": {"mode": "none"},
     },
 }
 
@@ -299,6 +343,14 @@ PROFILE_MAPPING_OVERLAYS: dict[str, dict[str, Any]] = {
             "amountColumn": 2,
         },
         "columnRename": {},
+        # 汇率来自 TopSource 供应商账单；写入 factStore 供同客户其它 UK 配置（如 EOR）复用
+        "fxPolicy": {
+            "mode": "vendor_bill",
+            "persistFactKey": "uk.vendor_bill.fx_rate",
+            "fallback": "api",
+            "defaultCurrency": "GBP",
+            "invert": True,
+        },
     },
     "eor_uk": {
         "sourceEmployeeSheet": {
@@ -318,6 +370,15 @@ PROFILE_MAPPING_OVERLAYS: dict[str, dict[str, Any]] = {
             "amountColumn": 2,
         },
         "columnRename": {},
+        # 与 TopSource 同源：读同客户 topsource_uk 配置的 factStore（Office 注入），不写死 profile_code
+        "fxPolicy": {
+            "mode": "shared_fact",
+            "factKey": "uk.vendor_bill.fx_rate",
+            "shareFromPdfProfileId": "topsource_uk",
+            "fallback": "api",
+            "defaultCurrency": "GBP",
+            "invert": True,
+        },
     },
     "auxilium_uae": {
         "sourceEmployeeSheet": {
@@ -434,6 +495,8 @@ def resolve_convert_mapping(engine_id: str, raw: dict[str, Any] | None) -> dict[
         merged = base
     else:
         override = copy.deepcopy(raw)
+        # fxPolicy 不由用户 mapping 持久化覆盖（与 fixedValueWrites 相同）；运行时由引擎默认 + pdf overlay 决定
+        override.pop("fxPolicy", None)
         for whole_key in (
             "columnRename",
             "skipSourceHeaders",
@@ -451,7 +514,7 @@ def resolve_convert_mapping(engine_id: str, raw: dict[str, Any] | None) -> dict[
     if pid and pid in PROFILE_MAPPING_OVERLAYS:
         overlay = copy.deepcopy(PROFILE_MAPPING_OVERLAYS[pid])
         # 布局键以 profile 为准；薪资拆分等保留用户配置
-        for key in ("sourceEmployeeSheet", "targetL"):
+        for key in ("sourceEmployeeSheet", "targetL", "fxPolicy"):
             if key in overlay:
                 merged[key] = copy.deepcopy(overlay[key])
         # columnRename 不从 profile overlay 注入：只认配置里保存的映射
@@ -460,7 +523,6 @@ def resolve_convert_mapping(engine_id: str, raw: dict[str, Any] | None) -> dict[
         if "quarterSplitMonths" in overlay and "quarterSplitMonths" not in (raw or {}):
             merged["quarterSplitMonths"] = copy.deepcopy(overlay["quarterSplitMonths"])
         merged["pdfProfileId"] = pid
-    # 写格约定始终以引擎默认为准，避免 Office 存过的 mapping 把格子钉死。
     engine_writes = (ENGINE_DEFAULTS.get(engine_id) or {}).get("fixedValueWrites")
     if isinstance(merged, dict):
         if engine_writes is not None:

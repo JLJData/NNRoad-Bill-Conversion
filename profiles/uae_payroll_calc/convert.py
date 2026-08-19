@@ -1011,17 +1011,48 @@ def apply_uae_ee_codes(
     return warnings
 
 
-def apply_fx(wb, *, fill_fx: bool = True, fx_row: int | None = None) -> float | None:
+def _write_pn_fx_cell(cell, value: Any) -> None:
+    """覆盖 PN FX 格；母版公式/ArrayFormula 一律让位给映射。"""
+    cell.value = value
+
+
+def apply_fx(wb, *, fill_fx: bool = True, fx_row: int | None = None, convert_mapping: dict | None = None) -> float | None:
     if not fill_fx or PN_SHEET not in wb.sheetnames:
         return None
-    rates = fetch_usd_rates()
-    fx = get_uae_pn_fx_rate(rates)
+    from fx_policy import _fmt_fx_num, fixed_fx_parts, fx_policy
+
+    policy = fx_policy(convert_mapping)
+    mode = str(policy.get("mode") or "fixed").strip().lower()
     row = fx_row or _find_pn_row_by_label(wb[PN_SHEET], "FX rate") or 28
     cell = wb[PN_SHEET].cell(row, 2)
-    # 母版若是公式（如 =3.6725*0.97）则保留，勿覆盖成裸数值
-    if _cell_formula_text(cell.value):
-        return fx
-    cell.value = fx
+
+    if mode == "none":
+        return None
+
+    formula, product = fixed_fx_parts(convert_mapping)
+    # 固定汇率：映射（基准×系数，含引擎默认）始终覆盖母版，无需先「同步母版」
+    if mode == "fixed" or policy.get("writeFormula"):
+        if formula:
+            _write_pn_fx_cell(cell, formula)
+            return product
+        if product is not None and product > 0:
+            _write_pn_fx_cell(cell, float(product))
+            return float(product)
+        default_base = float(policy.get("defaultBase") or 3.6725)
+        default_adj = float(policy.get("defaultAdjustment") or 0.97)
+        _write_pn_fx_cell(cell, f"={_fmt_fx_num(default_base)}*{_fmt_fx_num(default_adj)}")
+        return default_base * default_adj
+
+    if formula:
+        _write_pn_fx_cell(cell, formula)
+        return product
+    if product is not None and product > 0:
+        _write_pn_fx_cell(cell, float(product))
+        return float(product)
+
+    rates = fetch_usd_rates()
+    fx = get_uae_pn_fx_rate(rates)
+    _write_pn_fx_cell(cell, fx)
     return fx
 
 
@@ -1080,7 +1111,12 @@ def convert(
             fact_store_updates = _apply_vendor_plugins(wb, warnings, employee_count=len(employees))
             pn_layout = fit_uae_pn_employees(wb, len(employees))
             try:
-                fx = apply_fx(wb, fill_fx=fill_fx, fx_row=pn_layout.get("fx_row"))
+                fx = apply_fx(
+                    wb,
+                    fill_fx=fill_fx,
+                    fx_row=pn_layout.get("fx_row"),
+                    convert_mapping=_ACTIVE_MAPPING,
+                )
             except Exception as exc:
                 warnings.append(f"写入 PN 汇率失败: {exc}")
             # 必须在 PN 扩行 + 写汇率之后，Bank Charges 才能指向正确的 B{fx}

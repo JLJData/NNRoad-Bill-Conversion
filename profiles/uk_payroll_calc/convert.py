@@ -248,14 +248,62 @@ def _convert_impl(
 
     fx_rate = None
     fx_source = None
+    fact_store_updates: dict[str, Any] = {}
+    mapping = _ACTIVE_MAPPING or resolve_convert_mapping("uk_payroll_calc", convert_mapping)
+    from fx_policy import (
+        UK_VENDOR_BILL_FX_FACT,
+        api_fx_for_currency,
+        build_fx_fact_update,
+        fx_policy,
+        read_shared_fx,
+        resolve_vendor_currency,
+    )
+
+    policy = fx_policy(mapping)
+    mode = str(policy.get("mode") or "api").strip().lower()
+    persist_key = str(policy.get("persistFactKey") or "").strip() or None
+    fact_key = str(policy.get("factKey") or persist_key or UK_VENDOR_BILL_FX_FACT).strip()
+    currency = resolve_vendor_currency(mapping, str(policy.get("defaultCurrency") or "GBP")) or "GBP"
+    adjustment = float(policy.get("adjustment") or 1.0)
+    invert = bool(policy.get("invert", True))
+
+    # 1) 共享 fact / 本批注入（EOR 读 TopSource 同源）
+    shared = read_shared_fx(mapping, fact_key)
+    # 2) 源表已有 D24（TopSource vendor-to-source 已写入）
+    src_fx = None
+    if employees:
+        src_fx = _as_float(employees[0].get("fx_rate"))
+    if src_fx is None and sheet_names:
+        try:
+            src_fx = _as_float(wb[sheet_names[0]]["D24"].value)
+        except Exception:
+            src_fx = None
+
     try:
-        rates = fetch_usd_rates()
-        fx_rate = get_uk_gbp_per_usd(rates)
-        for name in sheet_names:
-            wb[name]["D24"] = fx_rate
-        fx_source = "api:1/GBP"
+        if mode == "shared_fact" and shared is not None:
+            fx_rate = float(shared)
+            fx_source = f"shared_fact:{fact_key}"
+        elif mode in ("vendor_bill", "shared_fact") and src_fx is not None and src_fx > 0:
+            fx_rate = float(src_fx)
+            fx_source = "source:UK-L!D24"
+        elif shared is not None and mode == "vendor_bill":
+            fx_rate = float(shared)
+            fx_source = f"shared_fact:{fact_key}"
+        elif mode == "none":
+            fx_rate = None
+            fx_source = "none"
+        else:
+            # api / fallback
+            fx_rate = api_fx_for_currency(currency, adjustment=adjustment, invert=invert)
+            fx_source = f"api:{'1/' if invert else ''}{currency}"
+        if fx_rate is not None:
+            for name in sheet_names:
+                wb[name]["D24"] = fx_rate
+            if persist_key and mode == "vendor_bill":
+                fact_store_updates.update(
+                    build_fx_fact_update(persist_key, fx_rate, source=fx_source)
+                )
     except Exception as exc:
-        src_fx = employees[0].get("fx_rate")
         if src_fx is not None:
             for name in sheet_names:
                 wb[name]["D24"] = float(src_fx)
@@ -278,6 +326,7 @@ def _convert_impl(
         "pn_meta": applied_pn.to_dict() if applied_pn else None,
         "warnings": warnings,
         "uk_l_sheets": sheet_names,
+        "fact_store_updates": fact_store_updates,
     }
 
 def main(argv: list[str] | None = None) -> int:

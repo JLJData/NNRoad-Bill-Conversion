@@ -224,6 +224,7 @@ def apply_to_workbook(
     pn_meta: PnMeta | dict[str, Any] | None = None,
     registry_dir: Path | None = None,
     fill_fx: bool = True,
+    convert_mapping: dict[str, Any] | None = None,
 ) -> tuple[list[str], float | None, PnMeta | None]:
     warnings = list(parsed.warnings)
     if UK_L_SHEET not in wb.sheetnames:
@@ -255,8 +256,13 @@ def apply_to_workbook(
     fx_rate = None
     if fill_fx:
         try:
-            rates = fetch_usd_rates()
-            fx_rate = get_uk_gbp_per_usd(rates)
+            from fx_policy import UK_VENDOR_BILL_FX_FACT, api_fx_for_currency, read_shared_fx
+
+            shared = read_shared_fx(convert_mapping, UK_VENDOR_BILL_FX_FACT)
+            if shared is not None:
+                fx_rate = float(shared)
+            else:
+                fx_rate = api_fx_for_currency("GBP", invert=True)
             ws["D24"] = fx_rate
         except Exception as exc:
             warnings.append(f"写入 UK-L!D24 汇率失败: {exc}")
@@ -284,6 +290,7 @@ def convert_pdf(
     pn_meta: PnMeta | dict[str, Any] | None = None,
     registry_dir: Path | None = None,
     fill_fx: bool = True,
+    convert_mapping: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     pdf_path = pdf_path.resolve()
     output_path = output_path.resolve()
@@ -305,6 +312,7 @@ def convert_pdf(
         pn_meta=pn_meta,
         registry_dir=registry_dir or output_path.parent,
         fill_fx=fill_fx,
+        convert_mapping=convert_mapping,
     )
     wb.save(output_path)
     wb.close()

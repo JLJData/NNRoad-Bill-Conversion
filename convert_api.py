@@ -434,7 +434,20 @@ async def vendor_to_source_batch(
             "X-Pdf-Employees": str(result.get("employee_count") or len(source_paths)),
         }
         artifact_facts = result.get("artifact_facts")
-        if isinstance(artifact_facts, dict) and artifact_facts:
+        if not isinstance(artifact_facts, dict):
+            artifact_facts = {}
+        else:
+            artifact_facts = dict(artifact_facts)
+        fact_updates = result.get("fact_store_updates")
+        if isinstance(fact_updates, dict):
+            for k, v in fact_updates.items():
+                if not k:
+                    continue
+                if isinstance(v, dict) and "value" in v:
+                    artifact_facts[str(k)] = v.get("value")
+                else:
+                    artifact_facts[str(k)] = v
+        if artifact_facts:
             headers["X-Vendor-Artifact-Facts"] = _b64_json_header(artifact_facts)
         for w in result.get("warnings") or []:
             print(f"[vendor-warning] {w}")

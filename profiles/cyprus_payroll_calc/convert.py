@@ -539,9 +539,16 @@ def apply_cyprus_ee_codes(
     return warnings
 
 
-def apply_fx(wb, *, fill_fx: bool = True, fx_row: int | None = None) -> float | None:
+def apply_fx(wb, *, fill_fx: bool = True, fx_row: int | None = None, convert_mapping: dict | None = None) -> float | None:
+    """Cyprus：默认不写汇率（fxPolicy.mode=none）。"""
     if not fill_fx or PN_SHEET not in wb.sheetnames:
         return None
+    from fx_policy import fx_policy
+
+    mode = str(fx_policy(convert_mapping).get("mode") or "none").strip().lower()
+    if mode == "none":
+        return None
+    # 仅当显式改成其它模式时才写
     rates = fetch_usd_rates()
     fx = get_cyprus_pn_fx_rate(rates)
     row = fx_row or _find_pn_row_by_label(wb[PN_SHEET], "FX rate") or 28
@@ -607,7 +614,9 @@ def convert(
                     f"Cyprus PN 多人明细行扩行暂定：已扩 Cyprus/Cyprus EE（{len(employees)} 人），请人工核对 PN"
                 )
             try:
-                fx = apply_fx(wb, fill_fx=fill_fx, fx_row=pn_layout.get("fx_row"))
+                fx = apply_fx(
+                    wb, fill_fx=fill_fx, fx_row=pn_layout.get("fx_row"), convert_mapping=_ACTIVE_MAPPING
+                )
             except Exception as exc:
                 warnings.append(f"写入 PN 汇率失败: {exc}")
 

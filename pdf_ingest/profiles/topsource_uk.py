@@ -82,7 +82,7 @@ class TopSourceUkParsed:
     account_number: str | None = None
     # Excel 源：标签 → GBP 金额（写入 UK-L）
     amounts: dict[str, float] = field(default_factory=dict)
-    # 发票 Exchange Rate（USD per GBP）；写入 D24 时用 1/rate
+    # 发票 Exchange Rate：与母版 UK-L!D24 同口径（GBP×D24→USD，即 USD per GBP），原样写入，勿取倒数
     fx_usd_per_gbp: float | None = None
     source_kind: str = "pdf"  # pdf | excel
     warnings: list[str] = field(default_factory=list)
@@ -444,16 +444,37 @@ def apply_parsed_list(
             wb[UK_SHEET].cell(9 + i, 2).value = parsed.employee_name or f"Employee {i + 1}"
 
     fx_rate = None
+    fact_store_updates: dict[str, Any] = {}
     if fill_fx:
         try:
+            from fx_policy import (
+                UK_VENDOR_BILL_FX_FACT,
+                api_fx_for_currency,
+                build_fx_fact_update,
+                fx_policy,
+                read_shared_fx,
+            )
+
+            # convert_mapping 经 runner 时可能未传入本函数；优先已解析的汇率
             src_fx = next((p.fx_usd_per_gbp for p in parsed_list if p.fx_usd_per_gbp), None)
             if src_fx and src_fx > 0:
-                fx_rate = 1.0 / float(src_fx)
+                # 账单 Exchange Rate 已是 USD/GBP，与 D24 同口径，禁止 1/rate
+                fx_rate = float(src_fx)
+                source = "topsource:ExchangeRate"
             else:
-                rates = fetch_usd_rates()
-                fx_rate = get_uk_gbp_per_usd(rates)
+                shared = read_shared_fx(None, UK_VENDOR_BILL_FX_FACT)
+                if shared is not None:
+                    fx_rate = float(shared)
+                    source = f"shared_fact:{UK_VENDOR_BILL_FX_FACT}"
+                else:
+                    # API：get_uk / api_fx invert=True → USD per GBP，与 D24 一致
+                    fx_rate = api_fx_for_currency("GBP", invert=True)
+                    source = "api:1/GBP"
             for name in sheet_names:
                 wb[name]["D24"] = fx_rate
+            fact_store_updates.update(
+                build_fx_fact_update(UK_VENDOR_BILL_FX_FACT, fx_rate, source=source)
+            )
         except Exception as exc:
             warnings.append(f"写入 UK-L!D24 汇率失败: {exc}")
 
@@ -465,7 +486,7 @@ def apply_parsed_list(
             registry_dir=registry_dir,
             reserve_invoice_number=True,
         )
-    return warnings, fx_rate, applied_pn
+    return warnings, fx_rate, applied_pn, fact_store_updates
 
 
 def convert_pdfs(
@@ -494,7 +515,7 @@ def convert_pdfs(
     shutil.copy2(tpl, output_path)
 
     wb = load_workbook(output_path)
-    warnings, fx_rate, applied_pn = apply_parsed_list(
+    warnings, fx_rate, applied_pn, fact_store_updates = apply_parsed_list(
         wb,
         parsed_list,
         pn_meta=pn_meta,
@@ -515,6 +536,7 @@ def convert_pdfs(
         "warnings": warnings,
         "fx_rate": fx_rate,
         "pn_meta": applied_pn.to_dict() if applied_pn else None,
+        "fact_store_updates": fact_store_updates,
     }
 
 
@@ -565,7 +587,7 @@ def convert_excels(
     shutil.copy2(tpl, output_path)
 
     wb = load_workbook(output_path)
-    warnings, fx_rate, applied_pn = apply_parsed_list(
+    warnings, fx_rate, applied_pn, fact_store_updates = apply_parsed_list(
         wb,
         parsed_list,
         pn_meta=pn_meta,
@@ -586,6 +608,7 @@ def convert_excels(
         "warnings": warnings,
         "fx_rate": fx_rate,
         "pn_meta": applied_pn.to_dict() if applied_pn else None,
+        "fact_store_updates": fact_store_updates,
     }
 
 
