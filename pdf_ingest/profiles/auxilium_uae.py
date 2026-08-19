@@ -779,7 +779,8 @@ def convert_sources(
     convert_mapping: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """
-    Payroll Draft Excel → UAE-L；Admin Fee 发票 PDF 作为旁路事实（Total VAT），不进员工表。
+    Payroll Draft Excel → UAE-L；Invoice PDF 作为旁路事实（Total VAT），不进员工表。
+    同批两份 Invoice INV-xxxxx：发票号大的=上期 Admin Fee，小的=本期。不依赖文件名含 admin fee。
     """
     from bill_convert.vendor_plugins.runtime import parse_artifact_facts, split_main_and_artifacts
 
@@ -795,18 +796,44 @@ def convert_sources(
     if other:
         raise ValueError(f"不支持的文件类型: {[p.name for p in other]}")
     if leftover_pdfs:
+        # 文件名常是 Invoice INV-xxxxx.pdf / source_0.pdf，不能靠 admin fee 字样；有 INV- 或税票正文则并入旁路
+        from bill_convert.vendor_plugins.auxilium_admin_fee_business_tax import (
+            looks_like_auxilium_invoice,
+        )
+
+        rescued: list[Path] = []
+        still: list[Path] = []
+        for p in leftover_pdfs:
+            try:
+                if looks_like_auxilium_invoice(p):
+                    rescued.append(p)
+                    continue
+            except Exception:
+                pass
+            still.append(p)
+        artifact_paths = list(artifact_paths) + rescued
+        leftover_pdfs = still
+    if leftover_pdfs:
         raise ValueError(
             "auxilium_uae 主源仅支持 Excel Payroll Draft；"
-            f"无法识别的 PDF: {[p.name for p in leftover_pdfs]}（Admin Fee 发票应能自动识别）"
+            f"无法识别的 PDF: {[p.name for p in leftover_pdfs]}。"
+            "两份 Invoice 请用 INV- 编号区分：数字大的为上期 Admin Fee，数字小的为本期。"
         )
     if not excels:
-        raise ValueError("请至少上传一份 Auxilium Payroll Draft Excel")
+        raise ValueError(
+            "请至少上传一份 Auxilium Payroll Draft Excel（员工薪资主源）。"
+            "两份 Invoice PDF 按发票号：数字大的=上期 Admin Fee，数字小的=本期。"
+        )
 
     artifact_facts, artifact_warnings = parse_artifact_facts(
         artifact_paths, pdf_profile_id="auxilium_uae"
     )
-    # 同批解析到的 VAT 同时作为 latest，供引擎当 curr（即使以后不同批也走 latest）
-    if isinstance(artifact_facts, dict) and "auxilium.admin_fee.total_vat" in artifact_facts:
+    # 单份旁路：total_vat 同时作为 latest；同批两份已按发票号拆成 prev/curr 时不要覆盖
+    if (
+        isinstance(artifact_facts, dict)
+        and "auxilium.admin_fee.latest_vat" not in artifact_facts
+        and "auxilium.admin_fee.total_vat" in artifact_facts
+    ):
         artifact_facts["auxilium.admin_fee.latest_vat"] = artifact_facts["auxilium.admin_fee.total_vat"]
     result = convert_excels(
         excels,
@@ -823,11 +850,20 @@ def convert_sources(
     if artifact_paths and not artifact_facts:
         warnings.append("已识别 Admin Fee PDF 但未解析到事实")
     elif artifact_facts:
-        warnings.append(
-            "已解析 Admin Fee PDF Total VAT="
-            f"{artifact_facts.get('auxilium.admin_fee.total_vat')} "
-            f"({artifact_facts.get('auxilium.admin_fee.source_file')})"
-        )
+        prev_n = artifact_facts.get("auxilium.admin_fee.prev_invoice_no")
+        curr_n = artifact_facts.get("auxilium.admin_fee.invoice_no")
+        if prev_n:
+            warnings.append(
+                "已解析 Admin Fee："
+                f"上期 {prev_n} VAT={artifact_facts.get('auxilium.admin_fee.total_vat')}；"
+                f"本期 {curr_n} VAT={artifact_facts.get('auxilium.admin_fee.latest_vat')}"
+            )
+        else:
+            warnings.append(
+                "已解析 Admin Fee PDF Total VAT="
+                f"{artifact_facts.get('auxilium.admin_fee.latest_vat') or artifact_facts.get('auxilium.admin_fee.total_vat')} "
+                f"({artifact_facts.get('auxilium.admin_fee.source_file')})"
+            )
     result["warnings"] = warnings
     result["artifact_facts"] = artifact_facts
     return result

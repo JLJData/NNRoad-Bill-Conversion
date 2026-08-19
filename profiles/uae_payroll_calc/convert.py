@@ -1019,7 +1019,7 @@ def _write_pn_fx_cell(cell, value: Any) -> None:
 def apply_fx(wb, *, fill_fx: bool = True, fx_row: int | None = None, convert_mapping: dict | None = None) -> float | None:
     if not fill_fx or PN_SHEET not in wb.sheetnames:
         return None
-    from fx_policy import _fmt_fx_num, fixed_fx_parts, fx_policy
+    from fx_policy import apply_fx_formula_to_cell, fx_policy, _fmt_fx_num
 
     policy = fx_policy(convert_mapping)
     mode = str(policy.get("mode") or "fixed").strip().lower()
@@ -1029,26 +1029,19 @@ def apply_fx(wb, *, fill_fx: bool = True, fx_row: int | None = None, convert_map
     if mode == "none":
         return None
 
-    formula, product = fixed_fx_parts(convert_mapping)
-    # 固定汇率：映射（基准×系数，含引擎默认）始终覆盖母版，无需先「同步母版」
+    # 固定汇率 / 公式：映射（基准×系数，含 ROUND 与显示位数）始终覆盖母版
     if mode == "fixed" or policy.get("writeFormula"):
-        if formula:
-            _write_pn_fx_cell(cell, formula)
+        product = apply_fx_formula_to_cell(cell, convert_mapping)
+        if product is not None:
             return product
-        if product is not None and product > 0:
-            _write_pn_fx_cell(cell, float(product))
-            return float(product)
         default_base = float(policy.get("defaultBase") or 3.6725)
         default_adj = float(policy.get("defaultAdjustment") or 0.97)
         _write_pn_fx_cell(cell, f"={_fmt_fx_num(default_base)}*{_fmt_fx_num(default_adj)}")
         return default_base * default_adj
 
-    if formula:
-        _write_pn_fx_cell(cell, formula)
+    product = apply_fx_formula_to_cell(cell, convert_mapping)
+    if product is not None:
         return product
-    if product is not None and product > 0:
-        _write_pn_fx_cell(cell, float(product))
-        return float(product)
 
     rates = fetch_usd_rates()
     fx = get_uae_pn_fx_rate(rates)

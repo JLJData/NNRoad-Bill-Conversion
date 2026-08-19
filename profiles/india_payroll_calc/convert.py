@@ -29,7 +29,7 @@ from openpyxl.worksheet.worksheet import Worksheet
 
 from bill_convert.formula_copy import shift_row_formula
 from convert_mapping import find_sheet_name, resolve_convert_mapping
-from fx_rate import fetch_usd_rates, get_india_pn_fx_rate
+from fx_rate import get_india_pn_fx_rate, get_usd_rate
 from pn_meta import PnMeta, apply_pn_meta
 from profiles.tw_payroll_calc.convert import match_ee_code
 from region_templates import get_region_template
@@ -513,20 +513,28 @@ def apply_india_ee_codes(
 
 
 def apply_fx(wb, *, fill_fx: bool = True, fx_row: int | None = None, convert_mapping: dict | None = None) -> float | None:
+    """写入 PN FX：优先 =基准*系数；基准空则用网上 INR 作基准（仍写公式，点开可见）。"""
     if not fill_fx or PN_SHEET not in wb.sheetnames:
         return None
-    from fx_policy import api_fx_for_currency, fx_policy, resolve_vendor_currency
+    from fx_policy import apply_fx_formula_to_cell, fx_policy, read_fx_base_adjustment, resolve_vendor_currency
 
     policy = fx_policy(convert_mapping)
-    mode = str(policy.get("mode") or "api").strip().lower()
+    mode = str(policy.get("mode") or "api_as_base").strip().lower()
     if mode == "none":
         return None
     row = fx_row or _find_pn_row_by_label(wb[PN_SHEET], "FX rate") or 28
     cell = wb[PN_SHEET].cell(row, 2)
-    currency = resolve_vendor_currency(convert_mapping, str(policy.get("defaultCurrency") or "INR")) or "INR"
-    adjustment = float(policy.get("adjustment") or 0.97)
-    digits = int(policy.get("roundDigits") or 2)
-    fx = round(api_fx_for_currency(currency, adjustment=adjustment, invert=False), digits)
+
+    api_base: float | None = None
+    mapped_base, _adj, _legacy = read_fx_base_adjustment(convert_mapping)
+    if mapped_base is None and mode in ("api_as_base", "api"):
+        currency = resolve_vendor_currency(convert_mapping, str(policy.get("defaultCurrency") or "INR")) or "INR"
+        api_base = float(get_usd_rate(currency))
+
+    product = apply_fx_formula_to_cell(cell, convert_mapping, api_base=api_base)
+    if product is not None:
+        return product
+    fx = get_india_pn_fx_rate()
     cell.value = fx
     return fx
 

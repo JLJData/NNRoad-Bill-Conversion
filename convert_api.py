@@ -26,6 +26,7 @@ from __future__ import annotations
 import base64
 import json
 import os
+import re
 import tempfile
 import traceback
 from pathlib import Path
@@ -65,12 +66,31 @@ def _b64_json_header(payload: object) -> str:
     return base64.b64encode(raw).decode("ascii")
 
 
+_UNSAFE_UPLOAD_NAME_RE = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
+_UUID_UPLOAD_PREFIX_RE = re.compile(
+    r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}_"
+)
+
+
 def _assert_safe_upload(upload: UploadFile | None) -> None:
     if upload is None or not upload.filename:
         return
     suffix = Path(upload.filename).suffix.lower()
     if suffix in _BLOCKED_UPLOAD_SUFFIXES:
         raise HTTPException(status_code=400, detail=f"blocked file type: {suffix}")
+
+
+def _kept_upload_path(tmp_dir: Path, filename: str | None, index: int, fallback: str = "source") -> Path:
+    """保留原始文件名（去掉 UUID 前缀），供发票号 INV-xxxxx 识别；不再一律写成 source_0.pdf。"""
+    raw = Path(filename or "").name.strip() or f"{fallback}_{index}"
+    raw = _UUID_UPLOAD_PREFIX_RE.sub("", raw)
+    raw = _UNSAFE_UPLOAD_NAME_RE.sub("_", raw).strip(" .")
+    if not raw or raw in {".", ".."}:
+        raw = f"{fallback}_{index}"
+    path = tmp_dir / raw
+    if path.exists():
+        path = tmp_dir / f"{path.stem}_{index}{path.suffix}"
+    return path
 
 
 @app.middleware("http")
@@ -255,7 +275,9 @@ async def pdf_to_source_batch(
             content = await f.read()
             if not content:
                 raise HTTPException(status_code=400, detail=f"上传文件为空: {f.filename}")
-            pdf_path = tmp_dir / f"source_{i}{suffix}"
+            pdf_path = _kept_upload_path(tmp_dir, f.filename, i, "source")
+            if pdf_path.suffix.lower() != ".pdf":
+                pdf_path = tmp_dir / f"{pdf_path.stem}.pdf"
             pdf_path.write_bytes(content)
             pdf_paths.append(pdf_path)
 
@@ -330,7 +352,9 @@ async def vendor_plugins_ingest_file(
         content = await file.read()
         if not content:
             raise HTTPException(status_code=400, detail="上传文件为空")
-        path = tmp_dir / f"ingest{suffix}"
+        path = _kept_upload_path(tmp_dir, file.filename, 0, "ingest")
+        if suffix and path.suffix.lower() != suffix:
+            path = tmp_dir / f"{path.stem}{suffix}"
         path.write_bytes(content)
         pid = (profile_id or "").strip() or None
         plugins = get_plugins_for_profile(pid)
@@ -342,8 +366,8 @@ async def vendor_plugins_ingest_file(
                     continue
                 facts = plugin.parse_artifacts([path]) or {}
                 facts.pop("_warnings", None)
-                # 上传识别：写入 latest 键，供后续转换当 curr
-                if "auxilium.admin_fee.total_vat" in facts:
+                # 单份上传：只补 latest；已有 latest（同批两份已分流）不要用 total_vat 覆盖
+                if "auxilium.admin_fee.latest_vat" not in facts and "auxilium.admin_fee.total_vat" in facts:
                     facts["auxilium.admin_fee.latest_vat"] = facts["auxilium.admin_fee.total_vat"]
                 return {
                     "ok": True,
@@ -394,7 +418,9 @@ async def vendor_to_source_batch(
             content = await f.read()
             if not content:
                 raise HTTPException(status_code=400, detail=f"上传文件为空: {f.filename}")
-            path = tmp_dir / f"source_{i}{suffix}"
+            path = _kept_upload_path(tmp_dir, f.filename, i, "source")
+            if path.suffix.lower() != suffix:
+                path = tmp_dir / f"{path.stem}{suffix}"
             path.write_bytes(content)
             source_paths.append(path)
 

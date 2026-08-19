@@ -23,6 +23,7 @@ from pn_meta import PnMeta, apply_pn_meta
 from openpyxl import load_workbook
 from openpyxl.worksheet.worksheet import Worksheet
 
+from fx_policy import api_fx_for_currency, fx_policy
 from fx_rate import fetch_usd_rates, get_china_pn_fx_rate
 from region_templates import get_region_template
 from xlsx_convert_utils import clean_value, norm
@@ -47,7 +48,18 @@ DEFAULT_TEMPLATE = get_region_template("China")
 
 CALC_SHEET_NAMES = ("计算结果",)
 OTHER_FEE_NAMES = ("Other Fee",)
-PAYMENT_NOTICE_NAMES = ("S-Payment Notice",)
+PAYMENT_NOTICE_NAMES = ("S-Payment Notice", "Payment Notice", "付款通知")
+_FX_LABEL_KEYS = (
+    "汇率",
+    "兑换率",
+    "exchange rate",
+    "fx rate",
+    "usd/cny",
+    "usd to cny",
+    "美元汇率",
+)
+_SIMPLE_CELL_REF_RE = re.compile(r"^\$?([A-Za-z]+)\$?(\d+)$")
+_CNY_USD_MIN, _CNY_USD_MAX = 4.0, 12.0
 
 CHINA_SHEET = "China"
 CHINA_EE_SHEET = "China EE"
@@ -864,6 +876,132 @@ def retarget_pn_fx_refs(wb, fx_row: int) -> None:
                     cell.value = pat_local.sub(f"$B${fx_row}", v)
 
 
+def _plausible_cny_per_usd(value: float) -> bool:
+    return _CNY_USD_MIN <= float(value) <= _CNY_USD_MAX
+
+
+def _coerce_fx_rate(value: Any) -> float | None:
+    cleaned = clean_value(value)
+    if isinstance(cleaned, (int, float)) and not isinstance(cleaned, bool):
+        n = float(cleaned)
+        return n if n > 0 else None
+    text = norm(value)
+    if not text:
+        return None
+    if text.startswith("="):
+        body = text[1:].replace(" ", "").replace(",", "")
+        try:
+            n = float(body)
+            return n if n > 0 else None
+        except ValueError:
+            pass
+        if "*" in body and all(ch not in body for ch in "/()"):
+            parts = body.split("*")
+            if len(parts) == 2:
+                try:
+                    n = float(parts[0]) * float(parts[1])
+                    return n if n > 0 else None
+                except ValueError:
+                    return None
+        return None
+    return None
+
+
+def _fx_from_cell(ws: Worksheet, addr: str) -> float | None:
+    try:
+        raw = ws[addr].value
+    except Exception:
+        return None
+    fx = _coerce_fx_rate(raw)
+    if fx is not None:
+        return fx
+    text = norm(raw)
+    if text.startswith("="):
+        body = text[1:].replace("$", "").replace(" ", "")
+        m = _SIMPLE_CELL_REF_RE.fullmatch(body)
+        if m:
+            try:
+                return _coerce_fx_rate(ws[f"{m.group(1)}{m.group(2)}"].value)
+            except Exception:
+                return None
+    return None
+
+
+def _scan_fx_by_label(ws: Worksheet) -> tuple[float | None, str | None]:
+    max_r = min(ws.max_row or 0, 80)
+    max_c = min(ws.max_column or 0, 12)
+    for row in range(1, max_r + 1):
+        for col in range(1, max_c + 1):
+            label = norm(ws.cell(row, col).value).lower()
+            if not label or not any(k in label for k in _FX_LABEL_KEYS):
+                continue
+            for dc in (1, 2, 3):
+                fx = _coerce_fx_rate(ws.cell(row, col + dc).value)
+                if fx is not None and _plausible_cny_per_usd(fx):
+                    return fx, f"label:{ws.cell(row, col).value}"
+    return None, None
+
+
+def _payment_sheet_hints() -> tuple[str, ...]:
+    policy = fx_policy(_active_mapping())
+    hints = policy.get("sourceSheetHints") if isinstance(policy.get("sourceSheetHints"), list) else []
+    names = [str(x).strip() for x in hints if str(x).strip()]
+    return tuple(names) if names else PAYMENT_NOTICE_NAMES
+
+
+def _payment_fx_cell() -> str:
+    policy = fx_policy(_active_mapping())
+    cell = str(policy.get("sourceCell") or "").strip().upper()
+    return cell or "C49"
+
+
+def read_vendor_fx(source_path: Path, *, payment_name: str | None = None) -> tuple[float | None, str | None]:
+    """供应商账单汇率：先读映射格（默认 S-Payment Notice!C49），公式无缓存则再读公式，再扫「汇率」标签。"""
+    hints = _payment_sheet_hints()
+    cell = _payment_fx_cell()
+    sheet = payment_name
+    fx = None
+    source = None
+
+    def resolve_sheet(wb) -> str | None:
+        return find_sheet(wb, hints) if not sheet else (sheet if sheet in wb.sheetnames else find_sheet(wb, hints))
+
+    try:
+        wb = load_workbook(source_path, data_only=True, read_only=True)
+        try:
+            name = resolve_sheet(wb)
+            if name:
+                fx = _fx_from_cell(wb[name], cell)
+                if fx is not None:
+                    source = f"vendor:{name}!{cell}"
+        finally:
+            wb.close()
+    except Exception:
+        pass
+
+    if fx is None:
+        try:
+            wb = load_workbook(source_path, data_only=False)
+            try:
+                name = resolve_sheet(wb)
+                if name:
+                    fx = _fx_from_cell(wb[name], cell)
+                    if fx is not None:
+                        source = f"vendor:{name}!{cell}(formula)"
+                    if fx is None:
+                        fx, lab = _scan_fx_by_label(wb[name])
+                        if fx is not None:
+                            source = f"vendor:{name}!{lab}"
+            finally:
+                wb.close()
+        except Exception:
+            pass
+
+    if fx is not None and not _plausible_cny_per_usd(fx):
+        return None, None
+    return fx, source
+
+
 def parse_source(source_path: Path) -> dict[str, Any]:
     mapping = _active_mapping()
     src_spec = mapping.get("sourceEmployeeSheet") if isinstance(mapping.get("sourceEmployeeSheet"), dict) else {}
@@ -878,7 +1016,7 @@ def parse_source(source_path: Path) -> dict[str, Any]:
     employees = read_calc_employees(wb[calc_name])
 
     other_name = find_sheet(wb, OTHER_FEE_NAMES)
-    payment_name = find_sheet(wb, PAYMENT_NOTICE_NAMES)
+    payment_name = find_sheet(wb, _payment_sheet_hints())
 
     other_amount = None
     expense_count = 0
@@ -888,24 +1026,33 @@ def parse_source(source_path: Path) -> dict[str, Any]:
         expense_text = extract_by_label_col_a(other_ws, "报销服务费", 2)
         expense_count = parse_expense_count(expense_text)
 
-    vendor_fx_rate = None
-    if payment_name:
-        vendor_fx_rate = clean_value(wb[payment_name]["C49"].value)
-
     wb.close()
 
-    # 优先供应商账单汇率；无效再回退网上 CNY
-    if vendor_fx_rate is not None:
+    vendor_fx_rate, vendor_fx_src = read_vendor_fx(source_path, payment_name=payment_name)
+    policy = fx_policy(mapping)
+    mode = str(policy.get("mode") or "vendor_bill").strip().lower()
+    fallback = str(policy.get("fallback") or "api").strip().lower()
+    currency = str(policy.get("defaultCurrency") or "CNY").strip().upper() or "CNY"
+
+    fx_rate = None
+    fx_source = "none"
+    if mode != "none" and vendor_fx_rate is not None:
         fx_rate = vendor_fx_rate
-        fx_source = "vendor:C49"
-    else:
+        fx_source = vendor_fx_src or "vendor_bill"
+    elif mode == "none":
+        fx_rate = None
+        fx_source = "none"
+    elif fallback == "api" or mode == "api":
         try:
-            rates = fetch_usd_rates()
-            fx_rate = get_china_pn_fx_rate(rates)
-            fx_source = "api:CNY"
+            fx_rate = api_fx_for_currency(currency, rates=fetch_usd_rates())
+            fx_source = f"api:{currency}"
         except RuntimeError:
-            fx_rate = None
-            fx_source = "none"
+            try:
+                fx_rate = get_china_pn_fx_rate(fetch_usd_rates())
+                fx_source = "api:CNY"
+            except RuntimeError:
+                fx_rate = None
+                fx_source = "none"
 
     return {
         "employees": employees,
@@ -1024,6 +1171,14 @@ def _convert_impl(
         )
     styles = mapping.get("employeeFormulaStyles") if isinstance(mapping.get("employeeFormulaStyles"), list) else []
     name_warnings.insert(0, f"映射员工公式样式条数: {len(styles)}")
+    fx_src = str(parsed.get("fx_source") or "")
+    if parsed.get("vendor_fx_rate") is None and fx_src.startswith("api:"):
+        name_warnings.append(
+            "供应商账单未读到汇率（S-Payment Notice!C49 或「汇率」标签），已回退网上 CNY；"
+            "请确认付款通知页有数值汇率（不要只留未计算的公式）"
+        )
+    elif fx_src.startswith("vendor:"):
+        name_warnings.append(f"汇率已取自供应商账单 {fx_src} = {parsed.get('fx_rate')}")
     if styles:
         from bill_convert.formula_layout import _pick_int_field
 
@@ -1119,8 +1274,8 @@ def main(argv: list[str] | None = None) -> int:
     print(f"  输出: {result['output']}")
     print(f"  员工: {result['employee_count']} 人 → {result['employee_names']}")
     print(f"  汇率 PN!B{result.get('fx_row', 29)}: {result['fx_rate']} ({result.get('fx_source')})")
-    if result.get("fx_source") == "api:CNY":
-        print("  （供应商 C49 无有效汇率，已回退网上 CNY）")
+    if str(result.get("fx_source") or "").startswith("api:"):
+        print("  （供应商账单无有效汇率，已回退网上 CNY）")
     print(f"  Other Fee → China!J*: {result['other_amount']}")
     print(f"  报销笔数 → For Expense: {result['expense_count']}")
     return 0
