@@ -2,6 +2,7 @@
 """多引擎账单转换公共逻辑（mapping 驱动；引擎 profile 保留地区/业务 hook）。"""
 
 from bill_convert.fixed_value_writes import apply_fixed_value_writes
+from bill_convert.outstanding_payment import apply_outstanding_payment
 from bill_convert.formula_copy import copy_row_formulas, shift_row_formula
 from bill_convert.formula_layout import (
     apply_employee_formula_styles,
@@ -33,6 +34,7 @@ from bill_convert.template_rows import (
 
 __all__ = [
     "apply_fixed_value_writes",
+    "apply_outstanding_payment",
     "apply_employee_formula_styles",
     "build_header_cols",
     "build_header_map",

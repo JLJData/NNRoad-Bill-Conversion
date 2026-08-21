@@ -74,6 +74,32 @@ def run_convert(
     result["region"] = region
     result["template"] = str(template_path)
     result["output"] = str(output_path)
+
+    # 全引擎共用：Office 注入的 Outstanding payment → 写地区 sheet 标签右邻格
+    try:
+        from openpyxl import load_workbook
+        from bill_convert.outstanding_payment import apply_outstanding_payment
+
+        if output_path.is_file() and isinstance(convert_mapping, dict):
+            wb_out = load_workbook(output_path)
+            op_info = apply_outstanding_payment(wb_out, convert_mapping)
+            if op_info:
+                wb_out.save(output_path)
+                result["outstanding_payment"] = op_info
+                if not op_info.get("written"):
+                    print(f"[outstanding-payment] skip: {op_info}")
+                else:
+                    print(
+                        f"[outstanding-payment] wrote {op_info.get('balance')} "
+                        f"→ {op_info.get('sheet')}!r{op_info.get('row')}c{op_info.get('col')}"
+                    )
+    except Exception as exc:
+        # 旁路失败不阻断主转换
+        print(f"[outstanding-payment] failed (ignored): {exc}")
+        result.setdefault("warnings", [])
+        if isinstance(result["warnings"], list):
+            result["warnings"].append(f"outstanding_payment: {exc}")
+
     return result
 
 
