@@ -512,31 +512,38 @@ def apply_india_ee_codes(
     return warnings
 
 
-def apply_fx(wb, *, fill_fx: bool = True, fx_row: int | None = None, convert_mapping: dict | None = None) -> float | None:
+def apply_fx(wb, *, fill_fx: bool = True, fx_row: int | None = None, convert_mapping: dict | None = None) -> tuple[float | None, dict | None]:
     """写入 PN FX：优先 =基准*系数；基准空则用网上 INR 作基准（仍写公式，点开可见）。"""
     if not fill_fx or PN_SHEET not in wb.sheetnames:
-        return None
-    from fx_policy import apply_fx_formula_to_cell, fx_policy, read_fx_base_adjustment, resolve_vendor_currency
+        return None, None
+    from fx_policy import apply_fx_formula_to_cell_ex, fx_policy, make_pn_fx_provenance, read_fx_base_adjustment, resolve_vendor_currency
 
     policy = fx_policy(convert_mapping)
     mode = str(policy.get("mode") or "api_as_base").strip().lower()
     if mode == "none":
-        return None
+        return None, None
     row = fx_row or _find_pn_row_by_label(wb[PN_SHEET], "FX rate") or 28
-    cell = wb[PN_SHEET].cell(row, 2)
+    col = 2
+    cell = wb[PN_SHEET].cell(row, col)
 
     api_base: float | None = None
+    fx_source: str | None = None
     mapped_base, _adj, _legacy = read_fx_base_adjustment(convert_mapping)
     if mapped_base is None and mode in ("api_as_base", "api"):
         currency = resolve_vendor_currency(convert_mapping, str(policy.get("defaultCurrency") or "INR")) or "INR"
         api_base = float(get_usd_rate(currency))
+        fx_source = f"api:{currency}*0.97"
 
-    product = apply_fx_formula_to_cell(cell, convert_mapping, api_base=api_base)
+    product, write_source = apply_fx_formula_to_cell_ex(cell, convert_mapping, api_base=api_base)
     if product is not None:
-        return product
+        return product, make_pn_fx_provenance(
+            PN_SHEET, row, col, convert_mapping, product, write_source=write_source, fx_source=fx_source
+        )
     fx = get_india_pn_fx_rate()
     cell.value = fx
-    return fx
+    return fx, make_pn_fx_provenance(
+        PN_SHEET, row, col, convert_mapping, fx, write_source="api", fx_source="api:INR*0.97"
+    )
 
 
 def convert(
@@ -608,6 +615,7 @@ def convert(
         shutil.copy2(template_path, output_path)
         wb = load_workbook(output_path)
         fx = None
+        pn_fx_write = None
         applied_pn = None
         try:
             if INDIA_L_SHEET not in wb.sheetnames:
@@ -620,7 +628,7 @@ def convert(
                     f"India PN 多人明细行扩行暂定：已扩 India/India EE（{len(employees)} 人），请人工核对 PN"
                 )
             try:
-                fx = apply_fx(
+                fx, pn_fx_write = apply_fx(
                     wb, fill_fx=fill_fx, fx_row=pn_layout.get("fx_row"), convert_mapping=_ACTIVE_MAPPING
                 )
             except Exception as exc:
@@ -656,6 +664,7 @@ def convert(
             "fx_rate": fx,
             "warnings": warnings,
             "pn_meta": applied_pn.to_dict() if applied_pn else None,
+            "pn_fx_write": pn_fx_write,
         }
     finally:
         _ACTIVE_MAPPING = None

@@ -567,17 +567,22 @@ def apply_pakistan_ee_codes(
     return warnings
 
 
-def apply_fx(wb, *, fill_fx: bool = True, source_fx: float | None = None) -> float | None:
+def apply_fx(wb, *, fill_fx: bool = True, source_fx: float | None = None) -> tuple[float | None, dict | None]:
     if not fill_fx or PN_SHEET not in wb.sheetnames:
-        return None
+        return None, None
+    from fx_policy import make_pn_fx_provenance
+
     fx = source_fx
+    fx_source = "source:Pakistan-L"
     if fx is None:
         try:
             fx = get_pakistan_pn_fx_rate(fetch_usd_rates())
+            fx_source = "api:PKR"
         except Exception:
-            return None
+            return None, None
     pn = wb[PN_SHEET]
-    cell = pn.cell(33, 2)
+    row, col = 33, 2
+    cell = pn.cell(row, col)
     existing = cell.value
     text = _cell_formula_text(existing)
     # 母版常写成 =270.0317 这类常量公式，应用发票推算/API 汇率覆盖
@@ -587,9 +592,12 @@ def apply_fx(wb, *, fill_fx: bool = True, source_fx: float | None = None) -> flo
             float(body)
         except ValueError:
             # 真正业务公式则保留
-            return fx
+            return fx, None
     cell.value = float(fx)
-    return fx
+    write_source = "api" if source_fx is None else "mapping"
+    return fx, make_pn_fx_provenance(
+        PN_SHEET, row, col, None, float(fx), write_source=write_source, fx_source=fx_source
+    )
 
 
 def convert(
@@ -640,6 +648,7 @@ def convert(
         warnings: list[str] = []
         formula_plan: list[dict[str, Any]] = []
         fx = None
+        pn_fx_write = None
         applied_pn = None
         try:
             if PK_L_SHEET not in wb.sheetnames:
@@ -653,7 +662,7 @@ def convert(
             warnings.extend(style_warnings)
             warnings.extend(_apply_invoice_derived_business_tax(wb, employees))
             try:
-                fx = apply_fx(wb, fill_fx=fill_fx, source_fx=source_fx)
+                fx, pn_fx_write = apply_fx(wb, fill_fx=fill_fx, source_fx=source_fx)
             except Exception as exc:
                 warnings.append(f"写入 PN 汇率失败: {exc}")
 
@@ -701,6 +710,7 @@ def convert(
             "pn_meta": applied_pn.to_dict() if applied_pn else None,
             "formula_main_rows": formula_rows_text,
             "formula_match_hint": match_hint,
+            "pn_fx_write": pn_fx_write,
         }
     finally:
         _ACTIVE_MAPPING = None

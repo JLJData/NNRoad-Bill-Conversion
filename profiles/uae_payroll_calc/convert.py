@@ -884,9 +884,9 @@ def set_period(wb, employees: list[dict[str, Any]]) -> None:
             cell.number_format = _DATE_FMT
 
 
-def set_recurring_fees(wb, employees: list[dict[str, Any]]) -> None:
+def set_recurring_fees(wb, employees: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """UAE Recurring Fee：格子见 mapping.fixedValueWrites（convert_mapping）。"""
-    apply_fixed_value_writes(wb, employees, _active_mapping())
+    return apply_fixed_value_writes(wb, employees, _active_mapping())
 
 
 def _resolve_pdf_profile_id(mapping: dict[str, Any] | None) -> str | None:
@@ -1016,37 +1016,47 @@ def _write_pn_fx_cell(cell, value: Any) -> None:
     cell.value = value
 
 
-def apply_fx(wb, *, fill_fx: bool = True, fx_row: int | None = None, convert_mapping: dict | None = None) -> float | None:
+def apply_fx(wb, *, fill_fx: bool = True, fx_row: int | None = None, convert_mapping: dict | None = None) -> tuple[float | None, dict | None]:
     if not fill_fx or PN_SHEET not in wb.sheetnames:
-        return None
-    from fx_policy import apply_fx_formula_to_cell, fx_policy, _fmt_fx_num
+        return None, None
+    from fx_policy import apply_fx_formula_to_cell_ex, fx_policy, make_pn_fx_provenance, _fmt_fx_num
 
     policy = fx_policy(convert_mapping)
     mode = str(policy.get("mode") or "fixed").strip().lower()
     row = fx_row or _find_pn_row_by_label(wb[PN_SHEET], "FX rate") or 28
-    cell = wb[PN_SHEET].cell(row, 2)
+    col = 2
+    cell = wb[PN_SHEET].cell(row, col)
 
     if mode == "none":
-        return None
+        return None, None
 
     # 固定汇率 / 公式：映射（基准×系数，含 ROUND 与显示位数）始终覆盖母版
     if mode == "fixed" or policy.get("writeFormula"):
-        product = apply_fx_formula_to_cell(cell, convert_mapping)
+        product, write_source = apply_fx_formula_to_cell_ex(cell, convert_mapping)
         if product is not None:
-            return product
+            return product, make_pn_fx_provenance(
+                PN_SHEET, row, col, convert_mapping, product, write_source=write_source
+            )
         default_base = float(policy.get("defaultBase") or 3.6725)
         default_adj = float(policy.get("defaultAdjustment") or 0.97)
         _write_pn_fx_cell(cell, f"={_fmt_fx_num(default_base)}*{_fmt_fx_num(default_adj)}")
-        return default_base * default_adj
+        val = default_base * default_adj
+        return val, make_pn_fx_provenance(
+            PN_SHEET, row, col, convert_mapping, val, write_source="defaultBase"
+        )
 
-    product = apply_fx_formula_to_cell(cell, convert_mapping)
+    product, write_source = apply_fx_formula_to_cell_ex(cell, convert_mapping)
     if product is not None:
-        return product
+        return product, make_pn_fx_provenance(
+            PN_SHEET, row, col, convert_mapping, product, write_source=write_source
+        )
 
     rates = fetch_usd_rates()
     fx = get_uae_pn_fx_rate(rates)
     _write_pn_fx_cell(cell, fx)
-    return fx
+    return fx, make_pn_fx_provenance(
+        PN_SHEET, row, col, convert_mapping, fx, write_source="api", fx_source="api:AED*0.97"
+    )
 
 
 def convert(
@@ -1092,6 +1102,7 @@ def convert(
         warnings: list[str] = []
         fact_store_updates: dict[str, Any] = {}
         fx = None
+        pn_fx_write = None
         applied_pn = None
         try:
             if UAE_L_SHEET not in wb.sheetnames:
@@ -1100,11 +1111,11 @@ def convert(
             # UAE 姓名列若母版已是公式（='UAE-L'!B…）则保留，勿用文本覆盖
             set_period(wb, employees)
             expand_uae_employee_rows(wb, len(employees))
-            set_recurring_fees(wb, employees)
+            fixed_value_writes = set_recurring_fees(wb, employees)
             fact_store_updates = _apply_vendor_plugins(wb, warnings, employee_count=len(employees))
             pn_layout = fit_uae_pn_employees(wb, len(employees))
             try:
-                fx = apply_fx(
+                fx, pn_fx_write = apply_fx(
                     wb,
                     fill_fx=fill_fx,
                     fx_row=pn_layout.get("fx_row"),
@@ -1148,6 +1159,8 @@ def convert(
             "warnings": warnings,
             "pn_meta": applied_pn.to_dict() if applied_pn else None,
             "fact_store_updates": fact_store_updates,
+            "fixed_value_writes": fixed_value_writes,
+            "pn_fx_write": pn_fx_write,
         }
     finally:
         _ACTIVE_MAPPING = None

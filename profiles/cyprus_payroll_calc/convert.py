@@ -473,9 +473,9 @@ def expand_cyprus_employee_rows(wb, employee_count: int) -> None:
                     cell.value = _retarget_l_refs(cell.value, l_data_start, l_row)
 
 
-def set_recurring_fees(wb, employees: list[dict[str, Any]]) -> None:
+def set_recurring_fees(wb, employees: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Cyprus Recurring Fee：格子见 mapping.fixedValueWrites（convert_mapping）。"""
-    apply_fixed_value_writes(wb, employees, _active_mapping())
+    return apply_fixed_value_writes(wb, employees, _active_mapping())
 
 
 def _find_pn_row_by_label(ws: Worksheet, keyword: str, col: int = 1) -> int | None:
@@ -539,24 +539,27 @@ def apply_cyprus_ee_codes(
     return warnings
 
 
-def apply_fx(wb, *, fill_fx: bool = True, fx_row: int | None = None, convert_mapping: dict | None = None) -> float | None:
+def apply_fx(wb, *, fill_fx: bool = True, fx_row: int | None = None, convert_mapping: dict | None = None) -> tuple[float | None, dict | None]:
     """Cyprus：默认不写汇率（fxPolicy.mode=none）。"""
     if not fill_fx or PN_SHEET not in wb.sheetnames:
-        return None
-    from fx_policy import fx_policy
+        return None, None
+    from fx_policy import fx_policy, make_pn_fx_provenance
 
     mode = str(fx_policy(convert_mapping).get("mode") or "none").strip().lower()
     if mode == "none":
-        return None
+        return None, None
     # 仅当显式改成其它模式时才写
     rates = fetch_usd_rates()
     fx = get_cyprus_pn_fx_rate(rates)
     row = fx_row or _find_pn_row_by_label(wb[PN_SHEET], "FX rate") or 28
-    cell = wb[PN_SHEET].cell(row, 2)
+    col = 2
+    cell = wb[PN_SHEET].cell(row, col)
     if _cell_formula_text(cell.value):
-        return fx
+        return fx, None
     cell.value = fx
-    return fx
+    return fx, make_pn_fx_provenance(
+        PN_SHEET, row, col, convert_mapping, fx, write_source="api", fx_source="api:EUR*0.97"
+    )
 
 
 def convert(
@@ -601,20 +604,21 @@ def convert(
         wb = load_workbook(output_path)
         warnings: list[str] = []
         fx = None
+        pn_fx_write = None
         applied_pn = None
         try:
             if CYPRUS_L_SHEET not in wb.sheetnames:
                 raise ValueError(f"母版缺少 {CYPRUS_L_SHEET}")
             write_cyprus_l(wb[CYPRUS_L_SHEET], employees)
             expand_cyprus_employee_rows(wb, len(employees))
-            set_recurring_fees(wb, employees)
+            fixed_value_writes = set_recurring_fees(wb, employees)
             pn_layout = fit_cyprus_pn_employees(wb, len(employees))
             if len(employees) > 1:
                 warnings.append(
                     f"Cyprus PN 多人明细行扩行暂定：已扩 Cyprus/Cyprus EE（{len(employees)} 人），请人工核对 PN"
                 )
             try:
-                fx = apply_fx(
+                fx, pn_fx_write = apply_fx(
                     wb, fill_fx=fill_fx, fx_row=pn_layout.get("fx_row"), convert_mapping=_ACTIVE_MAPPING
                 )
             except Exception as exc:
@@ -651,6 +655,8 @@ def convert(
             "fx_rate": fx,
             "warnings": warnings,
             "pn_meta": applied_pn.to_dict() if applied_pn else None,
+            "fixed_value_writes": fixed_value_writes,
+            "pn_fx_write": pn_fx_write,
         }
     finally:
         _ACTIVE_MAPPING = None

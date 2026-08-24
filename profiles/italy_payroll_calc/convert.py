@@ -499,9 +499,9 @@ def expand_italy_employee_rows(wb, employee_count: int) -> None:
             )
 
 
-def set_fee_min(wb, employees: list[dict[str, Any]]) -> None:
+def set_fee_min(wb, employees: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Italy-L Fee Min：格子见 mapping.fixedValueWrites（convert_mapping）。"""
-    apply_fixed_value_writes(wb, employees, _active_mapping())
+    return apply_fixed_value_writes(wb, employees, _active_mapping())
 
 
 def set_period(wb, employees: list[dict[str, Any]]) -> None:
@@ -574,32 +574,39 @@ def apply_italy_ee_codes(
     return warnings
 
 
-def apply_fx(wb, *, fill_fx: bool = True, fx_row: int | None = None, convert_mapping: dict | None = None) -> float | None:
+def apply_fx(wb, *, fill_fx: bool = True, fx_row: int | None = None, convert_mapping: dict | None = None) -> tuple[float | None, dict | None]:
     """写入 PN FX：优先 =基准*系数；基准空则用网上 EUR 作基准（仍写公式，点开可见）。"""
     if not fill_fx or PN_SHEET not in wb.sheetnames:
-        return None
-    from fx_policy import apply_fx_formula_to_cell, fx_policy, read_fx_base_adjustment, resolve_vendor_currency
+        return None, None
+    from fx_policy import apply_fx_formula_to_cell_ex, fx_policy, make_pn_fx_provenance, read_fx_base_adjustment, resolve_vendor_currency
     from fx_rate import get_usd_rate
 
     policy = fx_policy(convert_mapping)
     mode = str(policy.get("mode") or "api_as_base").strip().lower()
     if mode == "none":
-        return None
+        return None, None
     row = fx_row or _find_pn_row_by_label(wb[PN_SHEET], "FX rate") or 28
-    cell = wb[PN_SHEET].cell(row, 2)
+    col = 2
+    cell = wb[PN_SHEET].cell(row, col)
 
     api_base: float | None = None
+    fx_source: str | None = None
     mapped_base, _adj, _legacy = read_fx_base_adjustment(convert_mapping)
     if mapped_base is None and mode in ("api_as_base", "api"):
         currency = resolve_vendor_currency(convert_mapping, str(policy.get("defaultCurrency") or "EUR")) or "EUR"
         api_base = float(get_usd_rate(currency))
+        fx_source = f"api:{currency}*0.97"
 
-    product = apply_fx_formula_to_cell(cell, convert_mapping, api_base=api_base)
+    product, write_source = apply_fx_formula_to_cell_ex(cell, convert_mapping, api_base=api_base)
     if product is not None:
-        return product
+        return product, make_pn_fx_provenance(
+            PN_SHEET, row, col, convert_mapping, product, write_source=write_source, fx_source=fx_source
+        )
     fx = get_italy_pn_fx_rate()
     cell.value = fx
-    return fx
+    return fx, make_pn_fx_provenance(
+        PN_SHEET, row, col, convert_mapping, fx, write_source="api", fx_source="api:EUR*0.97"
+    )
 
 
 def convert(
@@ -649,12 +656,13 @@ def convert(
         wb = load_workbook(output_path)
         warnings: list[str] = []
         fx = None
+        pn_fx_write = None
         applied_pn = None
         try:
             if ITALY_L_SHEET not in wb.sheetnames:
                 raise ValueError(f"母版缺少 {ITALY_L_SHEET}")
             write_italy_l(wb[ITALY_L_SHEET], employees)
-            set_fee_min(wb, employees)
+            fixed_value_writes = set_fee_min(wb, employees)
             set_period(wb, employees)
             expand_italy_employee_rows(wb, len(employees))
             pn_layout = fit_italy_pn_employees(wb, len(employees))
@@ -664,7 +672,7 @@ def convert(
                     "PN 明细行请人工核对"
                 )
             try:
-                fx = apply_fx(
+                fx, pn_fx_write = apply_fx(
                     wb, fill_fx=fill_fx, fx_row=pn_layout.get("fx_row"), convert_mapping=_ACTIVE_MAPPING
                 )
             except Exception as exc:
@@ -700,6 +708,8 @@ def convert(
             "fx_rate": fx,
             "warnings": warnings,
             "pn_meta": applied_pn.to_dict() if applied_pn else None,
+            "fixed_value_writes": fixed_value_writes,
+            "pn_fx_write": pn_fx_write,
         }
     finally:
         _ACTIVE_MAPPING = None

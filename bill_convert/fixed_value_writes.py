@@ -11,41 +11,67 @@ from openpyxl.worksheet.worksheet import Worksheet
 from convert_mapping import find_sheet_name
 
 
-def apply_fixed_value_writes(wb: Workbook, employees: list[dict[str, Any]], mapping: dict[str, Any] | None) -> None:
-    """mapping 里对应 valueKey 有值才写；缺省不改母版公式/数值。"""
+def apply_fixed_value_writes(
+    wb: Workbook, employees: list[dict[str, Any]], mapping: dict[str, Any] | None
+) -> list[dict[str, Any]]:
+    """mapping 里对应 valueKey 有值才写；缺省不改母版公式/数值。
+
+    返回实际写入的格子列表（Excel 1-based），供 cellProvenance 使用。
+    """
     if wb is None or not employees or not isinstance(mapping, dict):
-        return
+        return []
     writes = mapping.get("fixedValueWrites")
     if not isinstance(writes, list):
-        return
+        return []
     n = len(employees)
+    cells: list[dict[str, Any]] = []
     for spec in writes:
         if isinstance(spec, dict):
-            _apply_one(wb, spec, mapping, n)
+            cells.extend(_apply_one(wb, spec, mapping, n))
+    return cells
 
 
-def _apply_one(wb: Workbook, spec: dict[str, Any], mapping: dict[str, Any], employee_count: int) -> None:
+def _apply_one(
+    wb: Workbook, spec: dict[str, Any], mapping: dict[str, Any], employee_count: int
+) -> list[dict[str, Any]]:
     value_key = str(spec.get("valueKey") or "").strip()
     if not value_key:
-        return
+        return []
     amount = _as_float(mapping.get(value_key))
     if amount is None:
-        return
+        return []
     sheet_name = _resolve_sheet(wb, spec)
     if not sheet_name or sheet_name not in wb.sheetnames:
-        return
+        return []
     ws = wb[sheet_name]
     col = _resolve_column(ws, spec, mapping)
     if not col:
-        return
+        return []
     start = _int_or_none(spec.get("dataStartRow"))
     if start is None and _uses_header_names(spec):
         start = _layout_int(mapping, "dataStartRow")
     if start is None or start < 1 or employee_count < 1:
-        return
+        return []
     fee = round(float(amount), 6)
+    label = str(spec.get("label") or value_key).strip() or value_key
+    cells: list[dict[str, Any]] = []
     for i in range(employee_count):
-        ws.cell(start + i, col).value = fee
+        row = start + i
+        ws.cell(row, col).value = fee
+        cells.append(
+            {
+                "kind": "fixedValueWrites",
+                "sheet": sheet_name,
+                "row": row,
+                "col": col,
+                "sourceType": "mapping",
+                "source": f"mapping.fixedValueWrites:{value_key}",
+                "label": label,
+                "value": fee,
+                "detail": {"valueKey": value_key, "editGroup": "fixedValue"},
+            }
+        )
+    return cells
 
 
 def _resolve_sheet(wb: Workbook, spec: dict[str, Any]) -> str | None:

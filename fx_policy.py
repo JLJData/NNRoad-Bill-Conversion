@@ -239,18 +239,84 @@ def resolve_fx_write_parts(
     return formula, product, source
 
 
-def apply_fx_formula_to_cell(cell, mapping: dict[str, Any] | None, *, api_base: float | None = None) -> float | None:
-    """写 PN 汇率公式并同步单元格显示位数；返回乘积。"""
-    formula, product, _source = resolve_fx_write_parts(mapping, api_base=api_base)
+def apply_fx_formula_to_cell_ex(
+    cell,
+    mapping: dict[str, Any] | None,
+    *,
+    api_base: float | None = None,
+) -> tuple[float | None, str]:
+    """写 PN 汇率公式并同步单元格显示位数；返回 (乘积, write_source)。"""
+    formula, product, source = resolve_fx_write_parts(mapping, api_base=api_base)
     digits = resolve_fx_round_digits(mapping)
     cell.number_format = fx_display_number_format(digits)
     if formula:
         cell.value = formula
-        return product
+        return product, source
     if product is not None and product > 0:
         cell.value = float(product)
-        return float(product)
-    return None
+        return float(product), source
+    return None, source
+
+
+def apply_fx_formula_to_cell(cell, mapping: dict[str, Any] | None, *, api_base: float | None = None) -> float | None:
+    """写 PN 汇率公式并同步单元格显示位数；返回乘积。"""
+    product, _source = apply_fx_formula_to_cell_ex(cell, mapping, api_base=api_base)
+    return product
+
+
+def make_pn_fx_provenance(
+    sheet: str,
+    row: int,
+    col: int,
+    mapping: dict[str, Any] | None,
+    value: float | None,
+    *,
+    write_source: str,
+    fx_source: str | None = None,
+) -> dict[str, Any] | None:
+    """构建 PN/地区汇率格 provenance（Excel 1-based）。"""
+    if value is None:
+        return None
+    policy = fx_policy(mapping)
+    mode = str(policy.get("mode") or "").strip().lower()
+    source_type = "mapping"
+    source = fx_source or f"mapping.fxPolicy:{mode or 'fixed'}"
+    fx_s = str(fx_source or "")
+    if write_source in ("api_as_base", "api") or fx_s.startswith("api:"):
+        source_type = "api"
+    elif fx_s.startswith("source:") or fx_s.startswith("vendor:") or fx_s.startswith("summary:"):
+        # 供应商账单/源表推算，不是在线 API
+        source_type = "vendor"
+        source = fx_s
+    elif "shared_fact" in fx_s:
+        source_type = "vendor"
+        source = fx_s
+    base_key, adj_key, value_key = _fx_keys(policy)
+    round_key = str(policy.get("roundDigitsKey") or "").strip()
+    detail: dict[str, Any] = {
+        "mode": mode,
+        "writeSource": write_source,
+        # 供核对页「点来源 → 编映射」定位字段
+        "editGroup": "fx",
+        "baseKey": base_key,
+        "adjustmentKey": adj_key,
+        "valueKey": value_key,
+    }
+    if round_key:
+        detail["roundDigitsKey"] = round_key
+    if fx_source:
+        detail["fxSource"] = fx_source
+    return {
+        "kind": "pnFxWrite",
+        "sheet": str(sheet),
+        "row": int(row),
+        "col": int(col),
+        "sourceType": source_type,
+        "source": source,
+        "label": "FX rate",
+        "value": value,
+        "detail": detail,
+    }
 
 
 def fixed_fx_override(mapping: dict[str, Any] | None) -> float | None:

@@ -66,6 +66,85 @@ def _b64_json_header(payload: object) -> str:
     return base64.b64encode(raw).decode("ascii")
 
 
+def _build_cell_provenance(result: dict) -> dict | None:
+    """仅记录「另路写入」的特殊格；母版公式/常规列映射不算。
+
+    坐标为 Excel 1-based（与 openpyxl 一致）。
+    """
+    cells: list[dict] = []
+
+    op = result.get("outstanding_payment")
+    if isinstance(op, dict) and op.get("written") and op.get("sheet") and op.get("row") and op.get("col"):
+        detail: dict = {}
+        if op.get("foundPeriod") not in (None, ""):
+            detail["foundPeriod"] = op.get("foundPeriod")
+        if op.get("requestMonth") not in (None, ""):
+            detail["requestMonth"] = op.get("requestMonth")
+        cells.append(
+            {
+                "kind": "outstandingPayment",
+                "sheet": str(op.get("sheet")),
+                "row": int(op["row"]),
+                "col": int(op["col"]),
+                "sourceType": "api",
+                "source": "nnroad.timeline.balance",
+                "label": "Outstanding payment",
+                "value": op.get("balance"),
+                "detail": detail or None,
+            }
+        )
+
+    # mapping.fixedValueWrites（UAE/Italy/Cyprus 等）
+    fv = result.get("fixed_value_writes")
+    if isinstance(fv, list):
+        for item in fv:
+            if not isinstance(item, dict):
+                continue
+            if item.get("sheet") is None or item.get("row") is None or item.get("col") is None:
+                continue
+            detail = item.get("detail") if isinstance(item.get("detail"), dict) else None
+            label = item.get("label")
+            if not label and detail:
+                label = detail.get("valueKey")
+            cells.append(
+                {
+                    "kind": str(item.get("kind") or "fixedValueWrites"),
+                    "sheet": str(item.get("sheet")),
+                    "row": int(item["row"]),
+                    "col": int(item["col"]),
+                    "sourceType": str(item.get("sourceType") or "mapping"),
+                    "source": item.get("source") or "mapping.fixedValueWrites",
+                    "label": label,
+                    "value": item.get("value"),
+                    "detail": detail,
+                }
+            )
+
+    # PN / 地区汇率格
+    pn_fx = result.get("pn_fx_writes")
+    if isinstance(pn_fx, list):
+        for item in pn_fx:
+            if isinstance(item, dict) and item.get("sheet") is not None and item.get("row") is not None and item.get("col") is not None:
+                cells.append(item)
+    single_pn_fx = result.get("pn_fx_write")
+    if isinstance(single_pn_fx, dict) and single_pn_fx.get("sheet") is not None:
+        cells.append(single_pn_fx)
+
+    # 通用扩展：引擎也可直接塞 cell_writes
+    extra = result.get("cell_writes")
+    if isinstance(extra, list):
+        for item in extra:
+            if not isinstance(item, dict):
+                continue
+            if item.get("sheet") is None or item.get("row") is None or item.get("col") is None:
+                continue
+            cells.append(item)
+
+    if not cells:
+        return None
+    return {"cells": cells}
+
+
 _UNSAFE_UPLOAD_NAME_RE = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
 _UUID_UPLOAD_PREFIX_RE = re.compile(
     r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}_"
@@ -602,6 +681,10 @@ async def convert(
         fact_updates = result.get("fact_store_updates")
         if isinstance(fact_updates, dict) and fact_updates:
             headers["X-Convert-Fact-Store"] = _b64_json_header(fact_updates)
+        # 特殊格来源账本（非母版公式/常规映射）：如 Outstanding API 注入格
+        cell_provenance = _build_cell_provenance(result)
+        if cell_provenance:
+            headers["X-Convert-Cell-Provenance"] = _b64_json_header(cell_provenance)
         # 结果摘要用自定义头传一小段 JSON（可选）；主体仍是文件
         return FileResponse(
             path=str(output_path),

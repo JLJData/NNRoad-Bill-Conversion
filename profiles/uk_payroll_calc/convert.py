@@ -279,6 +279,7 @@ def _convert_impl(
         except Exception:
             src_fx = None
 
+    pn_fx_writes: list[dict[str, Any]] = []
     try:
         if mode == "shared_fact" and shared is not None:
             fx_rate = float(shared)
@@ -297,18 +298,49 @@ def _convert_impl(
             fx_rate = api_fx_for_currency(currency, adjustment=adjustment, invert=invert)
             fx_source = f"api:{'1/' if invert else ''}{currency}"
         if fx_rate is not None:
+            from fx_policy import make_pn_fx_provenance
+
+            write_source = "api" if str(fx_source or "").startswith("api:") else "mapping"
+            if str(fx_source or "").startswith("shared_fact:") or str(fx_source or "").startswith("source:"):
+                write_source = "api"
             for name in sheet_names:
                 wb[name]["D24"] = fx_rate
+                prov = make_pn_fx_provenance(
+                    name,
+                    24,
+                    4,
+                    mapping,
+                    float(fx_rate),
+                    write_source=write_source,
+                    fx_source=str(fx_source or ""),
+                )
+                if prov:
+                    pn_fx_writes.append(prov)
             if persist_key and mode == "vendor_bill":
                 fact_store_updates.update(
                     build_fx_fact_update(persist_key, fx_rate, source=fx_source)
                 )
     except Exception as exc:
         if src_fx is not None:
+            from fx_policy import make_pn_fx_provenance
+
             for name in sheet_names:
                 wb[name]["D24"] = float(src_fx)
             fx_rate = float(src_fx)
             fx_source = "source:UK-L!D24"
+            pn_fx_writes = [
+                make_pn_fx_provenance(
+                    name,
+                    24,
+                    4,
+                    mapping,
+                    float(src_fx),
+                    write_source="api",
+                    fx_source=fx_source,
+                )
+                for name in sheet_names
+            ]
+            pn_fx_writes = [p for p in pn_fx_writes if p]
             warnings.append(f"在线汇率失败，沿用源表 D24={src_fx}: {exc}")
         else:
             warnings.append(f"写入 UK-L!D24 汇率失败: {exc}")
@@ -327,6 +359,7 @@ def _convert_impl(
         "warnings": warnings,
         "uk_l_sheets": sheet_names,
         "fact_store_updates": fact_store_updates,
+        "pn_fx_writes": pn_fx_writes,
     }
 
 def main(argv: list[str] | None = None) -> int:

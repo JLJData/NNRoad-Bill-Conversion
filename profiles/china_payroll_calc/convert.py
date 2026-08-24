@@ -1211,9 +1211,23 @@ def _convert_impl(
 
     pn_layout = fit_pn_employees(wb[PN_SHEET], len(employees))
     fx_row = int(pn_layout.get("fx_row") or _find_pn_fx_row(wb[PN_SHEET]))
+    pn_fx_write = None
 
     if parsed["fx_rate"] is not None:
+        from fx_policy import make_pn_fx_provenance
+
         wb[PN_SHEET].cell(fx_row, 2).value = parsed["fx_rate"]
+        fx_src = str(parsed.get("fx_source") or "mapping")
+        write_source = "api" if fx_src.startswith("api:") or fx_src.startswith("vendor:") else "mapping"
+        pn_fx_write = make_pn_fx_provenance(
+            PN_SHEET,
+            fx_row,
+            2,
+            convert_mapping,
+            float(parsed["fx_rate"]),
+            write_source=write_source,
+            fx_source=fx_src,
+        )
 
     retarget_pn_fx_refs(wb, fx_row)
     apply_china_specials(
@@ -1248,6 +1262,7 @@ def _convert_impl(
             str(p.get("mainExampleRow")) for p in (formula_plan or []) if p.get("mainExampleRow") is not None
         ),
         "formula_match_hint": formula_match_hint,
+        "pn_fx_write": pn_fx_write,
     }
 
 

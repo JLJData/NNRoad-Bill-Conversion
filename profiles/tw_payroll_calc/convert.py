@@ -1216,6 +1216,20 @@ def _convert_impl(
     fx_row = pn_layout.get("fx_row") or _find_pn_fx_row(wb[PN_SHEET])
     wb[PN_SHEET].cell(fx_row, 2).value = fx_rate
     pn_layout["fx_row"] = fx_row
+    from fx_policy import make_pn_fx_provenance
+
+    write_source = "api" if str(fx_source or "").startswith("api:") else "mapping"
+    if str(fx_source or "").startswith("summary:"):
+        write_source = "mapping"
+    pn_fx_write = make_pn_fx_provenance(
+        PN_SHEET,
+        int(fx_row),
+        2,
+        convert_mapping,
+        float(fx_rate),
+        write_source=write_source,
+        fx_source=str(fx_source or ""),
+    )
     ensure_tw_period_date_formats(wb)
     apply_luckysheet_compat(wb, pn_sheet=PN_SHEET)
 
@@ -1242,6 +1256,7 @@ def _convert_impl(
         "output": str(output_path),
         "pn_meta": applied_pn.to_dict() if applied_pn else None,
         "warnings": warnings,
+        "pn_fx_write": pn_fx_write,
     }
 
 

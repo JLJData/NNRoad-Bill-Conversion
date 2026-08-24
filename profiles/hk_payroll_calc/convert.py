@@ -918,6 +918,18 @@ def _convert_impl(
         fx_source = "api:HKD*0.97"
     wb[PN_SHEET].cell(fx_row, 2).value = fx_rate
     retarget_pn_fx_refs(wb, fx_row)
+    from fx_policy import make_pn_fx_provenance
+
+    write_source = "api" if str(fx_source or "").startswith("api:") or str(fx_source or "").startswith("vendor:") else "mapping"
+    pn_fx_write = make_pn_fx_provenance(
+        PN_SHEET,
+        fx_row,
+        2,
+        mapping,
+        float(fx_rate),
+        write_source=write_source,
+        fx_source=str(fx_source or ""),
+    )
 
     ensure_hk_period_date_formats(wb)
     wb.save(output_path)
@@ -948,6 +960,7 @@ def _convert_impl(
         "formula_main_rows": ",".join(
             str(p.get("mainExampleRow")) for p in (formula_plan or []) if p.get("mainExampleRow") is not None
         ),
+        "pn_fx_write": pn_fx_write,
     }
 
 
