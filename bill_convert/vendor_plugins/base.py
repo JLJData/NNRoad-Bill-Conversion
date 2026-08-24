@@ -38,5 +38,6 @@ class VendorPlugin(Protocol):
         """
         写入工作簿派生字段。
         返回需在转换成功后 commit 到 mapping.factStore 的更新；无则 None。
+        可选键 _cell_writes：list[dict]，供核对页 cellProvenance（不会写入 factStore）。
         """
         ...

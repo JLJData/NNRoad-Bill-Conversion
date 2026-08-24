@@ -69,9 +69,10 @@ def apply_vendor_plugins(
     warnings: list[str],
     employee_count: int = 1,
 ) -> dict[str, Any]:
-    """对工作簿应用插件；返回需 commit 的 factStore 更新。"""
+    """对工作簿应用插件；返回 factStore 更新，并可选带 _cell_writes（供 cellProvenance）。"""
     plugins = get_plugins_for_profile(pdf_profile_id)
     commits: dict[str, Any] = {}
+    cell_writes: list[dict[str, Any]] = []
     facts = dict(batch_facts or {})
     for plugin in plugins:
         try:
@@ -85,6 +86,14 @@ def apply_vendor_plugins(
         except Exception as exc:
             warnings.append(f"插件 {plugin.plugin_id} 写入失败: {exc}")
             continue
-        if isinstance(upd, dict):
-            commits.update(upd)
+        if not isinstance(upd, dict):
+            continue
+        extra_writes = upd.pop("_cell_writes", None)
+        if isinstance(extra_writes, list):
+            for item in extra_writes:
+                if isinstance(item, dict):
+                    cell_writes.append(item)
+        commits.update(upd)
+    if cell_writes:
+        commits["_cell_writes"] = cell_writes
     return commits

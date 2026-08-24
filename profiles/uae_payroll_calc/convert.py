@@ -904,7 +904,7 @@ def _resolve_pdf_profile_id(mapping: dict[str, Any] | None) -> str | None:
     return None
 
 
-def _apply_vendor_plugins(wb, warnings: list[str], *, employee_count: int = 1) -> dict[str, Any]:
+def _apply_vendor_plugins(wb, warnings: list[str], *, employee_count: int = 1) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     """按 pdfProfile 加载供应商旁路插件（如 Auxilium Admin Fee → Business Tax）。"""
     from bill_convert.fact_store import get_batch_facts
     from bill_convert.vendor_plugins.runtime import apply_vendor_plugins
@@ -912,8 +912,8 @@ def _apply_vendor_plugins(wb, warnings: list[str], *, employee_count: int = 1) -
     mapping = _active_mapping()
     pdf_profile_id = _resolve_pdf_profile_id(mapping)
     if not pdf_profile_id:
-        return {}
-    return apply_vendor_plugins(
+        return {}, []
+    raw = apply_vendor_plugins(
         wb,
         pdf_profile_id=pdf_profile_id,
         mapping=mapping,
@@ -921,6 +921,9 @@ def _apply_vendor_plugins(wb, warnings: list[str], *, employee_count: int = 1) -
         warnings=warnings,
         employee_count=employee_count,
     ) or {}
+    cell_writes = raw.pop("_cell_writes", None)
+    writes = cell_writes if isinstance(cell_writes, list) else []
+    return raw, [x for x in writes if isinstance(x, dict)]
 
 
 def _retarget_pn_fx_refs_in_formula(formula: str, fx_row: int) -> str:
@@ -1112,7 +1115,7 @@ def convert(
             set_period(wb, employees)
             expand_uae_employee_rows(wb, len(employees))
             fixed_value_writes = set_recurring_fees(wb, employees)
-            fact_store_updates = _apply_vendor_plugins(wb, warnings, employee_count=len(employees))
+            fact_store_updates, plugin_cell_writes = _apply_vendor_plugins(wb, warnings, employee_count=len(employees))
             pn_layout = fit_uae_pn_employees(wb, len(employees))
             try:
                 fx, pn_fx_write = apply_fx(
@@ -1160,6 +1163,7 @@ def convert(
             "pn_meta": applied_pn.to_dict() if applied_pn else None,
             "fact_store_updates": fact_store_updates,
             "fixed_value_writes": fixed_value_writes,
+            "cell_writes": plugin_cell_writes,
             "pn_fx_write": pn_fx_write,
         }
     finally:

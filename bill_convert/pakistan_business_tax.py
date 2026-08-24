@@ -66,6 +66,36 @@ def business_tax_formula(sindh_monthly: float, federal_monthly: float) -> str:
     return f"={a}*PN!$B$33+{b}*PN!$B$33"
 
 
+def make_pakistan_business_tax_provenance(
+    *,
+    sheet: str,
+    row: int,
+    col: int,
+    formula: str,
+    sindh_monthly: float,
+    federal_monthly: float,
+    employee_name: str | None = None,
+) -> dict[str, Any]:
+    """单格 Business Tax provenance（Excel 1-based）。"""
+    detail: dict[str, Any] = {
+        "sindhMonthly": sindh_monthly,
+        "federalMonthly": federal_monthly,
+    }
+    if employee_name:
+        detail["employeeName"] = employee_name
+    return {
+        "kind": "pakistanBusinessTax",
+        "sheet": sheet,
+        "row": row,
+        "col": col,
+        "sourceType": "mapping",
+        "source": "mapping.pakistanBusinessTax",
+        "label": "Business Tax",
+        "value": formula,
+        "detail": detail,
+    }
+
+
 def apply_derived_coeffs_to_rows(
     employees: list[dict[str, Any]],
     cfg: dict[str, Any] | None = None,

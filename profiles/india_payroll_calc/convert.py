@@ -28,6 +28,10 @@ from openpyxl.worksheet.formula import ArrayFormula
 from openpyxl.worksheet.worksheet import Worksheet
 
 from bill_convert.formula_copy import shift_row_formula
+from bill_convert.india_salary_split import (
+    INDIA_L_KNOWN_DATA_FIELDS,
+    resolve_field_columns_from_headers,
+)
 from convert_mapping import find_sheet_name, resolve_convert_mapping
 from fx_rate import get_india_pn_fx_rate, get_usd_rate
 from pn_meta import PnMeta, apply_pn_meta
@@ -52,20 +56,8 @@ INDIA_EE_DATA_START = 9
 MAX_EMPLOYEES = 20
 _DATE_FMT = "yyyy/m/d"
 
-# India-L 固定列（表头行对姓名不明显，按样例母版）
+# India-L 默认列（仅作表头未匹配时的兜底；读写优先 _header_map）
 COL_NAME = 2
-COL_BUSINESS_TAX = 5
-COL_BASIC = 7
-COL_HRA = 8
-COL_TELEPHONE = 9
-COL_LTA = 10
-COL_SPECIAL = 11
-COL_BONUS = 12
-COL_WELLNESS = 13
-COL_EXPENSE = 15
-COL_PT = 29  # AC
-COL_DEDUCTION = 30  # AD
-COL_IIT = 31  # AE
 
 _ACTIVE_MAPPING: dict[str, Any] | None = None
 
@@ -217,9 +209,13 @@ def looks_like_india_l_workbook(path: Path) -> bool:
 
 
 def parse_india_l_employees(ws: Worksheet) -> list[dict[str, Any]]:
-    _, data_start = _india_l_layout(target=False)
-    header_row, _ = _india_l_layout(target=False)
+    header_row, data_start = _india_l_layout(target=False)
     headers = _header_map(ws, header_row)
+    field_cols = resolve_field_columns_from_headers(headers, fields=INDIA_L_KNOWN_DATA_FIELDS)
+    if not field_cols.get("Employee Name"):
+        field_cols = {**field_cols, "Employee Name": COL_NAME}
+    name_col = field_cols["Employee Name"]
+    known_cols = set(field_cols.values())
 
     period_from = ws.cell(INDIA_L_PERIOD_ROW, 2).value
     period_to = ws.cell(INDIA_L_PERIOD_ROW, 3).value
@@ -227,7 +223,7 @@ def parse_india_l_employees(ws: Worksheet) -> list[dict[str, Any]]:
     employees: list[dict[str, Any]] = []
     max_row = max(ws.max_row or data_start, data_start)
     for row in range(data_start, max_row + 1):
-        name = _norm(ws.cell(row, COL_NAME).value)
+        name = _norm(ws.cell(row, name_col).value)
         if not name:
             continue
         emp: dict[str, Any] = {
@@ -237,21 +233,9 @@ def parse_india_l_employees(ws: Worksheet) -> list[dict[str, Any]]:
             "From": period_from,
             "To": period_to,
         }
-        # 固定列
-        for key, col in (
-            ("Business Tax", COL_BUSINESS_TAX),
-            ("Basic salary", COL_BASIC),
-            ("HRA", COL_HRA),
-            ("Telephone allowance", COL_TELEPHONE),
-            ("LTA", COL_LTA),
-            ("Special allowance", COL_SPECIAL),
-            ("Bonus", COL_BONUS),
-            ("Wellness Stipend", COL_WELLNESS),
-            ("Expense Claim", COL_EXPENSE),
-            ("Professional tax", COL_PT),
-            ("Deduction", COL_DEDUCTION),
-            ("IIT", COL_IIT),
-        ):
+        for key, col in field_cols.items():
+            if key == "Employee Name":
+                continue
             val = ws.cell(row, col).value
             if _cell_formula_text(val):
                 continue
@@ -259,25 +243,8 @@ def parse_india_l_employees(ws: Worksheet) -> list[dict[str, Any]]:
                 continue
             emp[key] = val
 
-        # 也按表头吸收额外列
         for h, col in headers.items():
-            if col in (
-                COL_NAME,
-                COL_BUSINESS_TAX,
-                COL_BASIC,
-                COL_HRA,
-                COL_TELEPHONE,
-                COL_LTA,
-                COL_SPECIAL,
-                COL_BONUS,
-                COL_WELLNESS,
-                COL_EXPENSE,
-                COL_PT,
-                COL_DEDUCTION,
-                COL_IIT,
-            ):
-                continue
-            if h in emp:
+            if col in known_cols or h in emp:
                 continue
             val = ws.cell(row, col).value
             if _cell_formula_text(val) or val is None or val == "":
@@ -357,21 +324,12 @@ def write_india_l(ws: Worksheet, employees: list[dict[str, Any]]) -> None:
                 target_l_sheet=INDIA_L_SHEET,
             )
 
-    field_cols = {
-        "Employee Name": COL_NAME,
-        "Business Tax": COL_BUSINESS_TAX,
-        "Basic salary": COL_BASIC,
-        "HRA": COL_HRA,
-        "Telephone allowance": COL_TELEPHONE,
-        "LTA": COL_LTA,
-        "Special allowance": COL_SPECIAL,
-        "Bonus": COL_BONUS,
-        "Wellness Stipend": COL_WELLNESS,
-        "Expense Claim": COL_EXPENSE,
-        "Professional tax": COL_PT,
-        "Deduction": COL_DEDUCTION,
-        "IIT": COL_IIT,
-    }
+    field_cols = resolve_field_columns_from_headers(
+        _header_map(ws, _india_l_layout(target=True)[0]),
+    )
+    if not field_cols.get("Employee Name"):
+        # 姓名列：表头未匹配时仍用母版约定列（与 parse 侧一致）
+        field_cols = {**field_cols, "Employee Name": COL_NAME}
 
     for idx, emp in enumerate(employees):
         row = data_start + idx
@@ -584,7 +542,13 @@ def convert(
             raise ValueError("India-L 未解析到员工行")
 
         # 映射有七项拆分时覆盖 L 表（PDF 路径常先把 CTC 整笔进 Basic）
-        from bill_convert.india_salary_split import apply_salary_split_to_employee, parse_india_salary_splits
+        from bill_convert.india_salary_split import (
+            INDIA_SPLIT_PROVENANCE_FIELDS,
+            apply_salary_split_to_employee,
+            build_india_salary_split_cell_writes,
+            parse_india_salary_splits,
+            resolve_field_columns_from_headers,
+        )
 
         warnings: list[str] = []
         if parse_india_salary_splits(_ACTIVE_MAPPING):
@@ -611,6 +575,8 @@ def convert(
                     fallback_ctc_to_basic=False,
                 )
 
+        cell_writes: list[dict[str, Any]] = []
+
         output_path.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(template_path, output_path)
         wb = load_workbook(output_path)
@@ -621,6 +587,18 @@ def convert(
             if INDIA_L_SHEET not in wb.sheetnames:
                 raise ValueError(f"母版缺少 {INDIA_L_SHEET}")
             write_india_l(wb[INDIA_L_SHEET], employees)
+            header_row, l_data_start = _india_l_layout(target=True)
+            india_l_headers = _header_map(wb[INDIA_L_SHEET], header_row)
+            split_field_cols = resolve_field_columns_from_headers(
+                india_l_headers,
+                fields=INDIA_SPLIT_PROVENANCE_FIELDS,
+            )
+            cell_writes = build_india_salary_split_cell_writes(
+                employees,
+                sheet=INDIA_L_SHEET,
+                data_start=l_data_start,
+                field_cols=split_field_cols,
+            )
             expand_india_employee_rows(wb, len(employees))
             pn_layout = fit_india_pn_employees(wb, len(employees))
             if len(employees) > 1:
@@ -665,6 +643,7 @@ def convert(
             "warnings": warnings,
             "pn_meta": applied_pn.to_dict() if applied_pn else None,
             "pn_fx_write": pn_fx_write,
+            "cell_writes": cell_writes,
         }
     finally:
         _ACTIVE_MAPPING = None

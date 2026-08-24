@@ -38,9 +38,14 @@ from bill_convert.pakistan_business_tax import (
     BT_FEDERAL_HEADER,
     BT_SINDH_HEADER,
     business_tax_formula,
+    make_pakistan_business_tax_provenance,
     parse_pakistan_business_tax_cfg,
 )
-from bill_convert.pakistan_employee_fees import lookup_employee_fee, parse_pakistan_employee_fees
+from bill_convert.pakistan_employee_fees import (
+    lookup_employee_fee,
+    make_pakistan_employee_fee_provenance,
+    parse_pakistan_employee_fees,
+)
 from convert_mapping import find_sheet_name, resolve_convert_mapping
 from fx_rate import fetch_usd_rates, get_pakistan_pn_fx_rate
 from pn_meta import PnMeta, apply_pn_meta
@@ -59,6 +64,7 @@ PK_L_HEADER_ROW = 7
 PK_L_DATA_START = 8
 PK_DATA_START = 9
 PK_EE_DATA_START = 10
+PK_MAIN_HEADER_ROW = 8  # Pakistan 主表默认表头行（数据行 PK_DATA_START 的上一行）
 MAX_ROWS = 60
 
 _DATE_FMT = "yyyy/m/d"
@@ -115,6 +121,28 @@ def _pk_l_layout() -> tuple[int, int]:
     header = int(spec.get("headerRow") or PK_L_HEADER_ROW)
     start = int(spec.get("dataStartRow") or PK_L_DATA_START)
     return header, start
+
+
+def _pk_main_layout() -> tuple[int, int]:
+    """Pakistan 主表（Pakistan sheet）表头行 + 数据起始行。"""
+    mapping = _active_mapping()
+    ft_raw = mapping.get("formulaTemplates") if isinstance(mapping.get("formulaTemplates"), dict) else {}
+    ft = ft_raw.get("Pakistan") if isinstance(ft_raw.get("Pakistan"), dict) else {}
+    data_start = int(ft.get("dataStartRow") or PK_DATA_START)
+    header_row = int(ft.get("headerRow") or (data_start - 1) or PK_MAIN_HEADER_ROW)
+    if header_row >= data_start:
+        header_row = max(data_start - 1, 1)
+    return header_row, data_start
+
+
+def _resolve_pk_main_column(ws: Worksheet, header_row: int, *header_names: str) -> int | None:
+    """按 Pakistan 主表表头解析列号（Excel 1-based）。"""
+    headers = _header_map(ws, header_row)
+    for name in header_names:
+        col = headers.get(name)
+        if col:
+            return col
+    return None
 
 
 def coerce_datetime_for_excel(value: Any) -> datetime | None:
@@ -207,7 +235,7 @@ def _copy_row_style_and_formula(
             dest.value = src.value
 
 
-def write_pakistan_l(ws: Worksheet, employees: list[dict[str, Any]]) -> None:
+def write_pakistan_l(ws: Worksheet, employees: list[dict[str, Any]]) -> list[dict[str, Any]]:
     header_row, data_start = _pk_l_layout()
     headers = _header_map(ws, header_row)
     if not headers:
@@ -286,7 +314,7 @@ def write_pakistan_l(ws: Worksheet, employees: list[dict[str, Any]]) -> None:
             cell = ws.cell(row, col)
             cell.value = val
 
-    _apply_mapped_eobi_it(ws, employees, headers, data_start)
+    return _apply_mapped_eobi_it(ws, employees, headers, data_start)
 
 
 def _apply_mapped_eobi_it(
@@ -294,49 +322,94 @@ def _apply_mapped_eobi_it(
     employees: list[dict[str, Any]],
     headers: dict[str, int],
     data_start: int,
-) -> None:
+) -> list[dict[str, Any]]:
     """按映射为每位员工写入 E.O.B.I / IT（季度拆月后同一人多行共用）。"""
     fees = parse_pakistan_employee_fees(_active_mapping())
     if not fees:
-        return
+        return []
     eobi_col = headers.get("E.O.B.I") or headers.get("EOBI")
     it_col = headers.get("IT")
     if not eobi_col and not it_col:
-        return
+        return []
+    cell_writes: list[dict[str, Any]] = []
     for idx, emp in enumerate(employees):
         name = _norm(emp.get("Name of Employee") or emp.get("Employee Name"))
         fee = lookup_employee_fee(name, fees)
         if not fee:
             continue
         row = data_start + idx
+        display_name = name or f"第{idx + 1}人"
         if eobi_col and "eobi" in fee:
-            ws.cell(row, eobi_col).value = fee["eobi"]
+            val = fee["eobi"]
+            ws.cell(row, eobi_col).value = val
+            cell_writes.append(
+                make_pakistan_employee_fee_provenance(
+                    sheet=PK_L_SHEET,
+                    row=row,
+                    col=eobi_col,
+                    field="E.O.B.I",
+                    value=val,
+                    employee_name=display_name,
+                )
+            )
         if it_col and "it" in fee:
-            ws.cell(row, it_col).value = fee["it"]
+            val = fee["it"]
+            ws.cell(row, it_col).value = val
+            cell_writes.append(
+                make_pakistan_employee_fee_provenance(
+                    sheet=PK_L_SHEET,
+                    row=row,
+                    col=it_col,
+                    field="IT",
+                    value=val,
+                    employee_name=display_name,
+                )
+            )
+    return cell_writes
 
 
 def _apply_invoice_derived_business_tax(
     wb,
     employees: list[dict[str, Any]],
-) -> list[str]:
+) -> tuple[list[str], list[dict[str, Any]]]:
     """Danfoss：用 L 上的月度 BT 系数覆盖 Pakistan!F Business Tax 公式。"""
     cfg = parse_pakistan_business_tax_cfg(_active_mapping())
     if not cfg or PK_SHEET not in wb.sheetnames:
-        return []
+        return [], []
     pk = wb[PK_SHEET]
     warnings: list[str] = []
+    cell_writes: list[dict[str, Any]] = []
+    header_row, data_start = _pk_main_layout()
+    biz_col = _resolve_pk_main_column(pk, header_row, "Business Tax")
+    if not biz_col:
+        warnings.append(
+            f"Pakistan 主表第 {header_row} 行未找到 Business Tax 列，跳过发票推导 Business Tax"
+        )
+        return warnings, cell_writes
     for idx, emp in enumerate(employees):
         sindh = _as_float(emp.get(BT_SINDH_HEADER) if emp.get(BT_SINDH_HEADER) is not None else emp.get("_bt_sindh_usd"))
         federal = _as_float(
             emp.get(BT_FEDERAL_HEADER) if emp.get(BT_FEDERAL_HEADER) is not None else emp.get("_bt_federal_usd")
         )
-        row = PK_DATA_START + idx
+        row = data_start + idx
+        name = _norm(emp.get("Name of Employee") or emp.get("Employee Name")) or f"第{idx + 1}人"
         if sindh is None or federal is None:
-            name = _norm(emp.get("Name of Employee") or emp.get("Employee Name")) or f"第{idx + 1}人"
             warnings.append(f"{name}：映射启用了发票推导 Business Tax，但缺少 BT 系数（请用含推导列的源表/PDF 转换）")
             continue
-        pk.cell(row, 6).value = business_tax_formula(sindh, federal)
-    return warnings
+        formula = business_tax_formula(sindh, federal)
+        pk.cell(row, biz_col).value = formula
+        cell_writes.append(
+            make_pakistan_business_tax_provenance(
+                sheet=PK_SHEET,
+                row=row,
+                col=biz_col,
+                formula=formula,
+                sindh_monthly=sindh,
+                federal_monthly=federal,
+                employee_name=name,
+            )
+        )
+    return warnings, cell_writes
 
 
 def clear_employee_row(ws: Worksheet, row: int) -> None:
@@ -650,17 +723,21 @@ def convert(
         fx = None
         pn_fx_write = None
         applied_pn = None
+        cell_writes: list[dict[str, Any]] = []
         try:
             if PK_L_SHEET not in wb.sheetnames:
                 raise ValueError(f"母版缺少 {PK_L_SHEET}")
-            write_pakistan_l(wb[PK_L_SHEET], employees)
+            fee_writes = write_pakistan_l(wb[PK_L_SHEET], employees)
+            cell_writes.extend(fee_writes)
             formula_plan, style_warnings = expand_pakistan_employee_rows(
                 wb,
                 employees,
                 employee_directory=employee_directory,
             )
             warnings.extend(style_warnings)
-            warnings.extend(_apply_invoice_derived_business_tax(wb, employees))
+            bt_warnings, bt_writes = _apply_invoice_derived_business_tax(wb, employees)
+            warnings.extend(bt_warnings)
+            cell_writes.extend(bt_writes)
             try:
                 fx, pn_fx_write = apply_fx(wb, fill_fx=fill_fx, source_fx=source_fx)
             except Exception as exc:
@@ -711,6 +788,7 @@ def convert(
             "formula_main_rows": formula_rows_text,
             "formula_match_hint": match_hint,
             "pn_fx_write": pn_fx_write,
+            "cell_writes": cell_writes,
         }
     finally:
         _ACTIVE_MAPPING = None

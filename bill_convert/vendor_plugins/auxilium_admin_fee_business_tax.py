@@ -28,6 +28,7 @@ from bill_convert.fact_store import get_batch_facts, get_fact_value
 from pdf_ingest.text_extract import extract_pdf_text
 
 PLUGIN_ID = "auxilium_admin_fee_business_tax"
+PROVENANCE_SOURCE = f"plugin:{PLUGIN_ID}"
 FACT_KEY_VAT = "auxilium.admin_fee.total_vat"  # committed / prev
 FACT_KEY_LATEST_VAT = "auxilium.admin_fee.latest_vat"  # newest upload / curr
 
@@ -299,11 +300,44 @@ class AuxiliumAdminFeeBusinessTaxPlugin:
             cell_val: Any = curr_vat
         else:
             cell_val = f"=$B${curr_row}+($B${curr_row}-$B${prev_row})"
+        sheet_name = "UAE"
+        biz_col = 6
+        detail: dict[str, Any] = {
+            "pluginId": PLUGIN_ID,
+            "currVat": curr_vat,
+            "prevVat": prev_vat,
+            "currInvoice": facts.get("auxilium.admin_fee.invoice_no"),
+            "prevInvoice": facts.get("auxilium.admin_fee.prev_invoice_no"),
+            "currSourceFile": facts.get("auxilium.admin_fee.source_file"),
+            "prevSourceFile": facts.get("auxilium.admin_fee.prev_source_file"),
+        }
+        if prev_vat is None:
+            display_value: Any = curr_vat
+        elif isinstance(cell_val, str):
+            display_value = cell_val
+        else:
+            display_value = round(curr_vat + (curr_vat - prev_vat), 6)
+
+        cell_writes: list[dict[str, Any]] = []
         for i in range(n):
-            uae.cell(data_start + i, 6).value = cell_val
+            row = data_start + i
+            uae.cell(row, biz_col).value = cell_val
+            cell_writes.append(
+                {
+                    "kind": "auxiliumBusinessTax",
+                    "sheet": sheet_name,
+                    "row": row,
+                    "col": biz_col,
+                    "sourceType": "plugin",
+                    "source": PROVENANCE_SOURCE,
+                    "label": "Business Tax",
+                    "value": display_value,
+                    "detail": detail if i == 0 else {"pluginId": PLUGIN_ID},
+                }
+            )
         for row in range(data_start + n, data_start + 20):
-            uae.cell(row, 6).value = None
-        uae.cell(6, 6).value = f"=F{data_start}"
+            uae.cell(row, biz_col).value = None
+        uae.cell(6, biz_col).value = f"=F{data_start}"
 
         # 不回写 factStore：上期/最新只在上传识别到 Admin Fee PDF 时由 Office 更新
-        return None
+        return {"_cell_writes": cell_writes} if cell_writes else None

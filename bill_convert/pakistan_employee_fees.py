@@ -59,6 +59,32 @@ def lookup_employee_fee(name: str, fees: dict[str, dict[str, float]]) -> dict[st
     return best if best_score >= 70 else None
 
 
+def make_pakistan_employee_fee_provenance(
+    *,
+    sheet: str,
+    row: int,
+    col: int,
+    field: str,
+    value: float,
+    employee_name: str,
+) -> dict[str, Any]:
+    """单格 E.O.B.I / IT provenance（Excel 1-based）。"""
+    return {
+        "kind": "pakistanEmployeeFees",
+        "sheet": sheet,
+        "row": row,
+        "col": col,
+        "sourceType": "mapping",
+        "source": "mapping.pakistanEmployeeFees",
+        "label": field,
+        "value": value,
+        "detail": {
+            "employeeName": employee_name,
+            "field": field,
+        },
+    }
+
+
 def apply_fees_to_employee_rows(
     employees: list[dict[str, Any]],
     fees: dict[str, dict[str, float]],
