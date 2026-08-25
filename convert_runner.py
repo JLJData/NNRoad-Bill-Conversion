@@ -69,6 +69,14 @@ def run_convert(
         **convert_kwargs,
     )
     result = dict(result or {})
+    try:
+        from bill_convert.convert_checks import merge_warnings, sanity_check_convert_result
+        result["warnings"] = merge_warnings(
+            result.get("warnings") if isinstance(result.get("warnings"), list) else [],
+            sanity_check_convert_result(result),
+        )
+    except Exception as _sanity_exc:
+        print(f"[convert-sanity] skipped: {_sanity_exc}")
     result["engine_id"] = engine_id
     result["engine_label"] = engine.label
     result["region"] = region
