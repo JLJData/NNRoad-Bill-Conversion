@@ -667,11 +667,6 @@ async def convert(
         if warnings:
             # 响应头避免非 ASCII；条数提示即可，详情在服务日志
             headers["X-Convert-Warnings"] = str(len(warnings))
-            try:
-                detail = [str(w)[:240] for w in warnings[:30]]
-                headers["X-Convert-Warning-Detail"] = _b64_json_header(detail)
-            except Exception as _wexc:
-                print(f"[convert-warning-detail] skipped: {_wexc}")
             for w in warnings:
                 print(f"[convert-warning] {w}")
         # ASCII 诊断：映射样式条数、每人实际套用的 China 示例行

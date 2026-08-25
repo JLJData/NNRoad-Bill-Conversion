@@ -23,8 +23,6 @@ from typing import Any
 from openpyxl import load_workbook
 from openpyxl.worksheet.worksheet import Worksheet
 
-from bill_convert.convert_checks import check_column_rename_hits
-
 from bill_convert.formula_copy import (
     copy_row_formulas as shared_copy_row_formulas,
     fix_ee_row_hk_refs,
@@ -182,8 +180,6 @@ def read_hk_l_employees(ws: Worksheet) -> list[dict[str, Any]]:
             continue
         record: dict[str, Any] = {}
         rename = _column_rename()
-        if rename:
-            check_column_rename_hits(rename, source_headers, strict_if_configured=True)
         ordered = list(source_headers.items())
         explicit_first = [(s, c) for s, c in ordered if norm(s) in rename]
         auto_rest = [(s, c) for s, c in ordered if norm(s) not in rename]
