@@ -1223,7 +1223,7 @@ def _convert_impl(
             PN_SHEET,
             fx_row,
             2,
-            convert_mapping,
+            _ACTIVE_MAPPING,
             float(parsed["fx_rate"]),
             write_source=write_source,
             fx_source=fx_src,
