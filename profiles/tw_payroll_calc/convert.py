@@ -24,6 +24,8 @@ from openpyxl import load_workbook
 from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.worksheet import Worksheet
 
+from bill_convert.convert_checks import check_column_rename_hits
+
 from bill_convert.formula_copy import (
     copy_row_formulas as _copy_row_formulas_impl,
     fix_ee_row_tw_refs,
@@ -284,6 +286,8 @@ def read_pc_employees(ws: Worksheet, header_row: int) -> list[dict[str, Any]]:
 
         record: dict[str, Any] = {}
         rename = _column_rename_map()
+        if rename:
+            check_column_rename_hits(rename, source_headers, strict_if_configured=True)
         # 先写显式对照，再写同名自动匹配，避免后者覆盖前者
         ordered = list(source_headers.items())
         explicit_first = [(s, c) for s, c in ordered if norm(s) in rename]

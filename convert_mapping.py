@@ -322,6 +322,21 @@ ENGINE_DEFAULTS: dict[str, dict[str, Any]] = {
     },
     # Cyprus 中性默认；A&T Technical 见 PROFILE_MAPPING_OVERLAYS
     "cyprus_payroll_calc": {
+        "metaCells": {
+            "periodFrom": "C2",
+            "periodTo": "E2",
+        },
+        "fieldHeaders": {
+            "name": ["Name of Employee", "Employee Name"],
+            "ee_code": ["No. of EE", "EE Code"],
+            "base": ["Base salary"],
+            "er_contrib": ["Employer's contributions"],
+            "liability": ["Employer's & Public Liability"],
+            "ee_si": ["Employee's Social Insurance"],
+            "ee_tax": ["Employee's tax"],
+            "ee_nhs": ["Employee - N.H.S.-SI"],
+            "expense": ["Expense Reimbursment", "Expense Reimbursement"],
+        },
         "schemaVersion": 1,
         "sourceEmployeeSheet": {
             "sheet": "Cyprus-L",

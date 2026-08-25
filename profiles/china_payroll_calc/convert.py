@@ -194,6 +194,11 @@ def write_china_l(ws: Worksheet, employees: list[dict[str, Any]]) -> None:
         for k, v in rename.items()
         if k and v and str(k).strip() != str(v).strip()
     }
+    if rename:
+        sample_keys: set[str] = set()
+        for emp in employees[:8]:
+            sample_keys.update(str(k) for k in emp.keys())
+        check_column_rename_hits(rename, sample_keys, strict_if_configured=True)
 
     clear_china_l_data(ws)
     for idx, emp in enumerate(employees):

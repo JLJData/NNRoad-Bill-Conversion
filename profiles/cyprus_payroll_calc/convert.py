@@ -28,6 +28,8 @@ from openpyxl.worksheet.formula import ArrayFormula
 from openpyxl.worksheet.worksheet import Worksheet
 
 from bill_convert.fixed_value_writes import apply_fixed_value_writes
+from bill_convert.convert_checks import merge_warnings, parse_cell_ref, resolve_col_with_fallback, sanity_check_convert_result
+from bill_convert.headers import build_header_map
 from bill_convert.formula_copy import shift_row_formula
 from convert_mapping import find_sheet_name, resolve_convert_mapping
 from fx_rate import fetch_usd_rates, get_cyprus_pn_fx_rate
@@ -63,6 +65,56 @@ COL_EE_SI = 14
 COL_EE_TAX = 15
 COL_EE_NHS = 16
 COL_EXPENSE = 10
+
+# 表头优先；找不到时回退固定列（默认母版兼容）
+_CYPRUS_FIELD_HEADERS: dict[str, tuple[list[str], int]] = {
+    "ee_code": (["No. of EE", "EE Code", "Employee Code"], COL_EE_CODE),
+    "name": (["Name of Employee", "Employee Name", "Name of EE"], COL_NAME),
+    "base": (["Base salary", "Base Salary"], COL_BASE),
+    "er_contrib": (["Employer's contributions", "Employers contributions"], COL_ER_CONTRIB),
+    "liability": (["Employer's & Public Liability", "Employers & Public Liability"], COL_LIABILITY),
+    "ee_si": (["Employee's Social Insurance", "Employees Social Insurance"], COL_EE_SI),
+    "ee_tax": (["Employee's tax", "Employee tax"], COL_EE_TAX),
+    "ee_nhs": (["Employee - N.H.S.-SI", "Employee - N.H.S. - SI"], COL_EE_NHS),
+    "expense": (["Expense Reimbursment", "Expense Reimbursement"], COL_EXPENSE),
+}
+
+
+def _cyprus_meta_cells() -> tuple[tuple[int, int], tuple[int, int]]:
+    """账期起止格：mapping.metaCells.periodFrom / periodTo，默认 C2 / E2。"""
+    mapping = _active_mapping()
+    meta = mapping.get("metaCells") if isinstance(mapping.get("metaCells"), dict) else {}
+    period_from = parse_cell_ref(meta.get("periodFrom"), default_row=CYPRUS_L_PERIOD_ROW, default_col=3)
+    period_to = parse_cell_ref(meta.get("periodTo"), default_row=CYPRUS_L_PERIOD_ROW, default_col=5)
+    return period_from, period_to
+
+
+def _resolve_cyprus_cols(ws, header_row: int, warnings: list[str] | None = None) -> dict[str, int]:
+    header_map = build_header_map(ws, header_row)
+    try:
+        for k, v in _header_map(ws, header_row).items():
+            header_map.setdefault(k, v)
+    except Exception:
+        pass
+    mapping = _active_mapping()
+    custom = mapping.get("fieldHeaders") if isinstance(mapping.get("fieldHeaders"), dict) else {}
+    out: dict[str, int] = {}
+    for field, (names, fallback) in _CYPRUS_FIELD_HEADERS.items():
+        use_names = names
+        if isinstance(custom.get(field), list) and custom.get(field):
+            use_names = [str(x) for x in custom[field] if x]
+        col = resolve_col_with_fallback(
+            header_map,
+            field=field,
+            header_names=use_names,
+            fallback=fallback,
+            warnings=warnings,
+            strict=(field == "name"),
+        )
+        if col is not None:
+            out[field] = col
+    return out
+
 
 _ACTIVE_MAPPING: dict[str, Any] | None = None
 
@@ -202,18 +254,31 @@ def looks_like_cyprus_l_workbook(path: Path) -> bool:
         return False
 
 
-def parse_cyprus_l_employees(ws: Worksheet) -> list[dict[str, Any]]:
-    _, data_start = _cyprus_l_layout(target=False)
-    header_row, _ = _cyprus_l_layout(target=False)
+def parse_cyprus_l_employees(ws: Worksheet, warnings: list[str] | None = None) -> list[dict[str, Any]]:
+    header_row, data_start = _cyprus_l_layout(target=False)
+    cols = _resolve_cyprus_cols(ws, header_row, warnings)
     headers = _header_map(ws, header_row)
+    (pf_row, pf_col), (pt_row, pt_col) = _cyprus_meta_cells()
+    period_from = ws.cell(pf_row, pf_col).value
+    period_to = ws.cell(pt_row, pt_col).value
 
-    period_from = ws.cell(CYPRUS_L_PERIOD_ROW, 3).value
-    period_to = ws.cell(CYPRUS_L_PERIOD_ROW, 5).value
+    name_col = cols["name"]
+    ee_col = cols.get("ee_code", COL_EE_CODE)
+    field_pairs = [
+        ("Base salary", cols.get("base", COL_BASE)),
+        ("Employer's contributions", cols.get("er_contrib", COL_ER_CONTRIB)),
+        ("Employer's & Public Liability", cols.get("liability", COL_LIABILITY)),
+        ("Employee's Social Insurance", cols.get("ee_si", COL_EE_SI)),
+        ("Employee's tax", cols.get("ee_tax", COL_EE_TAX)),
+        ("Employee - N.H.S.-SI", cols.get("ee_nhs", COL_EE_NHS)),
+        ("Expense Reimbursment", cols.get("expense", COL_EXPENSE)),
+    ]
+    used_cols = set(cols.values())
 
     employees: list[dict[str, Any]] = []
     max_row = max(ws.max_row or data_start, data_start)
     for row in range(data_start, max_row + 1):
-        name = _norm(ws.cell(row, COL_NAME).value)
+        name = _norm(ws.cell(row, name_col).value)
         if not name:
             continue
         emp: dict[str, Any] = {
@@ -224,19 +289,11 @@ def parse_cyprus_l_employees(ws: Worksheet) -> list[dict[str, Any]]:
             "From": period_from,
             "To": period_to,
         }
-        ee_code = _norm(ws.cell(row, COL_EE_CODE).value)
+        ee_code = _norm(ws.cell(row, ee_col).value)
         if ee_code:
             emp["No. of EE"] = ee_code
             emp["_ee_code"] = ee_code
-        for key, col in (
-            ("Base salary", COL_BASE),
-            ("Employer's contributions", COL_ER_CONTRIB),
-            ("Employer's & Public Liability", COL_LIABILITY),
-            ("Employee's Social Insurance", COL_EE_SI),
-            ("Employee's tax", COL_EE_TAX),
-            ("Employee - N.H.S.-SI", COL_EE_NHS),
-            ("Expense Reimbursment", COL_EXPENSE),
-        ):
+        for key, col in field_pairs:
             val = ws.cell(row, col).value
             if _cell_formula_text(val):
                 continue
@@ -244,17 +301,7 @@ def parse_cyprus_l_employees(ws: Worksheet) -> list[dict[str, Any]]:
                 continue
             emp[key] = val
         for h, col in headers.items():
-            if col in (
-                COL_EE_CODE,
-                COL_NAME,
-                COL_BASE,
-                COL_ER_CONTRIB,
-                COL_LIABILITY,
-                COL_EE_SI,
-                COL_EE_TAX,
-                COL_EE_NHS,
-                COL_EXPENSE,
-            ):
+            if col in used_cols:
                 continue
             val = ws.cell(row, col).value
             if _cell_formula_text(val) or val is None or val == "":
@@ -262,6 +309,7 @@ def parse_cyprus_l_employees(ws: Worksheet) -> list[dict[str, Any]]:
             emp[h] = val
         employees.append(emp)
     return employees
+
 
 
 def write_cyprus_l_period(ws: Worksheet, employees: list[dict[str, Any]]) -> None:
@@ -275,16 +323,18 @@ def write_cyprus_l_period(ws: Worksheet, employees: list[dict[str, Any]]) -> Non
         bounds = period_bounds_from_label(label)
         if bounds:
             start, end = bounds
-    for col, val in ((3, start), (5, end)):
+    (pf_row, pf_col), (pt_row, pt_col) = _cyprus_meta_cells()
+    for (row, col), val in (((pf_row, pf_col), start), ((pt_row, pt_col), end)):
         if val is None:
             continue
-        cell = ws.cell(CYPRUS_L_PERIOD_ROW, col)
+        cell = ws.cell(row, col)
         dt = coerce_datetime_for_excel(val)
         if dt is not None:
             cell.value = dt
             cell.number_format = _DATE_FMT
         else:
             cell.value = val
+
 
 
 def write_cyprus_l(ws: Worksheet, employees: list[dict[str, Any]]) -> None:
@@ -332,27 +382,31 @@ def write_cyprus_l(ws: Worksheet, employees: list[dict[str, Any]]) -> None:
                 target_l_sheet=CYPRUS_L_SHEET,
             )
 
+    header_row, _ = _cyprus_l_layout(target=True)
+    cols = _resolve_cyprus_cols(ws, header_row, None)
+    name_col = cols.get("name", COL_NAME)
+    ee_col = cols.get("ee_code", COL_EE_CODE)
     field_cols = {
-        "No. of EE": COL_EE_CODE,
-        "Name of Employee": COL_NAME,
-        "Employee Name": COL_NAME,
-        "Base salary": COL_BASE,
-        "Employer's contributions": COL_ER_CONTRIB,
-        "Employer's & Public Liability": COL_LIABILITY,
-        "Employee's Social Insurance": COL_EE_SI,
-        "Employee's tax": COL_EE_TAX,
-        "Employee - N.H.S.-SI": COL_EE_NHS,
-        "Expense Reimbursment": COL_EXPENSE,
+        "No. of EE": ee_col,
+        "Name of Employee": name_col,
+        "Employee Name": name_col,
+        "Base salary": cols.get("base", COL_BASE),
+        "Employer's contributions": cols.get("er_contrib", COL_ER_CONTRIB),
+        "Employer's & Public Liability": cols.get("liability", COL_LIABILITY),
+        "Employee's Social Insurance": cols.get("ee_si", COL_EE_SI),
+        "Employee's tax": cols.get("ee_tax", COL_EE_TAX),
+        "Employee - N.H.S.-SI": cols.get("ee_nhs", COL_EE_NHS),
+        "Expense Reimbursment": cols.get("expense", COL_EXPENSE),
     }
 
     for idx, emp in enumerate(employees):
         row = data_start + idx
         name = _norm(emp.get("Employee Name") or emp.get("Name of Employee"))
         if name:
-            ws.cell(row, COL_NAME).value = name
+            ws.cell(row, name_col).value = name
         ee_code = _norm(emp.get("No. of EE") or emp.get("_ee_code"))
-        if ee_code and COL_EE_CODE not in formula_by_col:
-            ws.cell(row, COL_EE_CODE).value = ee_code
+        if ee_code and ee_col not in formula_by_col:
+            ws.cell(row, ee_col).value = ee_code
         for key, col in field_cols.items():
             if key in ("Name of Employee", "Employee Name", "No. of EE"):
                 continue
@@ -592,7 +646,8 @@ def convert(
                     l_name = CYPRUS_L_SHEET
                 else:
                     raise ValueError(f"未找到 Cyprus-L，现有: {src_wb.sheetnames}")
-            employees = parse_cyprus_l_employees(src_wb[l_name])
+            parse_warnings: list[str] = []
+            employees = parse_cyprus_l_employees(src_wb[l_name], parse_warnings)
         finally:
             src_wb.close()
 
@@ -602,7 +657,7 @@ def convert(
         output_path.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(template_path, output_path)
         wb = load_workbook(output_path)
-        warnings: list[str] = []
+        warnings: list[str] = list(parse_warnings)
         fx = None
         pn_fx_write = None
         applied_pn = None
@@ -646,6 +701,10 @@ def convert(
             wb.close()
 
         postprocess_converted_xlsx(output_path)
+        warnings = merge_warnings(
+            warnings,
+            sanity_check_convert_result({"employee_count": len(employees), "warnings": warnings}),
+        )
         return {
             "ok": True,
             "engine_id": "cyprus_payroll_calc",
