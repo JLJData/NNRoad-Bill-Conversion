@@ -262,11 +262,19 @@ def parse_panda_work_pk_text(text: str) -> PandaWorkPkParsed:
             out.sindh_sales_tax_usd = fee_usds[2]
         else:
             out.warnings.append("未从 PDF 解析到 Federal IT / Sindh Sales Tax 金额行")
+            raise ValueError(
+                "Panda Work PDF 未解析到 Federal IT / Sindh Sales Tax，版式可能已变更，已中止写出"
+            )
 
     if not out.employee_name:
         out.warnings.append("未解析到员工姓名")
+        raise ValueError("Panda Work PDF 未解析到员工姓名，版式可能已变更")
     if out.salary_pkr is None:
         out.warnings.append("未解析到季度薪资 PKR")
+        raise ValueError("Panda Work PDF 未解析到季度薪资 PKR，版式可能已变更")
+    if out.period_from is None:
+        out.warnings.append("未解析到季度账期")
+        raise ValueError("Panda Work PDF 未解析到季度账期，版式可能已变更")
     return out
 
 

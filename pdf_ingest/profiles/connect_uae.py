@@ -324,6 +324,9 @@ def parse_connect_invoice(
                 warnings.append(
                     f"{name}：映射拆分合计 {split_sum} ≠ PDF 月薪 {payroll}"
                 )
+                raise ValueError(
+                    f"Connect UAE：员工「{name}」映射拆分合计 {split_sum} ≠ PDF 月薪 {payroll}，已中止写出"
+                )
 
         row = {
             "S.No": idx,

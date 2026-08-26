@@ -7,6 +7,7 @@ import inspect
 from pathlib import Path
 from typing import Any
 
+from pdf_ingest.post_checks import assert_pdf_ingest_ok
 from pdf_ingest.registry import detect_pdf_profile, get_pdf_profile, load_convert_fn
 from pdf_ingest.text_extract import extract_pdf_text
 from pn_meta import PnMeta
@@ -43,6 +44,14 @@ def _call_convert(fn, *args, **kwargs):
     return fn(*args, **filtered)
 
 
+def _finalize_pdf_result(result: dict[str, Any], *, profile_id: str) -> dict[str, Any]:
+    """统一后置硬闸门：关键字段缺失/勾稽失败则 raise，避免静默错表。"""
+    if not isinstance(result, dict):
+        raise ValueError("PDF 转换未返回结果")
+    result.setdefault("profile_id", profile_id)
+    return assert_pdf_ingest_ok(result, profile_id=profile_id)
+
+
 def run_pdf_to_source(
     pdf_path: Path,
     output_path: Path,
@@ -57,7 +66,7 @@ def run_pdf_to_source(
     output_path = Path(output_path)
     profile = _resolve_profile(pdf_path, profile_id)
     convert_fn = load_convert_fn(profile)
-    return _call_convert(
+    result = _call_convert(
         convert_fn,
         pdf_path,
         output_path,
@@ -66,6 +75,7 @@ def run_pdf_to_source(
         registry_dir=registry_dir or output_path.parent,
         fill_fx=fill_fx,
     )
+    return _finalize_pdf_result(result, profile_id=profile.profile_id)
 
 
 def run_pdf_to_source_batch(
@@ -89,7 +99,7 @@ def run_pdf_to_source_batch(
     mod = importlib.import_module(profile.module)
     batch_fn = getattr(mod, "convert_pdfs", None)
     if callable(batch_fn):
-        return _call_convert(
+        result = _call_convert(
             batch_fn,
             paths,
             output_path,
@@ -99,7 +109,13 @@ def run_pdf_to_source_batch(
             fill_fx=fill_fx,
             convert_mapping=convert_mapping,
         )
+        return _finalize_pdf_result(result, profile_id=profile.profile_id)
 
+    if len(paths) > 1:
+        raise ValueError(
+            f"当前 pdf_profile「{profile.profile_id}」不支持批量（共 {len(paths)} 份），"
+            f"请一次只传 1 份，或改用支持批量的 profile"
+        )
     convert_fn = load_convert_fn(profile)
     result = _call_convert(
         convert_fn,
@@ -111,13 +127,7 @@ def run_pdf_to_source_batch(
         fill_fx=fill_fx,
         convert_mapping=convert_mapping,
     )
-    if len(paths) > 1:
-        warnings = list(result.get("warnings") or [])
-        warnings.append(
-            f"当前 pdf_profile「{profile.profile_id}」不支持批量，仅处理了第 1 份，其余 {len(paths) - 1} 份已忽略"
-        )
-        result["warnings"] = warnings
-    return result
+    return _finalize_pdf_result(result, profile_id=profile.profile_id)
 
 
 def run_vendor_to_source_batch(
@@ -144,7 +154,7 @@ def run_vendor_to_source_batch(
 
     sources_fn = getattr(mod, "convert_sources", None)
     if callable(sources_fn):
-        return _call_convert(
+        result = _call_convert(
             sources_fn,
             paths,
             output_path,
@@ -154,6 +164,7 @@ def run_vendor_to_source_batch(
             fill_fx=fill_fx,
             convert_mapping=convert_mapping,
         )
+        return _finalize_pdf_result(result, profile_id=profile.profile_id)
 
     pdfs = [p for p in paths if p.suffix.lower() == ".pdf"]
     excels = [p for p in paths if p.suffix.lower() in _EXCEL_SUFFIXES]
@@ -165,7 +176,7 @@ def run_vendor_to_source_batch(
             raise ValueError(
                 f"pdf_profile「{profile.profile_id}」暂不支持 Excel 源，请上传 PDF 或已成型的 UK-L Excel"
             )
-        return _call_convert(
+        result = _call_convert(
             excel_fn,
             excels,
             output_path,
@@ -175,6 +186,7 @@ def run_vendor_to_source_batch(
             fill_fx=fill_fx,
             convert_mapping=convert_mapping,
         )
+        return _finalize_pdf_result(result, profile_id=profile.profile_id)
     return run_pdf_to_source_batch(
         pdfs or paths,
         output_path,

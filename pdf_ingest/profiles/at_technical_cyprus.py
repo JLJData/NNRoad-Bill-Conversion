@@ -382,6 +382,9 @@ def merge_invoice_and_payroll(
                 )
         else:
             warnings.append(f"{name}：Payroll 中未匹配到同名员工，EE 扣款列为空")
+            raise ValueError(
+                f"A&T Cyprus：员工「{name}」在 Payroll 中未匹配到同名，版式或姓名不一致，已中止写出以免扣款列空"
+            )
         # period：优先 invoice
         if invoice.get("period_from"):
             row["_period_from"] = invoice["period_from"]

@@ -249,8 +249,10 @@ def parse_topsource_uk_text(text: str) -> TopSourceUkParsed:
 
     if not out.employee_name:
         out.warnings.append("未解析到员工姓名")
+        raise ValueError("TopSource PDF 未解析到员工姓名，版式可能已变更")
     if out.labor_usd is None:
         out.warnings.append("未解析到人工成本 USD 打包金额")
+        raise ValueError("TopSource PDF 未解析到人工成本 USD，版式可能已变更")
     out.warnings.append(
         "TopSource PDF 仅为 USD 打包价，无 GBP 明细；Gross/Holiday/PAYE 等请按截图人工补齐"
     )

@@ -195,6 +195,35 @@ def parse_eor_uk_text(text: str) -> EorUkParsed:
     if out.gross_salary is None:
         out.warnings.append("未解析到 Gross Salary")
 
+    # 关键字段缺失 → 直接失败，避免写出偏数 UK-L
+    if not out.employee_name:
+        raise ValueError("EOR UK PDF 未解析到员工姓名，版式可能已变更")
+    if out.gross_salary is None or out.er_nic is None or out.er_pension is None:
+        raise ValueError(
+            "EOR UK PDF 未解析到 Gross Salary / Empr Taxes / Empr Contributions，版式可能已变更"
+        )
+    if (
+        out.raw_line_net is not None
+        and out.gross_salary is not None
+        and out.er_nic is not None
+        and out.er_pension is not None
+    ):
+        labor = round(out.gross_salary + out.er_nic + out.er_pension, 2)
+        if abs(labor - out.raw_line_net) > 0.05:
+            raise ValueError(
+                f"EOR UK PDF 工资构成合计 {labor} 与行净额 {out.raw_line_net} 不一致，已中止写出"
+            )
+    if (
+        out.raw_line_net is not None
+        and out.service_fee is not None
+        and out.invoice_total is not None
+    ):
+        expect = round(out.raw_line_net + out.service_fee, 2)
+        if abs(expect - out.invoice_total) > 0.05:
+            raise ValueError(
+                f"EOR UK PDF 行净额+ServiceFee={expect} 与 Invoice Total {out.invoice_total} 不一致，已中止写出"
+            )
+
     return out
 
 

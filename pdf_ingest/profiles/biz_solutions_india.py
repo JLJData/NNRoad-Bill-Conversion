@@ -195,11 +195,15 @@ def parse_biz_solutions_pdf(pdf_path: Path) -> dict[str, Any]:
     if cgst is not None and sgst is not None:
         business_tax = round(cgst + sgst, 0)  # 样例 53697.78 → 53698
     elif cgst is not None:
-        business_tax = round(cgst * 2, 0)
         warnings.append("仅解析到 CGST，Business Tax 按 ×2 暂估")
+        raise ValueError(
+            "Biz Solutions PDF 仅解析到 CGST、缺少 SGST，版式可能已变更；已中止写出以免税额偏错"
+        )
     else:
         warnings.append("未解析到 GST，Business Tax 置 0")
-        business_tax = 0.0
+        raise ValueError(
+            "Biz Solutions PDF 未解析到 GST，版式可能已变更；已中止写出以免税额被置 0"
+        )
 
     return {
         "employee_name": employee_name,
