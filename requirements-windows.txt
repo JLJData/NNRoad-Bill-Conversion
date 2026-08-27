@@ -1,0 +1,3 @@
+-r requirements.txt
+# 本机 Excel COM 快照（模板三引擎验证，仅 Windows）
+pywin32>=306

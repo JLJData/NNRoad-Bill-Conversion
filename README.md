@@ -4,11 +4,13 @@ Office 通过 HTTP 调用本仓；各引擎逻辑在 profiles/，公共 mapping 
 
 ## 启动
 
-`at
-启动转换服务.bat
-`
+Linux / 服务器：`pip install -r requirements.txt`
 
-或 python -m uvicorn convert_api:app --host 0.0.0.0 --port 8765
+本机 Windows（需要 Excel COM 快照时）：`pip install -r requirements-windows.txt`
+
+`启动转换服务.bat`
+
+或 `python -m uvicorn convert_api:app --host 127.0.0.1 --port 8765`
 
 ## 主要目录
 
