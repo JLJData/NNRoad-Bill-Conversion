@@ -137,6 +137,7 @@ ENGINE_DEFAULTS: dict[str, dict[str, Any]] = {
             "headerRow": 2,
             "dataStartRow": 3,
             "nameHeaders": ["Employee Name", "English Name"],
+            "rowRequireNonEmpty": [],
         },
         "targetL": {
             "sheet": "UAE-L",
@@ -441,6 +442,7 @@ PROFILE_MAPPING_OVERLAYS: dict[str, dict[str, Any]] = {
             "headerRow": 2,
             "dataStartRow": 3,
             "nameHeaders": ["Employee Name"],
+            "rowRequireNonEmpty": [],
         },
         "targetL": {
             "sheet": "UAE-L",

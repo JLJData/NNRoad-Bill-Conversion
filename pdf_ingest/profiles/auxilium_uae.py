@@ -3,7 +3,9 @@
 Auxilium UAE Payroll Draft Excel → UAE-L 源表（profile: auxilium_uae）
 
 识别：表头含 AX ID / Payroll Draft / NNRoad (UAE)。
-多员工：跳过 TOTALS 行；Payroll Days 用工作日（不硬抄源 30）。
+多员工：遇 TOTALS 行即结束员工区；另可用映射
+sourceEmployeeSheet.rowRequireNonEmpty（源表列，与 nameHeaders 同选法）要求所列列均非空才收为员工。
+Payroll Days 用工作日（不硬抄源 30）。
 Admin Fee 写入 UAE-L「Admin Fees」。Recurring Fee 默认跟母版；若映射配置了
 uaeRecurringFeeFixed 则写入该固定值（如 Omal）。
 """
@@ -514,6 +516,32 @@ def _col_val(ws: Worksheet, row: int, colmap: dict[str, int | None], field: str)
     return _cell(ws, row, col)
 
 
+def _row_require_nonempty_cols(
+    headers: list[str],
+    keys: list[str] | None,
+) -> list[int]:
+    """映射 rowRequireNonEmpty → 源表列号；按表头同名/子段解析（与 nameHeaders 一致）。"""
+    if not keys:
+        return []
+    cols: list[int] = []
+    seen: set[int] = set()
+    for raw in keys:
+        name = str(raw or "").strip()
+        if not name:
+            continue
+        col = _find_header_col(headers, name)
+        if col is not None and col not in seen:
+            seen.add(col)
+            cols.append(col)
+    return cols
+
+
+def _row_has_required_values(ws: Worksheet, row: int, cols: list[int]) -> bool:
+    if not cols:
+        return True
+    return all(_norm(_cell(ws, row, c)) for c in cols)
+
+
 def parse_auxilium_payroll_draft(
     excel_path: Path,
     *,
@@ -560,14 +588,24 @@ def parse_auxilium_payroll_draft(
         if period_from is None or period_to is None:
             period_from, period_to = parse_period_from_filename(path)
 
+        require_keys = spec.get("rowRequireNonEmpty")
+        require_cols = _row_require_nonempty_cols(
+            headers,
+            [str(x) for x in require_keys] if isinstance(require_keys, list) else None,
+        )
+
         employees: list[dict[str, Any]] = []
         for row in range(data_start, (ws.max_row or data_start) + 1):
             ax_id = _norm(_cell(ws, row, id_col))
             name = _norm(_cell(ws, row, name_col))
             if not ax_id and not name:
                 continue
-            blob = f"{ax_id} {name}".upper()
+            blob = f"{ax_id} {name}".strip().upper()
+            # TOTALS 起为合计区，其后不再有员工行
             if "TOTAL" in blob:
+                break
+            # 映射配置了有效行必填列时：所列源列均须非空（如姓名+Designation，可滤掉 Remittance Fee）
+            if not _row_has_required_values(ws, row, require_cols):
                 continue
 
             d_from = period_from
