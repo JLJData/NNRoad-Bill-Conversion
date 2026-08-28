@@ -310,7 +310,7 @@ def build_india_business_tax_cell_writes(
     data_start: int,
     field_cols: dict[str, int],
 ) -> list[dict[str, Any]]:
-    """India-L Business Tax：PDF CGST+SGST 四舍五入后写入，供核对页蓝标。"""
+    """India-L Business Tax：PDF CGST+SGST，取整由 mapping 配置，供核对页蓝标显示公式。"""
     col = field_cols.get("Business Tax")
     if not col:
         return []
@@ -322,23 +322,28 @@ def build_india_business_tax_cell_writes(
         if val is None:
             continue
         name = str(emp.get("Employee Name") or "").strip()
-        detail: dict[str, Any] = {"employeeName": name, "field": "Business Tax"}
+        formula = emp.get("_business_tax_formula")
+        if not formula and isinstance(val, str) and str(val).startswith("="):
+            formula = str(val).strip()
+        detail: dict[str, Any] = {"employeeName": name, "field": "Business Tax", "editGroup": "indiaBusinessTax"}
         cgst = emp.get("_cgst")
         sgst = emp.get("_sgst")
         if cgst is not None:
             detail["cgst"] = cgst
         if sgst is not None:
             detail["sgst"] = sgst
+        if formula:
+            detail["formula"] = formula
         cells.append(
             {
                 "kind": "indiaBusinessTax",
                 "sheet": sheet,
                 "row": data_start + idx,
                 "col": col,
-                "sourceType": "vendor",
-                "source": "pdf.biz_solutions.gst",
+                "sourceType": "mapping",
+                "source": "mapping.indiaBusinessTax",
                 "label": "Business Tax",
-                "value": val,
+                "value": emp.get("_business_tax_formula") or val,
                 "detail": detail,
             }
         )

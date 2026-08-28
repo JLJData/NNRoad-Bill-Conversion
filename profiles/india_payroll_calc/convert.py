@@ -28,6 +28,7 @@ from openpyxl.worksheet.formula import ArrayFormula
 from openpyxl.worksheet.worksheet import Worksheet
 
 from bill_convert.formula_copy import shift_row_formula
+from bill_convert.india_business_tax import parse_business_tax_formula
 from bill_convert.india_salary_split import (
     INDIA_L_KNOWN_DATA_FIELDS,
     resolve_field_columns_from_headers,
@@ -245,7 +246,17 @@ def parse_india_l_employees(ws: Worksheet) -> list[dict[str, Any]]:
             if key == "Employee Name":
                 continue
             val = ws.cell(row, col).value
-            if _cell_formula_text(val):
+            formula_text = _cell_formula_text(val)
+            if formula_text:
+                if key != "Business Tax":
+                    continue
+                emp[key] = formula_text
+                emp["_business_tax_formula"] = formula_text
+                parsed_bt = parse_business_tax_formula(formula_text)
+                if parsed_bt:
+                    emp["_cgst"] = parsed_bt.get("cgst")
+                    emp["_sgst"] = parsed_bt.get("sgst")
+                    emp["_business_tax_formula"] = parsed_bt.get("formula")
                 continue
             if val is None or val == "":
                 continue

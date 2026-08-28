@@ -309,6 +309,9 @@ ENGINE_DEFAULTS: dict[str, dict[str, Any]] = {
         "employeeFormulaStyles": [],
         "skipSourceHeaders": [],
         "pnSheets": {"main": "India", "ee": "India EE", "l": "India-L"},
+        # Business Tax = PDF CGST+SGST；默认四舍五入到整数（样例 53697.78→53698）
+        "indiaBusinessTaxRoundMode": "ROUND",
+        "indiaBusinessTaxRoundDigits": 0,
         # 写入 PN 公式 =基准*系数；基准空则转换时用网上 INR 填入公式，系数默认 0.97
         "fixedValueWrites": [
             {

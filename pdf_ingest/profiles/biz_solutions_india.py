@@ -4,9 +4,10 @@ Biz Solutions（India）Tax Invoice PDF → India-L（profile: biz_solutions_ind
 
 当前策略：
   - 从 PDF 提取：员工名、账期、Monthly CTC 总额、CGST+SGST（Business Tax）
-  - 薪资六项 + PT/IIT（Basic/HRA/Telephone/LTA/Special/Wellness + Professional tax/IIT）走 mapping.indiaSalarySplit；Bonus 固定 0
+  - Business Tax 取整见 mapping.indiaBusinessTaxRoundMode / indiaBusinessTaxRoundDigits（默认 ROUND 到整数）
+  - 票面多出对不上 CTC/GST/合计的金额行则中止（避免 Expense Claim / Deduction 被写成 0）
+  - 薪资六项 + PT/IIT 走 mapping.indiaSalarySplit；Bonus 固定 0
   - 未配置拆分时：CTC 整笔进 Basic（其余 0）并 warning
-  - Management Fee / PT / IIT 等不写死，跟母版公式或留空/0
 
 用法:
   python -m pdf_ingest.profiles.biz_solutions_india <源.pdf> [-o 输出.xlsx]
@@ -27,6 +28,10 @@ from openpyxl import load_workbook
 from pdf_ingest.text_extract import extract_pdf_text
 from pn_meta import PnMeta
 from region_templates import get_region_template
+from bill_convert.india_business_tax import (
+    apply_india_business_tax_round,
+    assert_no_unknown_invoice_amounts,
+)
 
 INDIA_L_SHEET = "India-L"
 
@@ -73,7 +78,11 @@ def _period_bounds(year: int, month: int) -> tuple[date, date]:
     return start, end
 
 
-def parse_biz_solutions_pdf(pdf_path: Path) -> dict[str, Any]:
+def parse_biz_solutions_pdf(
+    pdf_path: Path,
+    *,
+    mapping: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     path = Path(pdf_path).resolve()
     text = extract_pdf_text(path)
     if not text.strip():
@@ -192,8 +201,11 @@ def parse_biz_solutions_pdf(pdf_path: Path) -> dict[str, Any]:
             sgst = sgst or _parse_indian_money(m.group(3))
 
     business_tax = None
+    business_tax_formula = None
     if cgst is not None and sgst is not None:
-        business_tax = round(cgst + sgst, 0)  # 样例 53697.78 → 53698
+        applied = apply_india_business_tax_round(cgst, sgst, mapping)
+        business_tax = applied["value"]
+        business_tax_formula = applied["formula"]
     elif cgst is not None:
         warnings.append("仅解析到 CGST，Business Tax 按 ×2 暂估")
         raise ValueError(
@@ -204,6 +216,8 @@ def parse_biz_solutions_pdf(pdf_path: Path) -> dict[str, Any]:
         raise ValueError(
             "Biz Solutions PDF 未解析到 GST，版式可能已变更；已中止写出以免税额被置 0"
         )
+
+    assert_no_unknown_invoice_amounts(text, ctc=ctc, cgst=cgst, sgst=sgst)
 
     return {
         "employee_name": employee_name,
@@ -216,6 +230,7 @@ def parse_biz_solutions_pdf(pdf_path: Path) -> dict[str, Any]:
         "cgst": cgst,
         "sgst": sgst,
         "business_tax": float(business_tax or 0),
+        "business_tax_formula": business_tax_formula,
         "warnings": warnings,
         "source_file": path.name,
     }
@@ -236,9 +251,10 @@ def parsed_to_employee(
         "_period_to": parsed.get("period_to"),
         "From": parsed.get("period_from"),
         "To": parsed.get("period_to"),
-        "Business Tax": parsed.get("business_tax") or 0,
+        "Business Tax": parsed.get("business_tax_formula") or parsed.get("business_tax") or 0,
         "_cgst": parsed.get("cgst"),
         "_sgst": parsed.get("sgst"),
+        "_business_tax_formula": parsed.get("business_tax_formula"),
         "Expense Claim": 0,
         "Professional tax": 0,
         "Deduction": 0,
@@ -280,7 +296,7 @@ def convert_pdf(
     if not pdf_path.is_file():
         raise FileNotFoundError(f"PDF 不存在: {pdf_path}")
 
-    parsed = parse_biz_solutions_pdf(pdf_path)
+    parsed = parse_biz_solutions_pdf(pdf_path, mapping=mapping)
     warnings = list(parsed.get("warnings") or [])
     employee = parsed_to_employee(parsed, mapping=mapping, warnings=warnings)
 
