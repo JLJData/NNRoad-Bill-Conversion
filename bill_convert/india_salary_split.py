@@ -301,3 +301,45 @@ def build_india_salary_split_cell_writes(
                 }
             )
     return cells
+
+
+def build_india_business_tax_cell_writes(
+    employees: list[dict[str, Any]],
+    *,
+    sheet: str,
+    data_start: int,
+    field_cols: dict[str, int],
+) -> list[dict[str, Any]]:
+    """India-L Business Tax：PDF CGST+SGST 四舍五入后写入，供核对页蓝标。"""
+    col = field_cols.get("Business Tax")
+    if not col:
+        return []
+    cells: list[dict[str, Any]] = []
+    for idx, emp in enumerate(employees):
+        if "Business Tax" not in emp:
+            continue
+        val = emp.get("Business Tax")
+        if val is None:
+            continue
+        name = str(emp.get("Employee Name") or "").strip()
+        detail: dict[str, Any] = {"employeeName": name, "field": "Business Tax"}
+        cgst = emp.get("_cgst")
+        sgst = emp.get("_sgst")
+        if cgst is not None:
+            detail["cgst"] = cgst
+        if sgst is not None:
+            detail["sgst"] = sgst
+        cells.append(
+            {
+                "kind": "indiaBusinessTax",
+                "sheet": sheet,
+                "row": data_start + idx,
+                "col": col,
+                "sourceType": "vendor",
+                "source": "pdf.biz_solutions.gst",
+                "label": "Business Tax",
+                "value": val,
+                "detail": detail,
+            }
+        )
+    return cells

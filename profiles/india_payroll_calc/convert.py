@@ -553,6 +553,7 @@ def convert(
         from bill_convert.india_salary_split import (
             INDIA_SPLIT_PROVENANCE_FIELDS,
             apply_salary_split_to_employee,
+            build_india_business_tax_cell_writes,
             build_india_salary_split_cell_writes,
             parse_india_salary_splits,
             resolve_field_columns_from_headers,
@@ -606,6 +607,18 @@ def convert(
                 sheet=INDIA_L_SHEET,
                 data_start=l_data_start,
                 field_cols=split_field_cols,
+            )
+            bt_field_cols = resolve_field_columns_from_headers(
+                india_l_headers,
+                fields=("Business Tax",),
+            )
+            cell_writes.extend(
+                build_india_business_tax_cell_writes(
+                    employees,
+                    sheet=INDIA_L_SHEET,
+                    data_start=l_data_start,
+                    field_cols=bt_field_cols,
+                )
             )
             expand_india_employee_rows(wb, len(employees))
             pn_layout = fit_india_pn_employees(wb, len(employees))

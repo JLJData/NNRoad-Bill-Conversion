@@ -237,6 +237,8 @@ def parsed_to_employee(
         "From": parsed.get("period_from"),
         "To": parsed.get("period_to"),
         "Business Tax": parsed.get("business_tax") or 0,
+        "_cgst": parsed.get("cgst"),
+        "_sgst": parsed.get("sgst"),
         "Expense Claim": 0,
         "Professional tax": 0,
         "Deduction": 0,
@@ -298,6 +300,36 @@ def convert_pdf(
         india_mod._ACTIVE_MAPPING = mapping
         try:
             write_india_l(wb[INDIA_L_SHEET], [employee])
+            from bill_convert.india_salary_split import (
+                INDIA_SPLIT_PROVENANCE_FIELDS,
+                build_india_business_tax_cell_writes,
+                build_india_salary_split_cell_writes,
+                resolve_field_columns_from_headers,
+            )
+
+            header_row, l_data_start = india_mod._india_l_layout(target=True)
+            india_l_headers = india_mod._header_map(wb[INDIA_L_SHEET], header_row)
+            split_field_cols = resolve_field_columns_from_headers(
+                india_l_headers,
+                fields=INDIA_SPLIT_PROVENANCE_FIELDS,
+            )
+            cell_writes = build_india_salary_split_cell_writes(
+                [employee],
+                sheet=INDIA_L_SHEET,
+                data_start=l_data_start,
+                field_cols=split_field_cols,
+            )
+            cell_writes.extend(
+                build_india_business_tax_cell_writes(
+                    [employee],
+                    sheet=INDIA_L_SHEET,
+                    data_start=l_data_start,
+                    field_cols=resolve_field_columns_from_headers(
+                        india_l_headers,
+                        fields=("Business Tax",),
+                    ),
+                )
+            )
         finally:
             india_mod._ACTIVE_MAPPING = prev
         wb.save(output_path)
@@ -323,6 +355,7 @@ def convert_pdf(
         "warnings": warnings,
         "fx_rate": None,
         "pn_meta": None,
+        "cell_writes": cell_writes,
     }
 
 
