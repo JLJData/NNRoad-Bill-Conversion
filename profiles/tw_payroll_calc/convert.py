@@ -930,15 +930,29 @@ def fit_pn_employees(ws: Worksheet, employee_count: int, *, tw_data_start_row: i
     return layout
 
 
+def _pn_formula_text(value: Any) -> str | None:
+    if isinstance(value, str) and value.startswith("="):
+        return value
+    text = getattr(value, "text", None)
+    if isinstance(text, str) and text.startswith("="):
+        return text
+    return None
+
+
+def _retarget_pn_fx_in_formula(formula: str, fx_row: int) -> str:
+    text = re.sub(r"PN!\$?B\$?\d+", f"PN!B{fx_row}", formula)
+    return re.sub(r"\$B\$\d+", f"$B${fx_row}", text)
+
+
 def _rewrite_pn_settlement_block(ws: Worksheet, *, fx_row: int, total_row: int) -> None:
     """
     母版 FX 下方结算块相对布局（以 fx_row 为锚）：
       F{fx}     = F{total}                         EOR USD
       F{fx+1..4}= TW!E22..E25                      Other Fee 透传
       F{fx+5}   = SUM(F{fx}:F{fx+4})               Sub Total
-      F{fx+6}   = ROUNDUP(TW!F6/PN!B{fx},2)+0.01   Tax
+      F{fx+6}   Tax：保留母版公式，只把 PN!B / $B$ 指到当前 FX 行
       F{fx+7}   = SUM(F{fx+5}:F{fx+6})             Total
-    插删行后公式文本不会自动更新，必须按新行号重写。
+    插删行后公式文本不会自动更新，须按新行号重写；Tax 不得用 ROUNDUP+0.01 覆盖客户母版。
     """
     # EOR USD 引用合计行
     f_eor = ws.cell(fx_row, 6)
@@ -959,7 +973,11 @@ def _rewrite_pn_settlement_block(ws: Worksheet, *, fx_row: int, total_row: int) 
     f_sub.number_format = _PN_USD_FMT
 
     f_tax = ws.cell(tax_row, 6)
-    f_tax.value = f"=ROUNDUP(TW!F6/PN!B{fx_row},2)+0.01"
+    existing_tax = _pn_formula_text(f_tax.value)
+    if existing_tax:
+        f_tax.value = _retarget_pn_fx_in_formula(existing_tax, fx_row)
+    else:
+        f_tax.value = f"=TW!F6/PN!B{fx_row}"
     f_tax.number_format = _PN_USD_FMT
 
     f_grand = ws.cell(grand_row, 6)
