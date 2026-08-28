@@ -21,6 +21,7 @@ from typing import Any
 from openpyxl import load_workbook
 from openpyxl.worksheet.worksheet import Worksheet
 
+from bill_convert.fixed_value_writes import apply_fixed_value_writes
 from convert_mapping import find_sheet_name, resolve_convert_mapping
 from fx_rate import fetch_usd_rates, get_uk_gbp_per_usd
 from pn_meta import PnMeta, apply_pn_meta
@@ -249,7 +250,7 @@ def _convert_impl(
     fx_rate = None
     fx_source = None
     fact_store_updates: dict[str, Any] = {}
-    mapping = _ACTIVE_MAPPING or resolve_convert_mapping("uk_payroll_calc", convert_mapping)
+    mapping = _ACTIVE_MAPPING or resolve_convert_mapping("uk_payroll_calc", None)
     from fx_policy import (
         UK_VENDOR_BILL_FX_FACT,
         api_fx_for_currency,
@@ -345,6 +346,9 @@ def _convert_impl(
         else:
             warnings.append(f"写入 UK-L!D24 汇率失败: {exc}")
 
+    # Recurring Fee：mapping.ukRecurringFeeFixed 有值才写 UK!H；格子见 mapping.fixedValueWrites
+    fixed_value_writes = apply_fixed_value_writes(wb, employees, mapping)
+
     wb.save(output_path)
     wb.close()
     postprocess_converted_xlsx(output_path)
@@ -360,6 +364,7 @@ def _convert_impl(
         "uk_l_sheets": sheet_names,
         "fact_store_updates": fact_store_updates,
         "pn_fx_writes": pn_fx_writes,
+        "fixed_value_writes": fixed_value_writes,
     }
 
 def main(argv: list[str] | None = None) -> int:

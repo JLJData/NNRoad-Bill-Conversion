@@ -125,6 +125,19 @@ ENGINE_DEFAULTS: dict[str, dict[str, Any]] = {
         "employeeFormulaStyles": [],
         "skipSourceHeaders": [],
         "pnSheets": {"main": "UK", "ee": "UK EE", "l": "UK-L"},
+        # 固定值写格：唯一约定。转换引擎与 Office「同步母版」都读这里。
+        # EOR（如 ERI）映射填 ukRecurringFeeFixed 才写 UK!H Recurring Fee；空则跟母版。
+        "fixedValueWrites": [
+            {
+                "id": "ukRecurringFee",
+                "valueKey": "ukRecurringFeeFixed",
+                "sheet": "UK",
+                "columnLetter": "H",
+                "dataStartRow": 9,
+                "scope": "eachEmployee",
+                "label": "Recurring Fee",
+            }
+        ],
         # 默认网上；TopSource/EOR 版式 overlay 覆盖
         "fxPolicy": {"mode": "api", "defaultCurrency": "GBP", "invert": True, "fallback": "api"},
     },

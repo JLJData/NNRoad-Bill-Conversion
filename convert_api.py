@@ -94,7 +94,7 @@ def _build_cell_provenance(result: dict) -> dict | None:
             }
         )
 
-    # mapping.fixedValueWrites（UAE/Italy/Cyprus 等）
+    # mapping.fixedValueWrites（UAE/Italy/Cyprus/UK 等）
     fv = result.get("fixed_value_writes")
     if isinstance(fv, list):
         for item in fv:
