@@ -345,7 +345,10 @@ ENGINE_DEFAULTS: dict[str, dict[str, Any]] = {
             "ee_code": ["No. of EE", "EE Code"],
             "base": ["Base salary"],
             "er_contrib": ["Employer's contributions"],
-            "liability": ["Employer's & Public Liability"],
+            "liability": [
+                "Employer's & Public Liability",
+                "Employer's & Public Liabilit",
+            ],
             "ee_si": ["Employee's Social Insurance"],
             "ee_tax": ["Employee's tax"],
             "ee_nhs": ["Employee - N.H.S.-SI"],

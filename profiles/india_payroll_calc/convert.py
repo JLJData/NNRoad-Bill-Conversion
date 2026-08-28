@@ -56,7 +56,7 @@ INDIA_EE_DATA_START = 9
 MAX_EMPLOYEES = 20
 _DATE_FMT = "yyyy/m/d"
 
-# India-L 默认列（仅作表头未匹配时的兜底；读写优先 _header_map）
+# India-L 默认列（仅作表头未匹配时的兜底；读写优先 _header_map，含子行空时回落上一行）
 COL_NAME = 2
 
 _ACTIVE_MAPPING: dict[str, Any] | None = None
@@ -148,9 +148,17 @@ def _set_cell_value(cell, value: Any) -> None:
 
 
 def _header_map(ws: Worksheet, header_row: int) -> dict[str, int]:
+    """India-L 两行表头：优先 headerRow（子项），该格为空则用上一行分组名。
+
+    母版第 4 行是 Basic/HRA/Professional tax 等；IIT / Business Tax / Deduction
+    只写在第 3 行。只扫第 4 行会配了 IIT 也写不进去。
+    """
     out: dict[str, int] = {}
+    parent_row = header_row - 1 if header_row > 1 else 0
     for col in range(1, (ws.max_column or 1) + 1):
         h = _norm(ws.cell(header_row, col).value)
+        if not h and parent_row:
+            h = _norm(ws.cell(parent_row, col).value)
         if h and h not in out:
             out[h] = col
     return out

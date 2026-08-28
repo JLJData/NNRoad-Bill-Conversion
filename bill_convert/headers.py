@@ -76,9 +76,15 @@ def list_qualified_header_cells(
     for col in range(1, max_col + 1):
         raw = ws.cell(header_row, col).value
         child = norm(raw)
-        if not child:
-            continue
         parent = parent_by_col.get(col, "")
+        if not child:
+            # 子格为空时用上一行分组名（India-L 的 IIT / Business Tax / Deduction）
+            if not parent:
+                continue
+            child = parent.replace("\n", " ").replace("\r", " ").strip()
+            parent = ""
+            if parent_row is not None and parent_row >= 1:
+                raw = ws.cell(parent_row, col).value
         rows.append(
             {
                 "col": col,

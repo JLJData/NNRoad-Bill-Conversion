@@ -72,7 +72,14 @@ _CYPRUS_FIELD_HEADERS: dict[str, tuple[list[str], int]] = {
     "name": (["Name of Employee", "Employee Name", "Name of EE"], COL_NAME),
     "base": (["Base salary", "Base Salary"], COL_BASE),
     "er_contrib": (["Employer's contributions", "Employers contributions"], COL_ER_CONTRIB),
-    "liability": (["Employer's & Public Liability", "Employers & Public Liability"], COL_LIABILITY),
+    "liability": (
+        [
+            "Employer's & Public Liability",
+            "Employers & Public Liability",
+            "Employer's & Public Liabilit",  # 默认母版表头被 Excel 截断
+        ],
+        COL_LIABILITY,
+    ),
     "ee_si": (["Employee's Social Insurance", "Employees Social Insurance"], COL_EE_SI),
     "ee_tax": (["Employee's tax", "Employee tax"], COL_EE_TAX),
     "ee_nhs": (["Employee - N.H.S.-SI", "Employee - N.H.S. - SI"], COL_EE_NHS),
