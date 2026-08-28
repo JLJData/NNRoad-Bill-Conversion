@@ -4,9 +4,8 @@ SafeGuard (SGWI) Italy Payroll Excel → Italy-L（profile: safeguard_italy）
 
 源 sheet「Calculation」：
   姓名取供应商账单姓名列（通常 A 列，如 Matteo Cupi）
-  列按表头同名写入 Italy-L，不按列号；Vacation Accruals 对 Vacation Accruals
-  Fee Min 不写死：由后台 mapping.italyFeeMin 在引擎阶段写入
-  列映射：仅 Office columnRename + 同名自动匹配（无内置别名表）
+  列映射与 Auxilium 相同：有 columnRename 用对照，没有才表头同名；
+  不按列号、无内置 Accruals→Leave。Fee Min 走 mapping.italyFeeMin。
 
 用法:
   python -m pdf_ingest.profiles.safeguard_italy <源.xlsx> [-o 输出.xlsx]
@@ -142,11 +141,13 @@ def _explicit_rename_targets(column_rename: dict[str, str] | None) -> set[str]:
     return out
 
 
-def _resolve_target_for_source(src_h: str, column_rename: dict[str, str] | None = None) -> str | None:
-    """
-    1) 显式 columnRename
-    2) 同名自动匹配（源列子名 = Italy-L 列名）
-    """
+def _resolve_target_for_source(
+    src_h: str,
+    column_rename: dict[str, str] | None = None,
+    *,
+    claimed: set[str] | None = None,
+) -> str | None:
+    """有对照用对照；没有才同名。对照已占用的目标，同名不再写。"""
     renamed = _rename_target_for_source(src_h, column_rename)
     if renamed:
         return _strip_target_label(renamed) or None
@@ -155,7 +156,12 @@ def _resolve_target_for_source(src_h: str, column_rename: dict[str, str] | None 
     if not keys:
         return None
     same = keys[-1] if "/" in keys[0] else keys[0]
-    return _norm(same) or None
+    tgt = _norm(same) or None
+    if not tgt:
+        return None
+    if claimed and (tgt in claimed or tgt.lower() in claimed):
+        return None
+    return tgt
 
 
 def _find_source_col(headers: dict[str, int], src_name: str) -> int | None:
@@ -322,61 +328,39 @@ def parse_safeguard_italy_excel(
             if id_col:
                 emp["_employee_id"] = _cell_val(row, id_col)
 
-            # 显式对照占用的目标列：同名源列不再写入这些目标，避免对照被同名盖回
             claimed = _explicit_rename_targets(rename)
-
-            # 1) 先同名自动匹配（跳过已被对照占用的目标）
-            for src_h, col in headers.items():
-                if salary_h and src_h == salary_h:
-                    continue
-                tgt = _resolve_target_for_source(src_h, None)
-                if not tgt:
-                    continue
-                if tgt in claimed or tgt.lower() in claimed:
-                    continue
-                _put_cell_value(emp, tgt, _cell_val(row, col))
-
-            # 2) 显式 columnRename：按源表头匹配（比按配置 key 反查更稳）
             applied_rename = 0
+            mapped_cols: set[int] = set()
             for src_h, col in headers.items():
-                if salary_h and src_h == salary_h:
-                    continue
-                renamed = _rename_target_for_source(src_h, rename)
-                if not renamed:
-                    continue
-                tgt = _strip_target_label(renamed)
+                tgt = _resolve_target_for_source(src_h, rename, claimed=claimed)
                 if not tgt:
                     continue
+                if _rename_target_for_source(src_h, rename):
+                    applied_rename += 1
                 _put_cell_value(emp, tgt, _cell_val(row, col))
-                applied_rename += 1
-            # 兜底：配置 key 在表头中能反查到、但上面未命中时
+                mapped_cols.add(col)
+            # 对照 key 与表头字面不完全一致时再反查一次
             for src, tgt_raw in rename.items():
                 if not src or not tgt_raw:
                     continue
                 col = _find_source_col(headers, str(src))
-                if not col:
+                if not col or col in mapped_cols:
                     continue
-                src_h = next((h for h, c in headers.items() if c == col), str(src))
-                if salary_h and src_h == salary_h:
-                    continue
-                if _rename_target_for_source(src_h, rename):
-                    continue  # 已在上一步写过
                 tgt = _strip_target_label(str(tgt_raw))
                 if not tgt:
                     continue
                 _put_cell_value(emp, tgt, _cell_val(row, col))
                 applied_rename += 1
+                mapped_cols.add(col)
             emp["_rename_applied"] = applied_rename
 
-            if salary_h:
-                salary_rename = _rename_target_for_source(salary_h, rename)
-                if salary_rename:
-                    title = _strip_target_label(salary_rename)
-                else:
-                    from profiles.italy_payroll_calc.convert import salary_header_for_period
+            # 薪资列未配对照：Italy-L 表头会被改成账期全称（Aug → August），补一格同值
+            if salary_h and not _rename_target_for_source(salary_h, rename):
+                from profiles.italy_payroll_calc.convert import salary_header_for_period
 
-                    title = _norm(salary_header_for_period(meta.get("_pay_period")) or salary_h)
-                _put_cell_value(emp, title, _cell_val(row, headers[salary_h]))
+                period_title = _norm(salary_header_for_period(meta.get("_pay_period")) or salary_h)
+                if period_title and period_title != _norm(salary_h):
+                    _put_cell_value(emp, period_title, _cell_val(row, headers[salary_h]))
 
             # Fee Min 留给 mapping；源 SGWI Min 仅作参考字段
             if "SGWI Min" in headers:

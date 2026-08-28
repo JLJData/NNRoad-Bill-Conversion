@@ -253,7 +253,7 @@ def parse_italy_l_employees(
             meta["Pay Period"] = val
 
     rename = column_rename if isinstance(column_rename, dict) else {}
-    # 复用 SafeGuard 对照逻辑：显式 columnRename 覆盖同名
+    # 复用 SafeGuard：有 columnRename 用对照，没有才同名
     from pdf_ingest.profiles.safeguard_italy import (
         _explicit_rename_targets,
         _find_source_col,
@@ -283,7 +283,7 @@ def parse_italy_l_employees(
         def _cell_val(col: int) -> Any:
             return ws.cell(row, col).value
 
-        # 1) 同名（跳过公式格、已被对照占用的目标）
+        mapped_cols: set[int] = set()
         for h, col in headers.items():
             if col in name_cols:
                 continue
@@ -292,17 +292,17 @@ def parse_italy_l_employees(
                 continue
             if val is None or val == "":
                 continue
-            tgt = _resolve_target_for_source(h, None) or h
-            if tgt in claimed or str(tgt).lower() in claimed:
+            tgt = _resolve_target_for_source(h, rename, claimed=claimed)
+            if not tgt:
                 continue
             _put_cell_value(emp, tgt, val)
+            mapped_cols.add(col)
 
-        # 2) 显式 columnRename 覆盖
         for src, tgt_raw in rename.items():
             if not src or not tgt_raw:
                 continue
             col = _find_source_col(headers, str(src))
-            if not col:
+            if not col or col in mapped_cols or col in name_cols:
                 continue
             val = _cell_val(col)
             if _cell_formula_text(val):
