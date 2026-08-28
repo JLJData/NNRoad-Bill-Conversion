@@ -4,7 +4,7 @@ SafeGuard (SGWI) Italy Payroll Excel → Italy-L（profile: safeguard_italy）
 
 源 sheet「Calculation」：
   姓名取供应商账单姓名列（通常 A 列，如 Matteo Cupi）
-  Vacation Accruals → Italy-L「Vacation Leave」；「Vacation Accruals」置 0
+  列按表头同名写入 Italy-L，不按列号；Vacation Accruals 对 Vacation Accruals
   Fee Min 不写死：由后台 mapping.italyFeeMin 在引擎阶段写入
   列映射：仅 Office columnRename + 同名自动匹配（无内置别名表）
 
@@ -267,13 +267,6 @@ def _salary_src_header(headers: dict[str, int]) -> str | None:
     return None
 
 
-def _vac_accrual_header(headers: dict[str, int]) -> str | None:
-    for h in headers:
-        if re.search(r"vacation\s+accrual", h, flags=re.I):
-            return h
-    return None
-
-
 def parse_safeguard_italy_excel(
     excel_path: Path,
     *,
@@ -307,7 +300,6 @@ def parse_safeguard_italy_excel(
         id_col = _col_by_label(headers, "Employee ID")
 
         salary_h = _salary_src_header(headers)
-        vac_h = _vac_accrual_header(headers)
 
         employees: list[dict[str, Any]] = []
         data_start = header_row + 1
@@ -337,8 +329,6 @@ def parse_safeguard_italy_excel(
             for src_h, col in headers.items():
                 if salary_h and src_h == salary_h:
                     continue
-                if vac_h and src_h == vac_h:
-                    continue
                 tgt = _resolve_target_for_source(src_h, None)
                 if not tgt:
                     continue
@@ -350,8 +340,6 @@ def parse_safeguard_italy_excel(
             applied_rename = 0
             for src_h, col in headers.items():
                 if salary_h and src_h == salary_h:
-                    continue
-                if vac_h and src_h == vac_h:
                     continue
                 renamed = _rename_target_for_source(src_h, rename)
                 if not renamed:
@@ -371,8 +359,6 @@ def parse_safeguard_italy_excel(
                 src_h = next((h for h, c in headers.items() if c == col), str(src))
                 if salary_h and src_h == salary_h:
                     continue
-                if vac_h and src_h == vac_h:
-                    continue
                 if _rename_target_for_source(src_h, rename):
                     continue  # 已在上一步写过
                 tgt = _strip_target_label(str(tgt_raw))
@@ -391,16 +377,6 @@ def parse_safeguard_italy_excel(
 
                     title = _norm(salary_header_for_period(meta.get("_pay_period")) or salary_h)
                 _put_cell_value(emp, title, _cell_val(row, headers[salary_h]))
-
-            # Vacation Accruals → Vacation Leave；Accruals 置 0（列名对照可覆盖 Leave 目标）
-            if vac_h:
-                vac_val = _cell_val(row, headers[vac_h])
-                vac_rename = _rename_target_for_source(vac_h, rename)
-                leave_tgt = _strip_target_label(vac_rename) if vac_rename else "Vacation Leave"
-                _put_cell_value(emp, leave_tgt, vac_val if vac_val not in (None, "") else 0.0)
-                emp["Vacation Accruals"] = 0.0
-            else:
-                emp.setdefault("Vacation Accruals", 0.0)
 
             # Fee Min 留给 mapping；源 SGWI Min 仅作参考字段
             if "SGWI Min" in headers:

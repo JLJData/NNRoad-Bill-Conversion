@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 import re
+from decimal import Decimal, ROUND_HALF_UP
 from typing import Any
 
 from openpyxl.cell.cell import MergedCell
@@ -96,41 +97,49 @@ def apply_outstanding_payment(wb: Workbook, mapping: dict[str, Any] | None) -> d
     }
 
 
-def _resolve_balance(mapping: dict[str, Any]) -> float | int | None:
+def _resolve_balance(mapping: dict[str, Any]) -> int | float | None:
     block = mapping.get("outstandingPayment")
     raw = None
     if isinstance(block, dict):
         raw = block.get("balance")
     if raw is None:
         raw = mapping.get("outstandingPaymentBalance")
+    money = _to_money(raw)
+    return None if money is None else _excel_number(money)
+
+
+def _negate_amount(amount: int | float) -> int | float:
+    """Excel 落格用相反数；0 保持 0，避免出现 -0.0。"""
+    money = _to_money(amount)
+    if money is None:
+        return 0
+    return _excel_number(-money)
+
+
+def _to_money(raw: Any) -> Decimal | None:
     if raw is None or raw == "":
         return None
     if isinstance(raw, bool):
         return None
-    if isinstance(raw, (int, float)):
-        return raw
-    text = str(raw).strip().replace(",", "").replace("\xa0", "")
+    if isinstance(raw, Decimal):
+        text = format(raw, "f")
+    else:
+        text = str(raw).strip().replace(",", "").replace("\xa0", "")
     if not text:
         return None
     try:
-        num = float(text)
-    except ValueError:
+        return Decimal(text).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    except Exception:
         return None
-    if num.is_integer():
-        return int(num)
-    return num
 
 
-def _negate_amount(amount: float | int) -> float | int:
-    """Excel 落格用相反数；0 保持 0，避免出现 -0.0。"""
-    if amount == 0:
-        return 0 if isinstance(amount, int) else 0.0
-    negated = -amount
-    if isinstance(amount, int) and not isinstance(amount, bool):
-        return int(negated)
-    if isinstance(negated, float) and negated.is_integer():
-        return int(negated)
-    return negated
+def _excel_number(amount: Decimal) -> int | float:
+    quantized = amount.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    if quantized == 0:
+        return 0
+    if quantized == quantized.to_integral_value():
+        return int(quantized)
+    return float(format(quantized, "f"))
 
 
 def _find_label_cells(wb: Workbook) -> list[tuple[Worksheet, int, int]]:
