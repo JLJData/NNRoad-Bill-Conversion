@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from xlsx_keep_images import require_pillow
 from xlsx_richtext_fix import migrate_inlinestr_richtext_to_shared_strings
 from xlsx_theme_fill_fix import materialize_theme_fills
 from xlsx_date_cell_fix import normalize_template_date_cells
@@ -24,6 +25,7 @@ def postprocess_converted_xlsx(xlsx_path: Path | str) -> dict[str, int]:
         各步骤影响计数（便于日志/回归）。
     """
     path = Path(xlsx_path)
+    require_pillow()
     migrate_inlinestr_richtext_to_shared_strings(path)
     theme_stats = materialize_theme_fills(path) or {}
     date_cells = normalize_template_date_cells(path)

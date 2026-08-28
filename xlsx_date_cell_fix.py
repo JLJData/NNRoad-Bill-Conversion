@@ -12,6 +12,7 @@ from pathlib import Path
 from openpyxl import load_workbook
 
 from xlsx_convert_utils import coerce_datetime_for_excel
+from xlsx_keep_images import require_pillow
 
 _DATE_FMT_HINT = re.compile(r"y{1,4}|m/d|d/m|d-mmm|h:mm|年|月", re.I)
 
@@ -42,6 +43,7 @@ def normalize_template_date_cells(xlsx_path: Path | str) -> int:
     path = Path(xlsx_path)
     if not path.is_file():
         return 0
+    require_pillow()
     wb = load_workbook(path)
     changed = 0
     for ws in wb.worksheets:

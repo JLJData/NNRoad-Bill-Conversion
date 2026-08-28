@@ -28,6 +28,9 @@ def run_convert(
     convert_mapping: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     engine = get_engine(engine_id)
+    from xlsx_keep_images import assert_template_images_kept, require_pillow
+
+    require_pillow()
     module = importlib.import_module(engine.module)
     if not hasattr(module, "convert"):
         raise RuntimeError(f"引擎模块缺少 convert(): {engine.module}")
@@ -107,6 +110,9 @@ def run_convert(
         result.setdefault("warnings", [])
         if isinstance(result["warnings"], list):
             result["warnings"].append(f"outstanding_payment: {exc}")
+
+    if output_path.is_file():
+        assert_template_images_kept(template_path, output_path)
 
     return result
 
