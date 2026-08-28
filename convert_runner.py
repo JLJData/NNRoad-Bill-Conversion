@@ -102,6 +102,7 @@ def run_convert(
                 else:
                     print(
                         f"[outstanding-payment] wrote {op_info.get('balance')} "
+                        f"(timeline {op_info.get('timelineBalance')}, negated) "
                         f"→ {op_info.get('sheet')}!r{op_info.get('row')}c{op_info.get('col')}"
                     )
     except Exception as exc:

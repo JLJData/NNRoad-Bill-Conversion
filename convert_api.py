@@ -80,6 +80,10 @@ def _build_cell_provenance(result: dict) -> dict | None:
             detail["foundPeriod"] = op.get("foundPeriod")
         if op.get("requestMonth") not in (None, ""):
             detail["requestMonth"] = op.get("requestMonth")
+        if op.get("timelineBalance") not in (None, ""):
+            detail["timelineBalance"] = op.get("timelineBalance")
+        if op.get("negated"):
+            detail["negated"] = True
         cells.append(
             {
                 "kind": "outstandingPayment",

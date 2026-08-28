@@ -3,6 +3,7 @@
 
 规则：在工作簿中查找文案「Outstanding payment」，写入其右侧金额区
 「靠左」那一格（两列金额时取左列）。balance 由 Office 注入 convert_mapping。
+写入 Excel 时取相反数（Timeline -1 → 格子 1；1 → -1；0 仍为 0）。
 
 注意：
 - PN 汇总页标签常合并单元格，且金额多为公式引用地区 sheet，优先写地区 sheet
@@ -26,14 +27,15 @@ _SKIP_SHEET_SUFFIXES = (" ee", "-l", "_l", " detail")
 def apply_outstanding_payment(wb: Workbook, mapping: dict[str, Any] | None) -> dict[str, Any] | None:
     """
     若 mapping 含 outstandingPayment.balance（含 0），则写入标签右侧左金额格。
-    找不到标签或无 balance 时不改表。
+    格子写入 Timeline 金额的相反数；找不到标签或无 balance 时不改表。
     返回诊断信息（写入位置等），供日志/响应头使用。
     """
     if wb is None or not isinstance(mapping, dict):
         return None
-    amount = _resolve_balance(mapping)
-    if amount is None:
+    timeline_amount = _resolve_balance(mapping)
+    if timeline_amount is None:
         return None
+    amount = _negate_amount(timeline_amount)
 
     candidates = _find_label_cells(wb)
     if not candidates:
@@ -81,6 +83,8 @@ def apply_outstanding_payment(wb: Workbook, mapping: dict[str, Any] | None) -> d
             "row": row,
             "col": value_col,
             "balance": amount,
+            "timelineBalance": timeline_amount,
+            "negated": True,
             "foundPeriod": _nested_str(mapping, "outstandingPayment", "foundPeriod"),
             "requestMonth": _nested_str(mapping, "outstandingPayment", "requestMonth"),
         }
@@ -115,6 +119,18 @@ def _resolve_balance(mapping: dict[str, Any]) -> float | int | None:
     if num.is_integer():
         return int(num)
     return num
+
+
+def _negate_amount(amount: float | int) -> float | int:
+    """Excel 落格用相反数；0 保持 0，避免出现 -0.0。"""
+    if amount == 0:
+        return 0 if isinstance(amount, int) else 0.0
+    negated = -amount
+    if isinstance(amount, int) and not isinstance(amount, bool):
+        return int(negated)
+    if isinstance(negated, float) and negated.is_integer():
+        return int(negated)
+    return negated
 
 
 def _find_label_cells(wb: Workbook) -> list[tuple[Worksheet, int, int]]:
