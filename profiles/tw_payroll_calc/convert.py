@@ -476,12 +476,18 @@ def apply_tw_business_tax(
     tw_data_start_row: int,
     tw_l_data_start_row: int,
 ) -> None:
-    """每人 Business Tax：TW!F = ROUND('TW-L'!BO * 5%, 0) 取整。LuckySheet 用 (5/100)。"""
+    """TW!F Business Tax：母版已有公式则保留；空单元格才补默认 5% 取整（默认台湾母版 F 为空）。"""
     n = max(int(employee_count), 0)
     for i in range(n):
         tw_row = tw_data_start_row + i
         tw_l_row = tw_l_data_start_row + i
         cell = ws_tw.cell(tw_row, _TW_BUSINESS_TAX_COL)
+        existing = cell.value
+        if isinstance(existing, str) and existing.startswith("="):
+            continue
+        text = getattr(existing, "text", None)
+        if isinstance(text, str) and text.startswith("="):
+            continue
         cell.value = f"=ROUND('TW-L'!BO{tw_l_row}*(5/100),0)"
         cell.number_format = "#,##0"
 
@@ -773,10 +779,181 @@ def _pn_delete_rows(ws: Worksheet, idx: int, amount: int) -> None:
     _restore_merges(ws, merges, row_shift=-amount)
 
 
+def _pn_formula_text(value: Any) -> str | None:
+    if isinstance(value, str) and value.startswith("="):
+        return value
+    text = getattr(value, "text", None)
+    if isinstance(text, str) and text.startswith("="):
+        return text
+    return None
+
+
+def _pn_snapshot_row_formulas(ws: Worksheet, row: int, max_col: int = 6) -> dict[int, str]:
+    out: dict[int, str] = {}
+    for col in range(1, max_col + 1):
+        text = _pn_formula_text(ws.cell(row, col).value)
+        if text:
+            out[col] = text
+    return out
+
+
+def _pn_stash_sheet_refs(formula: str) -> tuple[str, list[str]]:
+    placeholders: list[str] = []
+
+    def stash(match: re.Match[str]) -> str:
+        placeholders.append(match.group(0))
+        return f"__SHEETREF{len(placeholders) - 1}__"
+
+    s = re.sub(r"'(?:[^']+)'!\$?[A-Z]{1,3}\$?\d+", stash, formula)
+    s = re.sub(r"(?<![A-Z])[A-Za-z][A-Za-z0-9 ]*!\$?[A-Z]{1,3}\$?\d+", stash, s)
+    return s, placeholders
+
+
+def _pn_restore_sheet_refs(body: str, placeholders: list[str]) -> str:
+    for idx, ref in enumerate(placeholders):
+        body = body.replace(f"__SHEETREF{idx}__", ref)
+    return body
+
+
+def _pn_shift_local_rows(formula: str, from_row: int, to_row: int) -> str:
+    if from_row == to_row or not (isinstance(formula, str) and formula.startswith("=")):
+        return formula
+    body, refs = _pn_stash_sheet_refs(formula)
+
+    def repl(m: re.Match[str]) -> str:
+        return f"{m.group(1)}{to_row}"
+
+    body = re.sub(
+        rf"(?<!\$)(?<![A-Z])([A-Z]{{1,3}}){from_row}(?!\d)",
+        repl,
+        body,
+    )
+    return _pn_restore_sheet_refs(body, refs)
+
+
+def _pn_retarget_tw_emp_row(formula: str, from_emp: int, to_emp: int) -> str:
+    """TW!X{from_emp} → TW!X{to_emp}；TW!B2 / G6 / F6 / E22 等其它行号不动。"""
+    if from_emp == to_emp or not (isinstance(formula, str) and formula.startswith("=")):
+        return formula
+
+    def repl(m: re.Match[str]) -> str:
+        return f"{m.group(1)}{m.group(2)}{to_emp}"
+
+    return re.sub(
+        rf"(TW!|'TW'!)(\$?[A-Z]{{1,3}}\$?){from_emp}(?!\d)",
+        repl,
+        formula,
+    )
+
+
+def _pn_retarget_fx_row(formula: str, old_fx: int, new_fx: int) -> str:
+    if old_fx == new_fx or not (isinstance(formula, str) and formula.startswith("=")):
+        return formula
+    out = formula
+    out = re.sub(rf"\$B\${old_fx}(?!\d)", f"$B${new_fx}", out)
+    out = re.sub(rf"(?<!\$)B{old_fx}(?!\d)", f"B{new_fx}", out)
+    out = re.sub(rf"'PN'!\$?B\$?{old_fx}(?!\d)", f"'PN'!B{new_fx}", out)
+    out = re.sub(rf"(?<![A-Z])PN!\$?B\$?{old_fx}(?!\d)", f"PN!B{new_fx}", out)
+    return out
+
+
+def _pn_remap_local_rows(formula: str, remap: dict[int, int]) -> str:
+    if not remap or not (isinstance(formula, str) and formula.startswith("=")):
+        return formula
+    body, refs = _pn_stash_sheet_refs(formula)
+
+    def repl(m: re.Match[str]) -> str:
+        row = int(m.group(2))
+        new_row = remap.get(row, row)
+        return f"{m.group(1)}{new_row}"
+
+    body = re.sub(r"(?<!\$)(?<![A-Z])([A-Z]{1,3})(\d+)", repl, body)
+    body = re.sub(
+        r"\$([A-Z]{1,3})\$(\d+)",
+        lambda m: f"${m.group(1)}${remap.get(int(m.group(2)), int(m.group(2)))}",
+        body,
+    )
+    return _pn_restore_sheet_refs(body, refs)
+
+
+def _pn_expand_row_remap(
+    *,
+    labor_start: int,
+    expense_start_old: int,
+    svc_old: int,
+    delta: int,
+    max_row: int = 80,
+) -> dict[int, int]:
+    remap: dict[int, int] = {}
+    if delta == 0:
+        return remap
+    shrink = -delta
+    for r in range(1, max_row + 1):
+        if delta > 0:
+            if r < expense_start_old:
+                remap[r] = r
+            elif r < svc_old:
+                remap[r] = r + delta
+            else:
+                remap[r] = r + 2 * delta
+        else:
+            if r < expense_start_old:
+                remap[r] = r
+            elif r < svc_old:
+                remap[r] = r - shrink
+            else:
+                remap[r] = r - 2 * shrink
+    return remap
+
+
+def _pn_apply_detail_formulas(
+    ws: Worksheet,
+    *,
+    snapshot: dict[int, str],
+    template_row: int,
+    dest_row: int,
+    tw_from: int,
+    tw_to: int,
+    old_fx: int,
+    new_fx: int,
+) -> None:
+    for col, formula in snapshot.items():
+        text = _pn_shift_local_rows(formula, template_row, dest_row)
+        text = _pn_retarget_tw_emp_row(text, tw_from, tw_to)
+        text = _pn_retarget_fx_row(text, old_fx, new_fx)
+        ws.cell(dest_row, col).value = text
+
+
+def _pn_patch_eor_sum(ws: Worksheet, eor_row: int, labor_start: int, last_row: int) -> None:
+    """EOR 明细合计：母版是 SUM 时只改起止行。"""
+    for col in (5, 6):
+        cell = ws.cell(eor_row, col)
+        text = _pn_formula_text(cell.value)
+        if not text:
+            continue
+        letter = "E" if col == 5 else "F"
+        if re.search(rf"SUM\(\s*{letter}\d+\s*:\s*{letter}\d+\s*\)", text, re.I):
+            cell.value = f"=SUM({letter}{labor_start}:{letter}{last_row})"
+
+
+def _pn_layout_from_sheet(ws: Worksheet, n: int) -> dict[str, int]:
+    layout = _pn_layout(n)
+    svc = _find_pn_row_by_label(ws, "Service Fee") or layout["service_row"]
+    mgmt = _find_pn_row_by_label(ws, "Management Fee") or layout["mgmt_row"]
+    total_row = _find_pn_row_by_label(ws, "EOR/PEO Service Cost") or (svc + 5)
+    layout["service_row"] = svc
+    layout["mgmt_row"] = mgmt
+    layout["total_row"] = total_row
+    layout["fx_row"] = _find_pn_fx_row(ws)
+    return layout
+
+
 def fit_pn_employees(ws: Worksheet, employee_count: int, *, tw_data_start_row: int = TW_DATA_START_ROW) -> dict[str, int]:
     """
-    按实际人数扩/缩 PN 的 Labor + Expense 明细行，并重写相关公式。
-    插入/删除时同步平移下方合并单元格与行高，避免 Service/合计/汇率区样式错位。
+    按实际人数扩/缩 PN Labor + Expense。
+
+    母版公式是唯一真相：人数不变则整张 PN 公式不动；人数变化时从母版首行快照平移，
+    不发明 TW!J+Z / ROUNDUP 等业务公式。
     """
     n = max(int(employee_count), 1)
     if n > MAX_EMPLOYEES:
@@ -784,29 +961,116 @@ def fit_pn_employees(ws: Worksheet, employee_count: int, *, tw_data_start_row: i
 
     old_n = _count_pn_labor_slots(ws)
     labor_start = _PN_LABOR_START_ROW
-    expense_start = labor_start + old_n
+    expense_start_old = labor_start + old_n
     delta = n - old_n
+    tw_from = int(tw_data_start_row)
+
+    if delta == 0:
+        return _pn_layout_from_sheet(ws, n)
+
+    svc_old = _find_pn_row_by_label(ws, "Service Fee") or (_pn_layout(old_n)["service_row"])
+    fx_old = _find_pn_fx_row(ws)
+    labor_snap = _pn_snapshot_row_formulas(ws, labor_start)
+    expense_snap = _pn_snapshot_row_formulas(ws, expense_start_old)
+    summary_rows = {
+        "eor": _find_pn_row_by_label(ws, "EOR/PEO Cost") or _PN_EOR_ROW,
+        "svc": svc_old,
+        "mgmt": _find_pn_row_by_label(ws, "Management Fee"),
+        "total": _find_pn_row_by_label(ws, "EOR/PEO Service Cost"),
+        "fx": fx_old,
+    }
+    summary_snaps: dict[str, dict[int, str]] = {}
+    for key, row in summary_rows.items():
+        if row:
+            summary_snaps[key] = _pn_snapshot_row_formulas(ws, row)
+    settle_snaps: dict[int, dict[int, str]] = {}
+    for off in range(1, 8):
+        settle_snaps[off] = _pn_snapshot_row_formulas(ws, fx_old + off)
+
+    remap = _pn_expand_row_remap(
+        labor_start=labor_start,
+        expense_start_old=expense_start_old,
+        svc_old=svc_old,
+        delta=delta,
+        max_row=max(ws.max_row or 40, fx_old + 10),
+    )
 
     if delta > 0:
-        # 在首个 Expense 前插入 Labor 行（样式跟上一行 Labor）
-        _pn_insert_rows(ws, expense_start, delta, fill_style_row=labor_start)
-        expense_start += delta
-        # 在 Expense 块末尾后插入 Expense 行
+        _pn_insert_rows(ws, expense_start_old, delta, fill_style_row=labor_start)
+        expense_start = expense_start_old + delta
         _pn_insert_rows(ws, expense_start + old_n, delta, fill_style_row=expense_start)
-    elif delta < 0:
-        # 先删多余 Expense，再删多余 Labor
-        _pn_delete_rows(ws, expense_start + n, -delta)
+    else:
+        _pn_delete_rows(ws, expense_start_old + n, -delta)
         _pn_delete_rows(ws, labor_start + n, -delta)
 
-    layout = _pn_layout(n)
+    layout = _pn_layout_from_sheet(ws, n)
     expense_start = layout["expense_start"]
     blank_row = layout["blank_row"]
-    service_row = layout["service_row"]
-    mgmt_row = layout["mgmt_row"]
+    fx_row = layout["fx_row"]
     eor_row = layout["eor_row"]
-    sum_end = layout["sum_end"]
+    svc = layout["service_row"]
+    mgmt = layout["mgmt_row"]
+    total_row = layout["total_row"]
 
-    # 空行：清内容但保留已随行移动的样式/行高
+    for i in range(n):
+        labor_row = labor_start + i
+        expense_row = expense_start + i
+        tw_to = tw_from + i
+        if i > 0:
+            _copy_pn_row_style(ws, labor_start, labor_row)
+            _copy_pn_row_style(ws, expense_start, expense_row)
+        _ensure_merge_a_c(ws, labor_row)
+        _ensure_merge_a_c(ws, expense_row)
+        if labor_snap:
+            _pn_apply_detail_formulas(
+                ws,
+                snapshot=labor_snap,
+                template_row=labor_start,
+                dest_row=labor_row,
+                tw_from=tw_from,
+                tw_to=tw_to,
+                old_fx=fx_old,
+                new_fx=fx_row,
+            )
+        if expense_snap:
+            _pn_apply_detail_formulas(
+                ws,
+                snapshot=expense_snap,
+                template_row=expense_start_old,
+                dest_row=expense_row,
+                tw_from=tw_from,
+                tw_to=tw_to,
+                old_fx=fx_old,
+                new_fx=fx_row,
+            )
+
+    label_to_row = {
+        "eor": eor_row,
+        "svc": svc,
+        "mgmt": mgmt,
+        "total": total_row,
+        "fx": fx_row,
+    }
+    for key, snap in summary_snaps.items():
+        dest = label_to_row.get(key)
+        if not dest:
+            continue
+        for col, formula in snap.items():
+            text = _pn_remap_local_rows(formula, remap)
+            text = _pn_retarget_fx_row(text, fx_old, fx_row)
+            ws.cell(dest, col).value = text
+    for off, snap in settle_snaps.items():
+        dest = fx_row + off
+        for col, formula in snap.items():
+            text = _pn_remap_local_rows(formula, remap)
+            text = _pn_retarget_fx_row(text, fx_old, fx_row)
+            ws.cell(dest, col).value = text
+
+    _pn_patch_eor_sum(ws, eor_row, labor_start, blank_row)
+    _ensure_merge_a_c(ws, svc)
+    _ensure_merge_a_c(ws, mgmt)
+
+    # 空行：清内容但保留样式（与旧行为一致，仅人数变化时）
     for m in list(ws.merged_cells.ranges):
         if m.min_row == blank_row and m.max_row == blank_row:
             try:
@@ -820,169 +1084,7 @@ def fit_pn_employees(ws: Worksheet, employee_count: int, *, tw_data_start_row: i
         cell.value = None
     _ensure_merge_a_c(ws, blank_row)
 
-    fx_row = _find_pn_fx_row(ws)
-
-    for i in range(n):
-        tw_row = tw_data_start_row + i
-        labor_row = labor_start + i
-        expense_row = expense_start + i
-
-        if i > 0:
-            _copy_pn_row_style(ws, labor_start, labor_row)
-            _copy_pn_row_style(ws, expense_start, expense_row)
-
-        _ensure_merge_a_c(ws, labor_row)
-        _ensure_merge_a_c(ws, expense_row)
-
-        ws.cell(labor_row, 1).value = (
-            f'="- Labor cost for "&TW!B{tw_row}&"  -  "&MONTH(TW!$B$2)&"-"&YEAR(TW!$B$2)'
-        )
-        e_labor = ws.cell(labor_row, 5)
-        e_labor.value = f"=TW!J{tw_row}+TW!Z{tw_row}"
-        e_labor.number_format = _PN_NTD_FMT
-        f_labor = ws.cell(labor_row, 6)
-        f_labor.value = f"=E{labor_row}/$B${fx_row}"
-        f_labor.number_format = _PN_USD_FMT
-
-        ws.cell(expense_row, 1).value = f'="- Expense claim for "&TW!B{tw_row}'
-        e_exp = ws.cell(expense_row, 5)
-        e_exp.value = f"=TW!AB{tw_row}"
-        e_exp.number_format = _PN_NTD_FMT
-        f_exp = ws.cell(expense_row, 6)
-        f_exp.value = f"=E{expense_row}/$B${fx_row}"
-        f_exp.number_format = _PN_USD_FMT
-
-    # EOR 汇总（简单数字格式，避免 LuckySheet 会计格式空白）
-    e_eor = ws.cell(eor_row, 5)
-    e_eor.value = f"=SUM(E{labor_start}:E{sum_end})"
-    e_eor.number_format = _PN_NTD_FMT
-    f_eor = ws.cell(eor_row, 6)
-    f_eor.value = f"=SUM(F{labor_start}:F{sum_end})"
-    f_eor.number_format = _PN_USD_FMT
-
-    svc = _find_pn_row_by_label(ws, "Service Fee") or service_row
-    mgmt = _find_pn_row_by_label(ws, "Management Fee") or mgmt_row
-    e_svc = ws.cell(svc, 5)
-    e_svc.value = f"=SUM(E{mgmt}:E{mgmt + 1})"
-    e_svc.number_format = _PN_NTD_FMT
-    f_svc = ws.cell(svc, 6)
-    f_svc.value = f"=SUM(F{mgmt}:F{mgmt + 1})"
-    f_svc.number_format = _PN_USD_FMT
-    if isinstance(ws.cell(mgmt, 1).value, str) or ws.cell(mgmt, 1).value is None:
-        ws.cell(mgmt, 1).value = f'="- Management Fee - "&MONTH(TW!B2)&"-"&YEAR(TW!B2)'
-    e_mgmt = ws.cell(mgmt, 5)
-    e_mgmt.value = "=TW!G6"
-    e_mgmt.number_format = _PN_NTD_FMT
-    f_mgmt = ws.cell(mgmt, 6)
-    f_mgmt.value = f"=E{mgmt}/$B${fx_row}"
-    f_mgmt.number_format = _PN_USD_FMT
-    _ensure_merge_a_c(ws, svc)
-    _ensure_merge_a_c(ws, mgmt)
-
-    total_row = None
-    for row in range(eor_row + 1, (ws.max_row or 0) + 1):
-        ev = ws.cell(row, 5).value
-        if isinstance(ev, str) and ev.startswith("=") and "E15" in ev.replace("$", ""):
-            total_row = row
-            break
-        av = ws.cell(row, 1).value
-        if isinstance(av, str) and "EOR/PEO Service Cost" in av:
-            total_row = row
-            break
-    if total_row is None:
-        total_row = svc + 5
-
-    e_total = ws.cell(total_row, 5)
-    e_total.value = f"=E{eor_row}+E{svc}"
-    e_total.number_format = _PN_NTD_FMT
-    f_total = ws.cell(total_row, 6)
-    f_total.value = f"=F{eor_row}+F{svc}"
-    f_total.number_format = _PN_USD_FMT
-    # 合计行母版是 A:D 合并
-    for m in list(ws.merged_cells.ranges):
-        if m.min_row == total_row and m.max_row == total_row and m.min_col == 1:
-            break
-    else:
-        try:
-            ws.merge_cells(start_row=total_row, start_column=1, end_row=total_row, end_column=4)
-        except ValueError:
-            pass
-
-    for row in range(labor_start, sum_end + 1):
-        for col, fmt in ((5, _PN_NTD_FMT), (6, _PN_USD_FMT)):
-            cell = ws.cell(row, col)
-            if cell.value is not None:
-                cell.number_format = fmt
-
-    # 插删后重找 FX；openpyxl 不会改写公式文本里的绝对行号，需整段重写结算区
-    fx_row = _find_pn_fx_row(ws)
-    _rewrite_pn_settlement_block(ws, fx_row=fx_row, total_row=total_row)
-    for row in range(labor_start, fx_row + 8):
-        fcell = ws.cell(row, 6)
-        if isinstance(fcell.value, str) and "$B$" in fcell.value:
-            fcell.value = re.sub(r"\$B\$\d+", f"$B${fx_row}", fcell.value)
-        if isinstance(fcell.value, str) and "PN!B" in fcell.value.replace("$", ""):
-            fcell.value = re.sub(r"PN!\$?B\$?\d+", f"PN!B{fx_row}", fcell.value)
-    layout["service_row"] = svc
-    layout["mgmt_row"] = mgmt
-    layout["total_row"] = total_row
-    layout["fx_row"] = fx_row
     return layout
-
-
-def _pn_formula_text(value: Any) -> str | None:
-    if isinstance(value, str) and value.startswith("="):
-        return value
-    text = getattr(value, "text", None)
-    if isinstance(text, str) and text.startswith("="):
-        return text
-    return None
-
-
-def _retarget_pn_fx_in_formula(formula: str, fx_row: int) -> str:
-    text = re.sub(r"PN!\$?B\$?\d+", f"PN!B{fx_row}", formula)
-    return re.sub(r"\$B\$\d+", f"$B${fx_row}", text)
-
-
-def _rewrite_pn_settlement_block(ws: Worksheet, *, fx_row: int, total_row: int) -> None:
-    """
-    母版 FX 下方结算块相对布局（以 fx_row 为锚）：
-      F{fx}     = F{total}                         EOR USD
-      F{fx+1..4}= TW!E22..E25                      Other Fee 透传
-      F{fx+5}   = SUM(F{fx}:F{fx+4})               Sub Total
-      F{fx+6}   Tax：保留母版公式，只把 PN!B / $B$ 指到当前 FX 行
-      F{fx+7}   = SUM(F{fx+5}:F{fx+6})             Total
-    插删行后公式文本不会自动更新，须按新行号重写；Tax 不得用 ROUNDUP+0.01 覆盖客户母版。
-    """
-    # EOR USD 引用合计行
-    f_eor = ws.cell(fx_row, 6)
-    f_eor.value = f"=F{total_row}"
-    f_eor.number_format = _PN_USD_FMT
-
-    # Other Fee 透传（TW 行号固定，与人数无关）
-    for i, tw_e in enumerate((22, 23, 24, 25), start=1):
-        cell = ws.cell(fx_row + i, 6)
-        cell.value = f"=TW!E{tw_e}"
-
-    sub_row = fx_row + 5
-    tax_row = fx_row + 6
-    grand_row = fx_row + 7
-
-    f_sub = ws.cell(sub_row, 6)
-    f_sub.value = f"=SUM(F{fx_row}:F{fx_row + 4})"
-    f_sub.number_format = _PN_USD_FMT
-
-    f_tax = ws.cell(tax_row, 6)
-    existing_tax = _pn_formula_text(f_tax.value)
-    if existing_tax:
-        f_tax.value = _retarget_pn_fx_in_formula(existing_tax, fx_row)
-    else:
-        f_tax.value = f"=TW!F6/PN!B{fx_row}"
-    f_tax.number_format = _PN_USD_FMT
-
-    f_grand = ws.cell(grand_row, 6)
-    f_grand.value = f"=SUM(F{sub_row}:F{tax_row})"
-    f_grand.number_format = _PN_USD_FMT
 
 
 
