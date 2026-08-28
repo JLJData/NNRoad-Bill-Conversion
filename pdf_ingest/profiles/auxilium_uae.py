@@ -452,9 +452,17 @@ def _build_colmap(
 
     def put(field: str, targets: tuple[str, ...], *, occurrence: int = 0):
         from_map = _vendor_names_for_targets(rename, *targets)
-        names = tuple(from_map + list(targets))
+        # 映射里的供应商列是资格化唯一 key（如 Actual Salaries/Basic），
+        # 不要和同名第二次 occurrence 混用，否则唯一命中会被跳过。
+        if from_map:
+            col = _resolve_col(
+                headers, tuple(from_map), fallback=None, occurrence=0, used=used
+            )
+            if col is not None:
+                m[field] = col
+                return
         m[field] = _resolve_col(
-            headers, names, fallback=None, occurrence=occurrence, used=used
+            headers, tuple(targets), fallback=None, occurrence=occurrence, used=used
         )
 
     put("id", ("Emp ID",))
@@ -464,6 +472,9 @@ def _build_colmap(
     put("ec_basic", ("EC - Basic Salary",))
     put("ec_housing", ("EC - Housing Allowance",))
     put("ec_transport", ("EC - Transport Allowance",))
+    put("ec_school", ("EC - School Allowance",))
+    put("ec_food", ("EC - Food Allowance",))
+    put("ec_mobile", ("EC - Mobile Allowance",))
     put("ec_other", ("EC - Other allowance",))
     put("ec_gross", ("EC - Gross",))
 
@@ -478,9 +489,9 @@ def _build_colmap(
     put("act_basic", ("Basic Salary",), occurrence=1)
     put("act_housing", ("Housing Allowance",), occurrence=1)
     put("act_transport", ("Transport Allowance",), occurrence=1)
-    put("act_school", ("School Allowance", "EC - School Allowance"))
-    put("act_food", ("Food Allowance", "EC - Food Allowance"))
-    put("act_mobile", ("Mobile Allowance", "EC - Mobile Allowance"))
+    put("act_school", ("School Allowance",), occurrence=1)
+    put("act_food", ("Food Allowance",), occurrence=1)
+    put("act_mobile", ("Mobile Allowance",), occurrence=1)
     put("act_other", ("Other Allowance",), occurrence=1)
     put("act_ot1", ("EC - OT1", "OT1"))
     put("act_ot2", ("EC - OT2", "OT2"))
@@ -643,10 +654,10 @@ def parse_auxilium_payroll_draft(
                 "EC - Basic Salary": f("ec_basic"),
                 "EC - Housing Allowance": f("ec_housing"),
                 "EC - Transport Allowance": f("ec_transport"),
-                "EC - School Allowance": f0("act_school"),
+                "EC - School Allowance": f("ec_school"),
                 "EC - Other allowance": f("ec_other"),
-                "EC - Mobile Allowance": f0("act_mobile"),
-                "EC - Food Allowance": f0("act_food"),
+                "EC - Mobile Allowance": f("ec_mobile"),
+                "EC - Food Allowance": f("ec_food"),
                 "OT Eligible": "No",
                 "EC - OT1": f0("act_ot1"),
                 "EC - OT2": f0("act_ot2"),
@@ -663,9 +674,9 @@ def parse_auxilium_payroll_draft(
                 "Basic Salary": f("act_basic"),
                 "Housing Allowance": f("act_housing"),
                 "Transport Allowance": f("act_transport"),
-                "School Allowance": f0("act_school"),
-                "Mobile Allowance": f0("act_mobile"),
-                "Food Allowance": f0("act_food"),
+                "School Allowance": f("act_school"),
+                "Mobile Allowance": f("act_mobile"),
+                "Food Allowance": f("act_food"),
                 "Other Allowance": f("act_other"),
                 "OT1": f0("act_ot1"),
                 "OT2": f0("act_ot2"),
