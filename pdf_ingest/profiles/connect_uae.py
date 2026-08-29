@@ -60,12 +60,30 @@ _NAME_AED_RE = re.compile(
     r"([A-Za-z][A-Za-z .']*?)\s*[-–—]\s*AED\s*([0-9]{1,3}(?:,[0-9]{3})*(?:\.\d+)?|\d+(?:\.\d+)?)",
     re.I,
 )
+# CR76056 等新版：• Kevin Willmaser - Aug 2026: 18418.00 AED
+_NAME_PERIOD_AED_RE = re.compile(
+    r"(?:[•\u2022]\s*)?"
+    r"([A-Za-z][A-Za-z .']*?)\s*[-–—]\s*"
+    r"(?:January|February|March|April|May|June|July|August|September|October|November|December|"
+    r"Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)"
+    r"['’]?\s*\d{4}\s*:\s*"
+    r"([0-9]{1,3}(?:,[0-9]{3})*(?:\.\d+)?|\d+(?:\.\d+)?)\s*AED",
+    re.I,
+)
 _NAME_GBP_RE = re.compile(
     r"([A-Za-z][A-Za-z .']*?)\s*[-–—]\s*[£￡]\s*([0-9]{1,3}(?:,[0-9]{3})*(?:\.\d+)?|\d+(?:\.\d+)?)",
     re.I,
 )
 _MONEY_RE = re.compile(
     r"(?<![A-Za-z])([0-9]{1,3}(?:,[0-9]{3})*(?:\.\d+)?|\d+(?:\.\d+)?)(?!\s*%)"
+)
+# 「Commission - Kevin Willmaser 1.00 59,342.94」行首姓名
+_LINE_KIND_NAME_RE = re.compile(
+    r"^\s*\d+\s+"
+    r"(?:commission|reimbursement|expense(?:s)?|payroll|eosb|end\s+of\s+service|"
+    r"emiratisation|emiritisation|emiratization)\s*[-–—:]\s*"
+    r"([A-Za-z][A-Za-z .,'']+?)(?=\s+\d|\s*$)",
+    re.I | re.M,
 )
 _MONTH_MAP = {
     "january": 1,
@@ -216,10 +234,12 @@ def parse_connect_invoice(
         bl = block.lower()
         if "agency fee" in bl:
             continue  # 不进 Recurring Fee
+        if "bank charge" in bl:
+            continue
         kind = None
-        if "emiratization" in bl:
+        if "emiratization" in bl or "emiratisation" in bl or "emiritisation" in bl:
             kind = "emiratization"
-        elif "eosb" in bl:
+        elif "eosb" in bl or "end of service" in bl:
             kind = "eosb"
         elif "commission" in bl:
             kind = "commission"
@@ -231,6 +251,9 @@ def parse_connect_invoice(
             continue
 
         name_hits = list(_NAME_AED_RE.finditer(block))
+        if not name_hits:
+            name_hits = list(_NAME_PERIOD_AED_RE.finditer(block))
+
         if kind == "commission" and not name_hits:
             # Kevin - £9144 后跟 AED 行
             gbp_hits = list(_NAME_GBP_RE.finditer(block))
@@ -242,21 +265,36 @@ def parse_connect_invoice(
                 aed = max(moneys) if moneys else _parse_money(gh.group(2))
                 if aed is not None:
                     emp["commission"] = round(emp["commission"] + aed, 6)
+            if gbp_hits:
+                continue
+            # 「Commission - Kevin Willmaser 1.00 59,342.94」
+            m_line = _LINE_KIND_NAME_RE.search(block)
+            if m_line and moneys:
+                emp = _ensure_emp(emps, m_line.group(1))
+                emp["commission"] = round(emp["commission"] + max(moneys), 6)
             continue
 
         if kind == "emiratization" and not name_hits:
-            # "Emiratization Fee 2.00 660.00" / "Emiratization Fee : 1.00 660.00"
+            # "Emiratization Fee 2.00 660.00" / "Emiritisation Fee - Per Employee ... 1.00 1,320.00"
             m_fee = re.search(
-                r"emiratization\s+fee\s*:?\s*(\d+(?:\.\d+)?)\s+([0-9,]+\.\d+|[0-9,]+)",
+                r"(?:emir[ia]tisation|emiratization)\s+fee\b[^\n]*?"
+                r"(?<![0-9,])(\d+(?:\.\d+)?)\s+([0-9]{1,3}(?:,[0-9]{3})*\.\d{2}|\d+\.\d{2})(?!\d)",
                 block,
                 re.I,
             )
+            added = False
             if m_fee:
                 qty = int(float(m_fee.group(1)))
                 rate = _parse_money(m_fee.group(2))
-                if qty > 0 and rate is not None:
-                    for _ in range(qty):
+                # qty=1 且 rate 为总额时进池一次；qty>1 时按人头复制单价
+                if qty > 0 and rate is not None and rate >= 10:
+                    if qty == 1:
                         emiratization_pool.append(rate)
+                    else:
+                        for _ in range(qty):
+                            emiratization_pool.append(rate)
+                    added = True
+            if added:
                 continue
             nums = [_parse_money(x) for x in _MONEY_RE.findall(block)]
             nums = [x for x in nums if x is not None]
@@ -267,12 +305,33 @@ def parse_connect_invoice(
                     qty, rate = n, nums[i + 1]
                     break
             if qty and rate:
-                for _ in range(int(qty)):
+                if int(qty) == 1:
                     emiratization_pool.append(rate)
+                else:
+                    for _ in range(int(qty)):
+                        emiratization_pool.append(rate)
             elif nums:
                 big = [x for x in nums if x >= 10]
                 if big:
                     emiratization_pool.append(big[-1])
+            continue
+
+        if kind == "expenses" and not name_hits:
+            # 「Reimbursement - Kevin Willmaser, Zineb Messaoud 1.00 8,617.00」
+            m_line = _LINE_KIND_NAME_RE.search(block)
+            moneys = [_parse_money(x) for x in _MONEY_RE.findall(block)]
+            moneys = [x for x in moneys if x is not None and x >= 1]
+            if m_line and moneys:
+                names = [n.strip() for n in re.split(r"\s*,\s*", m_line.group(1)) if n.strip()]
+                # 去掉尾部误吃的数字碎片
+                names = [re.sub(r"\s+\d[\d,.]*$", "", n).strip() for n in names]
+                names = [n for n in names if n and re.search(r"[A-Za-z]", n)]
+                total = max(moneys)
+                if names:
+                    each = round(total / len(names), 6)
+                    for n in names:
+                        emp = _ensure_emp(emps, n)
+                        emp["expenses"] = round(float(emp.get("expenses") or 0) + each, 6)
             continue
 
         for hit in name_hits:

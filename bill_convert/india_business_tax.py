@@ -16,7 +16,8 @@ _SKIP_DESC_RE = re.compile(
     r"outsource\s+payroll|monthly\s+ctc|cgst|sgst|igst|\bgst\b|total|taxable|"
     r"round\s*off|invoice|gstin|hsn|sac|quantity|particular|description|"
     r"amount\s+in\s+words|rupees|bank|ifsc|account|\bpan\b|phone|email|"
-    r"998224|page\s+\d|bill\s+to|place\s+of\s+supply",
+    r"998224|page\s+\d|bill\s+to|place\s+of\s+supply|balance\s*due|"
+    r"amount\s+chargeable|sub[\s\-]?total|grand\s*total",
     re.I,
 )
 _BT_FORMULA_RE = re.compile(
@@ -121,14 +122,14 @@ def parse_business_tax_formula(text: Any) -> dict[str, Any] | None:
     return {"cgst": cgst, "sgst": sgst, "mode": mode, "digits": ndigits, "formula": str(text).strip()}
 
 
-def assert_no_unknown_invoice_amounts(
+def collect_unknown_invoice_amounts(
     text: str,
     *,
     ctc: float | None,
     cgst: float | None,
     sgst: float | None,
-) -> None:
-    """票面多出对不上 CTC/GST/合计的金额行 → 中止，避免 Expense/Deduction 被写成 0。"""
+) -> list[str]:
+    """票面多出对不上 CTC/GST/合计的金额行描述列表。"""
     known: list[float] = []
     for x in (
         ctc,
@@ -165,12 +166,36 @@ def assert_no_unknown_invoice_amounts(
         if re.fullmatch(r"[\d,%.\s]+", desc):
             continue
         unknown.append(f"{desc} = {amt}")
-    if unknown:
-        preview = "；".join(unknown[:5])
-        raise ValueError(
-            f"Biz Solutions PDF 出现未识别的费用行（{preview}），"
-            f"版式可能已变更；已中止写出以免 Expense Claim / Deduction 被写成 0"
-        )
+    return unknown
+
+
+def assert_no_unknown_invoice_amounts(
+    text: str,
+    *,
+    ctc: float | None,
+    cgst: float | None,
+    sgst: float | None,
+    ignore: bool = False,
+) -> list[str]:
+    """
+    票面多出对不上 CTC/GST/合计的金额行。
+    - ignore=False：中止（默认），避免 Expense/Deduction 被写成 0
+    - ignore=True：不中止，返回警告文案列表供上层写入 warnings
+    """
+    unknown = collect_unknown_invoice_amounts(text, ctc=ctc, cgst=cgst, sgst=sgst)
+    if not unknown:
+        return []
+    preview = "；".join(unknown[:5])
+    msg = (
+        f"Biz Solutions PDF 出现未识别的费用行（{preview}），"
+        f"版式可能已变更；Expense Claim / Deduction 可能仍为 0，请人工核对"
+    )
+    if ignore:
+        return [msg]
+    raise ValueError(
+        f"Biz Solutions PDF 出现未识别的费用行（{preview}），"
+        f"版式可能已变更；已中止写出以免 Expense Claim / Deduction 被写成 0"
+    )
 
 
 def _parse_money(text: str) -> float | None:

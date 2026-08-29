@@ -5,7 +5,8 @@ Biz Solutions（India）Tax Invoice PDF → India-L（profile: biz_solutions_ind
 当前策略：
   - 从 PDF 提取：员工名、账期、Monthly CTC 总额、CGST+SGST（Business Tax）
   - Business Tax 取整见 mapping.indiaBusinessTaxRoundMode / indiaBusinessTaxRoundDigits（默认 ROUND 到整数）
-  - 票面多出对不上 CTC/GST/合计的金额行则中止（避免 Expense Claim / Deduction 被写成 0）
+  - 票面多出对不上 CTC/GST/合计的金额行则中止（避免 Expense Claim / Deduction 被写成 0）；
+    mapping.ignoreUnknownInvoiceAmounts=true 时可忽略并继续（写入 warnings）
   - 薪资六项 + PT/IIT 走 mapping.indiaSalarySplit；Bonus 固定 0
   - 未配置拆分时：CTC 整笔进 Basic（其余 0）并 warning
 
@@ -217,7 +218,14 @@ def parse_biz_solutions_pdf(
             "Biz Solutions PDF 未解析到 GST，版式可能已变更；已中止写出以免税额被置 0"
         )
 
-    assert_no_unknown_invoice_amounts(text, ctc=ctc, cgst=cgst, sgst=sgst)
+    ignore_unknown = False
+    if isinstance(mapping, dict):
+        ignore_unknown = bool(mapping.get("ignoreUnknownInvoiceAmounts"))
+
+    unknown_warns = assert_no_unknown_invoice_amounts(
+        text, ctc=ctc, cgst=cgst, sgst=sgst, ignore=ignore_unknown
+    )
+    warnings.extend(unknown_warns)
 
     return {
         "employee_name": employee_name,
