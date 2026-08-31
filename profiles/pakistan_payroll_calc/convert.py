@@ -64,7 +64,7 @@ PK_L_HEADER_ROW = 7
 PK_L_DATA_START = 8
 PK_DATA_START = 9
 PK_EE_DATA_START = 10
-PK_MAIN_HEADER_ROW = 8  # Pakistan 主表默认表头行（数据行 PK_DATA_START 的上一行）
+PK_MAIN_HEADER_ROW = 3  # Pakistan 主表列名行（Business Tax 等；非 data_start-1）
 MAX_ROWS = 60
 
 _DATE_FMT = "yyyy/m/d"
@@ -129,19 +129,26 @@ def _pk_main_layout() -> tuple[int, int]:
     ft_raw = mapping.get("formulaTemplates") if isinstance(mapping.get("formulaTemplates"), dict) else {}
     ft = ft_raw.get("Pakistan") if isinstance(ft_raw.get("Pakistan"), dict) else {}
     data_start = int(ft.get("dataStartRow") or PK_DATA_START)
-    header_row = int(ft.get("headerRow") or (data_start - 1) or PK_MAIN_HEADER_ROW)
+    header_row = int(ft.get("headerRow") or PK_MAIN_HEADER_ROW)
     if header_row >= data_start:
-        header_row = max(data_start - 1, 1)
+        header_row = PK_MAIN_HEADER_ROW
     return header_row, data_start
 
 
-def _resolve_pk_main_column(ws: Worksheet, header_row: int, *header_names: str) -> int | None:
+def _resolve_pk_main_column(
+    ws: Worksheet,
+    header_row: int,
+    *header_names: str,
+    data_start: int | None = None,
+) -> int | None:
     """按 Pakistan 主表表头解析列号（Excel 1-based）。"""
-    headers = _header_map(ws, header_row)
-    for name in header_names:
-        col = headers.get(name)
-        if col:
-            return col
+    scan_until = max(int(data_start or header_row + 1) - 1, header_row)
+    for row in range(1, scan_until + 1):
+        headers = _header_map(ws, row)
+        for name in header_names:
+            col = headers.get(name)
+            if col:
+                return col
     return None
 
 
@@ -380,7 +387,7 @@ def _apply_invoice_derived_business_tax(
     warnings: list[str] = []
     cell_writes: list[dict[str, Any]] = []
     header_row, data_start = _pk_main_layout()
-    biz_col = _resolve_pk_main_column(pk, header_row, "Business Tax")
+    biz_col = _resolve_pk_main_column(pk, header_row, "Business Tax", data_start=data_start)
     if not biz_col:
         warnings.append(
             f"Pakistan 主表第 {header_row} 行未找到 Business Tax 列，跳过发票推导 Business Tax"
