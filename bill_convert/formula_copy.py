@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import re
 from copy import copy
-from typing import Any
+from typing import Any, Iterable
 
 from openpyxl.worksheet.worksheet import Worksheet
 
@@ -129,15 +129,75 @@ def fix_sheet_cross_refs(
     other_sheet: str,
     other_row: int,
     quoted: bool,
+    data_row_min: int | None = None,
+    data_row_max: int | None = None,
 ) -> None:
-    """修正同行公式里对其它 sheet 的行引用为配对行（扩多行时不能只修 off-by-one）。"""
+    """修正同行公式里对其它 sheet 的「相对」行引用为配对行。
+
+    - 尊重 $ 绝对行（如 $B$2 账期），不改
+    - 可选只改落在员工数据行区间内的引用，避免误伤表头/元数据行
+    """
     prefix = f"'{other_sheet}'!" if quoted else f"{other_sheet}!"
-    pat = re.compile(rf"{re.escape(prefix)}([A-Z]+)(\d+)(?!\d)")
+    # 组1=列前是否有 $；组2=列；组3=行前是否有 $；组4=行号
+    pat = re.compile(rf"{re.escape(prefix)}(\$?)([A-Z]+)(\$?)(\d+)(?!\d)")
     repl_prefix = prefix
+    lo = int(data_row_min) if data_row_min is not None else None
+    hi = int(data_row_max) if data_row_max is not None else None
+
+    def _repl(m: re.Match[str]) -> str:
+        col_abs, col, row_abs, row_s = m.group(1), m.group(2), m.group(3), m.group(4)
+        if row_abs == "$":
+            return m.group(0)
+        row_n = int(row_s)
+        if lo is not None and row_n < lo:
+            return m.group(0)
+        if hi is not None and row_n > hi:
+            return m.group(0)
+        return f"{repl_prefix}{col_abs}{col}{other_row}"
+
     for col in range(1, (ws.max_column or 0) + 1):
         cell = ws.cell(dst_row, col)
         if cell.data_type == "f" and isinstance(cell.value, str):
-            cell.value = pat.sub(lambda m: f"{repl_prefix}{m.group(1)}{other_row}", cell.value)
+            cell.value = pat.sub(_repl, cell.value)
+
+
+def retarget_pn_fx_b_column_refs(
+    wb,
+    fx_row: int,
+    *,
+    from_rows: Iterable[int] | None = None,
+    pn_sheet: str = "PN",
+) -> int:
+    """把指向「旧汇率行」的 PN!B / 本表 $B$ 改到新 fx_row。
+
+    只改 from_rows（默认常见母版汇率行），勿动 Client Code/Name（PN!B8/B9 等）。
+    返回改写单元格数。
+    """
+    fx = max(int(fx_row), 1)
+    candidates = [int(r) for r in (from_rows if from_rows is not None else (28, 29, 30, 31, 32, 33))]
+    olds = sorted({r for r in candidates if r > 0 and r != fx})
+    if not olds:
+        return 0
+    old_alt = "|".join(str(r) for r in olds)
+    pat_pn = re.compile(rf"PN!\$?B\$?(?:{old_alt})(?!\d)", re.IGNORECASE)
+    pat_local = re.compile(rf"(?<!!)\$B\$(?:{old_alt})(?!\d)")
+    changed = 0
+    for name in wb.sheetnames:
+        ws = wb[name]
+        for row in ws.iter_rows():
+            for cell in row:
+                v = cell.value
+                if not isinstance(v, str):
+                    continue
+                nv = v
+                if "PN!" in v.upper() and pat_pn.search(v):
+                    nv = pat_pn.sub(f"PN!$B${fx}", nv)
+                elif name == pn_sheet and pat_local.search(nv):
+                    nv = pat_local.sub(f"$B${fx}", nv)
+                if nv != v:
+                    cell.value = nv
+                    changed += 1
+    return changed
 
 
 def fix_tw_row_tw_ee_refs(ws_tw: Worksheet, dst_row: int, ee_row: int) -> None:

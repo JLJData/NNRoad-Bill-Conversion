@@ -29,6 +29,7 @@ from bill_convert.formula_copy import (
     copy_row_formulas as shared_copy_row_formulas,
     fix_ee_row_hk_refs,
     fix_hk_row_hk_ee_refs,
+    retarget_pn_fx_b_column_refs,
     snapshot_row_cells,
 )
 from bill_convert.formula_layout import (
@@ -698,27 +699,17 @@ def fit_pn_employees(ws: Worksheet, employee_count: int) -> dict[str, int]:
     }
 
 
-def retarget_pn_fx_refs(wb, fx_row: int) -> None:
-    """插删 PN 行后，把汇率格引用改到新行。
+def retarget_pn_fx_refs(wb, fx_row: int, *, from_rows: list[int] | None = None) -> None:
+    """插删 PN 行后，把「旧汇率行」引用改到新行。
 
-    覆盖：
-    - PN!$B$xx / PN!Bxx（Hong Kong!H 的 MPF 下限常用无 $ 写法）
-    - PN 本表裸 $B$xx
-    勿动：Hong Kong!$B$2 等他表账期绝对引用。
+    只改指向旧 FX 行的 PN!Bxx / $B$xx；勿动 Client Code/Name（PN!B9 / PN!B8）。
     """
-    pat_pn = re.compile(r"PN!\$?B\$?\d+", re.IGNORECASE)
-    pat_local = re.compile(r"(?<!!)\$B\$\d+")
-    for name in wb.sheetnames:
-        ws = wb[name]
-        for row in ws.iter_rows():
-            for cell in row:
-                v = cell.value
-                if not isinstance(v, str):
-                    continue
-                if "PN!" in v.upper() and pat_pn.search(v):
-                    cell.value = pat_pn.sub(f"PN!$B${fx_row}", v)
-                elif name == PN_SHEET and pat_local.search(v):
-                    cell.value = pat_local.sub(f"$B${fx_row}", v)
+    retarget_pn_fx_b_column_refs(
+        wb,
+        fx_row,
+        from_rows=from_rows,
+        pn_sheet=PN_SHEET,
+    )
 
 
 def apply_hk_employee_formula_styles(
@@ -864,6 +855,7 @@ def _convert_impl(
     )
     clear_excess_hk_formula_rows(wb, len(employees))
 
+    fx_row_before = _find_pn_fx_row(wb[PN_SHEET]) if PN_SHEET in wb.sheetnames else 28
     pn_layout = fit_pn_employees(wb[PN_SHEET], len(employees))
     fx_row = int(pn_layout.get("fx_row") or 28)
     fx_rate = None
@@ -921,7 +913,7 @@ def _convert_impl(
         fx_rate = get_hk_pn_fx_rate(rates)
         fx_source = "api:HKD*0.97"
     wb[PN_SHEET].cell(fx_row, 2).value = fx_rate
-    retarget_pn_fx_refs(wb, fx_row)
+    retarget_pn_fx_refs(wb, fx_row, from_rows=[int(fx_row_before), 28, 29, 30, 31])
     from fx_policy import make_pn_fx_provenance
 
     write_source = "api" if str(fx_source or "").startswith("api:") or str(fx_source or "").startswith("vendor:") else "mapping"

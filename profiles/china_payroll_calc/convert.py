@@ -34,6 +34,7 @@ from bill_convert.formula_copy import (
     copy_row_formulas as shared_copy_row_formulas,
     fix_china_row_china_ee_refs,
     fix_ee_row_china_refs,
+    retarget_pn_fx_b_column_refs,
     snapshot_row_cells,
 )
 from bill_convert.formula_layout import (
@@ -855,30 +856,17 @@ def fit_pn_employees(ws: Worksheet, employee_count: int) -> dict[str, int]:
 
 
 
-def retarget_pn_fx_refs(wb, fx_row: int) -> None:
-    """插删 PN 行后，仅把「汇率格」绝对引用改到新行。
+def retarget_pn_fx_refs(wb, fx_row: int, *, from_rows: list[int] | None = None) -> None:
+    """插删 PN 行后，仅把指向旧汇率行的引用改到新行。
 
-    只改：
-    - 跨表 PN!$B$xx（如 China!H9 的服务费×汇率）
-    - PN 本表裸 $B$xx（如 =E16/$B$29）
-    不要动：
-    - PN!B8 相对引用（Client Name）
-    - China!$B$2 等他表绝对引用（Labor cost 账期 MONTH/YEAR）
+    勿动 Client Name/Code（PN!B8 / PN!B9 及绝对 $B$8/$B$9）。
     """
-    pat_pn = re.compile(r"PN!\$B\$\d+", re.IGNORECASE)
-    # 负向后顾：前面是 ! 说明是 Sheet!$B$n，不是本表汇率格
-    pat_local = re.compile(r"(?<!!)\$B\$\d+")
-    for name in wb.sheetnames:
-        ws = wb[name]
-        for row in ws.iter_rows():
-            for cell in row:
-                v = cell.value
-                if not isinstance(v, str):
-                    continue
-                if "PN!" in v.upper() and pat_pn.search(v):
-                    cell.value = pat_pn.sub(f"PN!$B${fx_row}", v)
-                elif name == PN_SHEET and pat_local.search(v):
-                    cell.value = pat_local.sub(f"$B${fx_row}", v)
+    retarget_pn_fx_b_column_refs(
+        wb,
+        fx_row,
+        from_rows=from_rows if from_rows is not None else (28, 29, 30, 31, 32, 33),
+        pn_sheet=PN_SHEET,
+    )
 
 
 def _plausible_cny_per_usd(value: float) -> bool:
@@ -1214,6 +1202,7 @@ def _convert_impl(
     else:
         formula_match_hint = ""
 
+    fx_row_before = _find_pn_fx_row(wb[PN_SHEET]) if PN_SHEET in wb.sheetnames else 29
     pn_layout = fit_pn_employees(wb[PN_SHEET], len(employees))
     fx_row = int(pn_layout.get("fx_row") or _find_pn_fx_row(wb[PN_SHEET]))
     pn_fx_write = None
@@ -1234,7 +1223,7 @@ def _convert_impl(
             fx_source=fx_src,
         )
 
-    retarget_pn_fx_refs(wb, fx_row)
+    retarget_pn_fx_refs(wb, fx_row, from_rows=[int(fx_row_before), 28, 29, 30, 31, 32])
     apply_china_specials(
         wb[CHINA_SHEET],
         len(employees),

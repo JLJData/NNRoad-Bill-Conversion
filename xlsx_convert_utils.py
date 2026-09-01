@@ -69,7 +69,14 @@ def is_date_column_header(header: str) -> bool:
         return False
     if "start date" in h or "end date" in h:
         return True
-    if h in ("pay period", "payroll month", "period from", "period to"):
+    if h in (
+        "pay period",
+        "payroll month",
+        "period from",
+        "period to",
+        "from",
+        "to",
+    ):
         return True
     if h.endswith(" date") or h.endswith("日期"):
         return True

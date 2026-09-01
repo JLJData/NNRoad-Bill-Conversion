@@ -78,6 +78,54 @@ def normalize_template_date_cells(xlsx_path: Path | str) -> int:
                     if dt is not None:
                         cell.value = dt
                         changed += 1
+    # From/To 等日期列表头：强制日期格式（含公式列，避免 Lucky/HF 显示成 46235）
+    changed += _ensure_date_header_column_formats(wb)
     if changed:
         wb.save(path)
+    return changed
+
+
+def _ensure_date_header_column_formats(wb) -> int:
+    """按表头识别 From/To 等日期列，给数据行打上 yyyy/m/d（不改公式本身）。"""
+    from xlsx_convert_utils import is_date_column_header, norm
+
+    changed = 0
+    date_fmt = "yyyy/m/d"
+    for ws in wb.worksheets:
+        date_cols: dict[int, int] = {}  # col -> header_row
+        max_scan_r = min(ws.max_row or 0, 12)
+        max_c = min(ws.max_column or 0, 80)
+        for r in range(1, max_scan_r + 1):
+            for c in range(1, max_c + 1):
+                raw = ws.cell(r, c).value
+                if raw is None:
+                    continue
+                if isinstance(raw, str) and raw.startswith("="):
+                    continue
+                if is_date_column_header(str(raw)):
+                    # 避免把整段「Pay Period」合并区误标；From/To 单列表头才收
+                    h = norm(raw).lower()
+                    if h in ("from", "to", "period from", "period to") or h.endswith(" date") or "start date" in h or "end date" in h:
+                        date_cols[c] = r
+        if not date_cols:
+            continue
+        max_r = ws.max_row or 0
+        for c, hdr_r in date_cols.items():
+            for r in range(hdr_r + 1, max_r + 1):
+                cell = ws.cell(r, c)
+                # 跳过空行/合计标签行
+                if cell.value is None and not cell.number_format:
+                    continue
+                if _is_excel_date_format(cell.number_format or ""):
+                    continue
+                # 有公式或数值/日期才刷格式
+                has_f = getattr(cell, "data_type", None) == "f" or (
+                    isinstance(cell.value, str) and cell.value.startswith("=")
+                )
+                if has_f or isinstance(cell.value, (int, float, datetime, date)) or (
+                    isinstance(cell.value, str) and _parse_date_text(cell.value)
+                ):
+                    if (cell.number_format or "").strip().lower() != date_fmt:
+                        cell.number_format = date_fmt
+                        changed += 1
     return changed
