@@ -344,10 +344,24 @@ def write_italy_l_sheet_meta(ws: Worksheet, employees: list[dict[str, Any]]) -> 
 
 def write_italy_l(ws: Worksheet, employees: list[dict[str, Any]]) -> None:
     """只覆盖数据列，母版公式列保留/扩行复制。"""
-    header_row, data_start, _ = _italy_l_layout(target=True)
+    header_row, data_start, name_headers = _italy_l_layout(target=True)
     headers = _header_map(ws, header_row)
     if not headers:
         raise ValueError(f"「{ITALY_L_SHEET}」第 {header_row} 行表头为空")
+    # 源表缺姓名时用母版占位名（如 CUPIMATTEO），须在清格前读出
+    name_cols = [headers[h] for h in name_headers if h in headers]
+    if not name_cols and "Employee Name" in headers:
+        name_cols = [headers["Employee Name"]]
+    template_name = ""
+    for c in name_cols:
+        template_name = _emp_display_name({"Employee Name": ws.cell(data_start, c).value})
+        if template_name:
+            break
+    if template_name:
+        for emp in employees:
+            if not _emp_display_name(emp):
+                emp["Employee Name"] = template_name
+
     write_italy_l_sheet_meta(ws, employees)
     # meta 可能改了 Salary 表头，重读
     headers = _header_map(ws, header_row)

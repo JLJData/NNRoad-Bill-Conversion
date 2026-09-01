@@ -300,7 +300,8 @@ def parse_safeguard_italy_excel(
                 return raw
             return v
 
-        # 姓名：优先 A 列非空；否则 Employee Name
+        # 姓名：优先 A 列非空；否则 Employee Name。
+        # 不用 Employee ID 顶姓名——源表缺姓名时留给母版自带名（write_italy_l 保留）。
         name_col_a = 1
         name_header_col = _col_by_label(headers, "Employee Name")
         id_col = _col_by_label(headers, "Employee ID")
@@ -313,20 +314,27 @@ def parse_safeguard_italy_excel(
             name = _norm(_cell_val(row, name_col_a))
             if not name and name_header_col:
                 name = _norm(_cell_val(row, name_header_col))
-            if not name:
-                # 有的版式姓名不在 A，但有 Employee ID
-                if id_col and _cell_val(row, id_col) not in (None, ""):
-                    name = _norm(_cell_val(row, id_col))
-                else:
-                    continue
-            low = name.lower()
+            eid_raw = _cell_val(row, id_col) if id_col else None
+            eid = _norm(eid_raw)
+            # 工号或纯数字不当姓名（源表常把 ID 写在 Name 列 / A 列空只剩 ID）
+            if name and eid and name == eid:
+                name = ""
+            if name and name.isdigit():
+                if not eid:
+                    eid = name
+                    eid_raw = name
+                name = ""
+            if not name and not eid:
+                continue
+            low = (name or eid).lower()
             if "invoice total" in low or low.startswith("sgwi"):
                 continue
 
             emp: dict[str, Any] = dict(meta)
-            emp["Employee Name"] = name
-            if id_col:
-                emp["_employee_id"] = _cell_val(row, id_col)
+            if name:
+                emp["Employee Name"] = name
+            if eid_raw not in (None, ""):
+                emp["_employee_id"] = eid_raw
 
             claimed = _explicit_rename_targets(rename)
             applied_rename = 0
