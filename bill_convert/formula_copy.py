@@ -212,8 +212,22 @@ def fix_china_row_china_ee_refs(ws_china: Worksheet, dst_row: int, ee_row: int) 
     fix_sheet_cross_refs(ws_china, dst_row, other_sheet="China EE", other_row=ee_row, quoted=True)
 
 
-def fix_ee_row_china_refs(ws_ee: Worksheet, dst_row: int, china_row: int) -> None:
-    fix_sheet_cross_refs(ws_ee, dst_row, other_sheet="China", other_row=china_row, quoted=False)
+def fix_ee_row_china_refs(
+    ws_ee: Worksheet,
+    dst_row: int,
+    china_row: int,
+    *,
+    data_row_min: int | None = None,
+) -> None:
+    """配对 China EE 行与 China 员工行；勿改 China!B2/C2 等表头账期（相对行号 < data_row_min）。"""
+    fix_sheet_cross_refs(
+        ws_ee,
+        dst_row,
+        other_sheet="China",
+        other_row=china_row,
+        quoted=False,
+        data_row_min=data_row_min,
+    )
 
 
 def fix_hk_row_hk_ee_refs(ws_hk: Worksheet, dst_row: int, ee_row: int) -> None:

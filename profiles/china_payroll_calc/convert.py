@@ -336,7 +336,7 @@ def fit_china_formula_sheets(
             shared_copy_row_formulas(
                 ee, ee_tpl, dst_row, src_ee_l, dst_l, target_l_sheet=CHINA_L_SHEET
             )
-            fix_ee_row_china_refs(ee, dst_row, china_row)
+            fix_ee_row_china_refs(ee, dst_row, china_row, data_row_min=CHINA_DATA_START_ROW)
 
 
 def clear_excess_china_formula_rows(wb, employee_count: int) -> None:
@@ -375,7 +375,9 @@ def apply_china_employee_formula_styles(
         main_example_field="chinaExampleRow",
         ee_example_field="chinaEeExampleRow",
         fix_main_ee_refs=fix_china_row_china_ee_refs,
-        fix_ee_main_refs=fix_ee_row_china_refs,
+        fix_ee_main_refs=lambda ws_ee, dst_row, china_row: fix_ee_row_china_refs(
+            ws_ee, dst_row, china_row, data_row_min=CHINA_DATA_START_ROW
+        ),
         main_snapshots=main_snapshots,
         ee_snapshots=ee_snapshots,
     )
