@@ -31,6 +31,7 @@ from bill_convert.formula_copy import (
 from bill_convert.formula_layout import (
     apply_employee_formula_styles,
     needed_example_rows_for_styles,
+    sort_employees_by_code,
     tw_l_row_for_data_row,
 )
 from bill_convert.formula_layout import _default_example_row as default_example_row_for_mapping
@@ -721,6 +722,7 @@ def convert(
 
         if not employees:
             raise ValueError("Pakistan-L 未解析到员工行")
+        sort_employees_by_code(employees, employee_directory)
 
         output_path.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(template_path, output_path)

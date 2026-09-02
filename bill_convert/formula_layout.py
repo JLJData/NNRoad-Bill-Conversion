@@ -69,8 +69,11 @@ def _lookup_directory_row_for_emp(
         str(emp.get("EN Name") or ""),
         str(emp.get("姓名") or ""),
         str(emp.get("Name of Employee") or ""),
+        str(emp.get("Employee Name") or ""),
+        str(emp.get("English Name") or ""),
         str(emp.get("EE Name") or ""),
         str(emp.get("Name") or ""),
+        str(emp.get("employee_name") or ""),
     ]
     best: dict[str, Any] | None = None
     best_score = 0
@@ -250,6 +253,60 @@ def _bill_employee_code(emp: dict[str, Any]) -> str:
             if got:
                 return got
     return ""
+
+
+def _natural_code_key(code: str) -> tuple:
+    """CUS1677-0001 < CUS1677-0002 < CUS1677-0010（数字按数值比，不是纯字符串）。"""
+    parts: list[tuple[int, Any]] = []
+    for chunk in re.split(r"(\d+)", str(code or "")):
+        if not chunk:
+            continue
+        if chunk.isdigit():
+            parts.append((1, int(chunk)))
+        else:
+            parts.append((0, chunk.casefold()))
+    return tuple(parts)
+
+
+def _directory_employee_code(row: dict[str, Any] | None) -> str:
+    if not isinstance(row, dict):
+        return ""
+    return _norm_code(row.get("employee_code") or row.get("employeeCode"))
+
+
+def sort_code_for_employee(
+    emp: dict[str, Any],
+    employee_directory: list[dict[str, Any]] | None = None,
+) -> str:
+    """排序用工号：优先员工库编码，否则账单上的工号。"""
+    if not isinstance(emp, dict):
+        return ""
+    dir_code = _directory_employee_code(_lookup_directory_row_for_emp(emp, employee_directory))
+    if dir_code:
+        return dir_code
+    return _bill_employee_code(emp)
+
+
+def sort_employees_by_code(
+    employees: list[dict[str, Any]] | None,
+    employee_directory: list[dict[str, Any]] | None = None,
+) -> list[dict[str, Any]]:
+    """
+    按员工编码升序原地排序后写入母版（CUS1677-0001 在 0002 前）。
+    金额/公式仍按人匹配，只改行序；无编码的人稳定排在末尾。
+    """
+    if not employees or len(employees) < 2:
+        return employees if employees is not None else []
+    decorated: list[tuple[int, tuple, int, dict[str, Any]]] = []
+    for i, emp in enumerate(employees):
+        code = sort_code_for_employee(emp, employee_directory) if isinstance(emp, dict) else ""
+        if code:
+            decorated.append((0, _natural_code_key(code), i, emp))
+        else:
+            decorated.append((1, (), i, emp))
+    decorated.sort()
+    employees[:] = [item[-1] for item in decorated]
+    return employees
 
 
 def _directory_row_by_names(

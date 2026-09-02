@@ -29,6 +29,7 @@ from openpyxl.worksheet.worksheet import Worksheet
 
 from bill_convert.fixed_value_writes import apply_fixed_value_writes
 from bill_convert.formula_copy import shift_row_formula
+from bill_convert.formula_layout import sort_employees_by_code
 from convert_mapping import find_sheet_name, resolve_convert_mapping
 from fx_rate import get_italy_pn_fx_rate
 from pn_meta import PnMeta, apply_pn_meta
@@ -664,6 +665,7 @@ def convert(
 
         if not employees:
             raise ValueError("Italy-L 未解析到员工行")
+        sort_employees_by_code(employees, employee_directory)
 
         output_path.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(template_path, output_path)

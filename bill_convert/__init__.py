@@ -7,6 +7,7 @@ from bill_convert.formula_copy import copy_row_formulas, shift_row_formula
 from bill_convert.formula_layout import (
     apply_employee_formula_styles,
     resolve_formula_rows_layout,
+    sort_employees_by_code,
     tw_l_row_for_data_row,
 )
 from bill_convert.header_scan import find_header_row_by_markers
@@ -57,5 +58,6 @@ __all__ = [
     "resolve_target_l_layout",
     "resolve_target_l_sheet_name",
     "shift_row_formula",
+    "sort_employees_by_code",
     "tw_l_row_for_data_row",
 ]

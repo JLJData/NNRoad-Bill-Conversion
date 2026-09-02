@@ -28,6 +28,7 @@ from openpyxl.worksheet.formula import ArrayFormula
 from openpyxl.worksheet.worksheet import Worksheet
 
 from bill_convert.formula_copy import shift_row_formula
+from bill_convert.formula_layout import sort_employees_by_code
 from bill_convert.india_business_tax import parse_business_tax_formula
 from bill_convert.india_salary_split import (
     INDIA_L_KNOWN_DATA_FIELDS,
@@ -559,6 +560,7 @@ def convert(
 
         if not employees:
             raise ValueError("India-L 未解析到员工行")
+        sort_employees_by_code(employees, employee_directory)
 
         # 映射有七项拆分时覆盖 L 表（PDF 路径常先把 CTC 整笔进 Basic）
         from bill_convert.india_salary_split import (

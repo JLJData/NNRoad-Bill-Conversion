@@ -22,6 +22,7 @@ from openpyxl import load_workbook
 from openpyxl.worksheet.worksheet import Worksheet
 
 from bill_convert.fixed_value_writes import apply_fixed_value_writes
+from bill_convert.formula_layout import sort_employees_by_code
 from convert_mapping import find_sheet_name, resolve_convert_mapping
 from fx_rate import fetch_usd_rates, get_uk_gbp_per_usd
 from pn_meta import PnMeta, apply_pn_meta
@@ -180,6 +181,7 @@ def convert(
     pn_meta: PnMeta | dict[str, Any] | None = None,
     registry_dir: Path | None = None,
     convert_mapping: dict[str, Any] | None = None,
+    employee_directory: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     global _ACTIVE_MAPPING
     _ACTIVE_MAPPING = resolve_convert_mapping("uk_payroll_calc", convert_mapping)
@@ -190,6 +192,7 @@ def convert(
             template_path,
             pn_meta=pn_meta,
             registry_dir=registry_dir,
+            employee_directory=employee_directory,
         )
     finally:
         _ACTIVE_MAPPING = None
@@ -202,6 +205,7 @@ def _convert_impl(
     *,
     pn_meta: PnMeta | dict[str, Any] | None = None,
     registry_dir: Path | None = None,
+    employee_directory: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     if not template_path.is_file():
         raise FileNotFoundError(f"母版不存在: {template_path}")
@@ -211,6 +215,7 @@ def _convert_impl(
     employees = parse_source(source_path)
     if not employees:
         raise ValueError("未解析到任何 UK-L 员工")
+    sort_employees_by_code(employees, employee_directory)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(template_path, output_path)
