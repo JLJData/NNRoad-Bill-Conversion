@@ -70,6 +70,13 @@ _NAME_PERIOD_AED_RE = re.compile(
     r"([0-9]{1,3}(?:,[0-9]{3})*(?:\.\d+)?|\d+(?:\.\d+)?)\s*AED",
     re.I,
 )
+# CR77401：• Mohamad Fiazul Huq -  41800.00 AED（金额在 AED 前，无月份）
+_NAME_AMOUNT_AED_RE = re.compile(
+    r"(?:[•\u2022]\s*)?"
+    r"([A-Za-z][A-Za-z .']*?)\s*[-–—]\s*"
+    r"([0-9]{1,3}(?:,[0-9]{3})*(?:\.\d+)?|\d+(?:\.\d+)?)\s*AED",
+    re.I,
+)
 _NAME_GBP_RE = re.compile(
     r"([A-Za-z][A-Za-z .']*?)\s*[-–—]\s*[£￡]\s*([0-9]{1,3}(?:,[0-9]{3})*(?:\.\d+)?|\d+(?:\.\d+)?)",
     re.I,
@@ -253,6 +260,8 @@ def parse_connect_invoice(
         name_hits = list(_NAME_AED_RE.finditer(block))
         if not name_hits:
             name_hits = list(_NAME_PERIOD_AED_RE.finditer(block))
+        if not name_hits:
+            name_hits = list(_NAME_AMOUNT_AED_RE.finditer(block))
 
         if kind == "commission" and not name_hits:
             # Kevin - £9144 后跟 AED 行
