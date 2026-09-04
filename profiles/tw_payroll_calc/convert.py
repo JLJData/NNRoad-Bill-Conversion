@@ -493,29 +493,13 @@ def apply_tw_business_tax(
         cell.number_format = "#,##0"
 
 
-def _directory_ee_identity(row: dict[str, Any]) -> str:
-    """工号优先；无工号时用员工库 id（Office 会下发无工号员工，供按姓名配对）。"""
-    code = norm(row.get("employee_code") or row.get("employeeCode"))
-    if code:
-        return code
-    eid = row.get("employee_id")
-    if eid is None:
-        eid = row.get("employeeId")
-    if eid is None or eid == "":
-        return ""
-    s = str(eid).strip()
-    if not s or s.lower() in ("none", "null"):
-        return ""
-    return s
-
-
 def match_ee_code(
     excel_names: list[str],
     directory: list[dict[str, Any]],
 ) -> tuple[str | None, str | None]:
     """
-    从员工目录按姓名匹配 EE Code。
-    优先 employee_code；没有工号时回退 employee_id。
+    从员工目录按姓名匹配 employee_code（EE Code）。
+    不回退 employee_id：那是库主键，与工号不是同一字段。
     返回 (code, warning)；匹配不到/歧义时 code=None 并带 warning。
     """
     names = [n for n in (_norm_person_name(x) for x in excel_names) if n]
@@ -527,8 +511,8 @@ def match_ee_code(
     best_score = 0
     best: list[dict[str, Any]] = []
     for row in directory:
-        identity = _directory_ee_identity(row)
-        if not identity:
+        code = norm(row.get("employee_code") or row.get("employeeCode"))
+        if not code:
             continue
         score = 0
         for field in (
@@ -552,13 +536,13 @@ def match_ee_code(
     # 同分多人：优先更短英文名（更具体的全名通常更长，但同分时取最短减少歧义误伤）
     if len(best) > 1:
         # 若编码相同可合并
-        codes = {_directory_ee_identity(r) for r in best}
+        codes = {norm(r.get("employee_code") or r.get("employeeCode")) for r in best}
         if len(codes) == 1:
             return next(iter(codes)), None
         label = " / ".join(n for n in excel_names if n)
         return None, f"EE Code 匹配歧义（{len(best)} 人同分）：{label}"
 
-    return _directory_ee_identity(best[0]), None
+    return norm(best[0].get("employee_code") or best[0].get("employeeCode")), None
 
 
 def apply_tw_ee_codes(

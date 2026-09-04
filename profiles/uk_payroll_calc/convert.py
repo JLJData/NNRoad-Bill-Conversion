@@ -26,6 +26,7 @@ from bill_convert.formula_layout import sort_employees_by_code
 from convert_mapping import find_sheet_name, resolve_convert_mapping
 from fx_rate import fetch_usd_rates, get_uk_gbp_per_usd
 from pn_meta import PnMeta, apply_pn_meta
+from profiles.tw_payroll_calc.convert import match_ee_code
 from region_templates import get_region_template
 from xlsx_postprocess import postprocess_converted_xlsx
 from bill_convert.uk_layout import (
@@ -40,6 +41,7 @@ UK_L_SHEET = "UK-L"
 UK_SHEET = "UK"
 UK_EE_SHEET = "UK EE"
 PN_SHEET = "PN"
+UK_EE_DATA_START = 9
 
 # 写入母版时用的标签 → 单元格（金额在 B 列）
 _LABEL_CELLS: dict[str, str] = {
@@ -173,6 +175,87 @@ def write_uk_l(ws: Worksheet, parsed: dict[str, Any]) -> None:
             ws[addr] = float(amounts[label])
 
 
+def _pn_customer_id(pn_meta: PnMeta | dict[str, Any] | None) -> str | None:
+    if pn_meta is None:
+        return None
+    if isinstance(pn_meta, PnMeta):
+        cid = (pn_meta.customer_id or "").strip()
+        return cid or None
+    if isinstance(pn_meta, dict):
+        cid = str(pn_meta.get("customer_id") or pn_meta.get("customerId") or "").strip()
+        return cid or None
+    return None
+
+
+_UK_NAME_JUNK_RE = re.compile(
+    r"[\s\-–—]*(?:monthly|salary\s+calculation(?:\s+for\s+fy\s+\S+)?)[\s\-–—]*$",
+    re.I,
+)
+
+
+def _uk_match_names(*raw: Any) -> list[str]:
+    """账单姓名 + 去掉 -Monthly / Salary Calculation 尾巴，供员工库匹配。"""
+    names: list[str] = []
+    seen: set[str] = set()
+
+    def add(value: Any) -> None:
+        s = _norm(value)
+        if not s or s.startswith("=") or s.startswith("{"):
+            return
+        folded = s.casefold()
+        if folded not in seen:
+            seen.add(folded)
+            names.append(s)
+        cleaned = _UK_NAME_JUNK_RE.sub("", s).strip(" -")
+        if cleaned:
+            folded_c = cleaned.casefold()
+            if folded_c not in seen:
+                seen.add(folded_c)
+                names.append(cleaned)
+
+    for value in raw:
+        add(value)
+    return names
+
+
+def apply_uk_ee_codes(
+    wb,
+    employees: list[dict[str, Any]],
+    *,
+    employee_directory: list[dict[str, Any]] | None = None,
+    pn_meta: PnMeta | dict[str, Any] | None = None,
+) -> list[str]:
+    """
+    UK EE!B = Client Code（有客户编号时覆盖母版占位如 CUS1510）
+    UK EE!D = EE Code（按 EE Name / employee_name 匹配员工库工号，不用库主键）
+    UK EE!E 母版公式 =UK!B{row}，不覆盖。
+    """
+    if UK_EE_SHEET not in wb.sheetnames:
+        return []
+    ws = wb[UK_EE_SHEET]
+    uk = wb[UK_SHEET] if UK_SHEET in wb.sheetnames else None
+    client_code = _pn_customer_id(pn_meta)
+    directory = list(employee_directory or [])
+    warnings: list[str] = []
+    for i, emp in enumerate(employees):
+        row = UK_EE_DATA_START + i
+        if client_code:
+            ws.cell(row, 2).value = client_code
+        uk_name = uk.cell(9 + i, 2).value if uk is not None else None
+        names = _uk_match_names(
+            emp.get("employee_name"),
+            emp.get("Employee Name"),
+            emp.get("EE Name"),
+            uk_name,
+            emp.get("title"),
+        )
+        code, warn = match_ee_code(names, directory)
+        ws.cell(row, 4).value = code
+        if warn:
+            warnings.append(f"UK EE 第{i + 1}人：{warn}")
+    return warnings
+
+
 def convert(
     source_path: Path,
     output_path: Path,
@@ -251,6 +334,15 @@ def _convert_impl(
             warnings.append(
                 f"{sheet_names[i]}（{emp_name}）Gross Salary 为空/0，请按截图人工补齐 GBP 明细"
             )
+
+    warnings.extend(
+        apply_uk_ee_codes(
+            wb,
+            employees,
+            employee_directory=employee_directory,
+            pn_meta=applied_pn or pn_meta,
+        )
+    )
 
     fx_rate = None
     fx_source = None

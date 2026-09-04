@@ -87,9 +87,14 @@ def _uae_excel_names(emp: dict[str, Any]) -> list[str]:
     """匹配 EE Code 用的姓名。Emp ID 仅在看起来像姓名时才参与（旧 ingest 可能把姓名写进该列）。"""
     names: list[str] = []
     seen: set[str] = set()
-    display = [_norm(emp.get("Employee Name")), _norm(emp.get("English Name"))]
+    display = [
+        _norm(emp.get("Employee Name")),
+        _norm(emp.get("English Name")),
+        _norm(emp.get("EE Name")),
+        _norm(emp.get("employee_name")),
+    ]
     for n in display:
-        if not n:
+        if not n or n.startswith("="):
             continue
         folded = n.casefold()
         if folded in seen:
@@ -105,6 +110,60 @@ def _uae_excel_names(emp: dict[str, Any]) -> list[str]:
                 seen.add(folded)
                 names.append(emp_id)
     return names
+
+
+def _uae_ee_sheet_name(wb) -> str | None:
+    """母版可能是 UAE EE / UAE-EE；Connect 客户模板尤其常见带连字符。"""
+    mapping = _active_mapping()
+    pn = mapping.get("pnSheets") if isinstance(mapping.get("pnSheets"), dict) else {}
+    want = [str(pn.get("ee") or "").strip(), UAE_EE_SHEET, "UAE-EE", "UAE_EE"]
+    names = list(wb.sheetnames)
+    lower = {n.lower(): n for n in names}
+    for w in want:
+        if not w:
+            continue
+        if w in names:
+            return w
+        hit = lower.get(w.lower())
+        if hit:
+            return hit
+    for n in names:
+        compact = re.sub(r"[\s\-_]", "", n).lower()
+        if compact == "uaeee":
+            return n
+    return None
+
+
+def _scan_uae_ee_layout(ws: Worksheet) -> tuple[int, int, int]:
+    """返回 (data_start_row, ee_code_col, ee_name_col)。按表头定位，兼容 Connect 行 9 / 默认行 10。"""
+    code_col, name_col, header_row = 4, 5, None
+    for r in range(1, 12):
+        for c in range(1, 16):
+            h = re.sub(r"\s+", " ", _norm(ws.cell(r, c).value)).lower()
+            if h == "ee code":
+                code_col = c
+                header_row = r if header_row is None else min(header_row, r)
+            elif h == "ee name":
+                name_col = c
+                header_row = r if header_row is None else min(header_row, r)
+    start_from = (header_row or 3) + 1
+    for r in range(start_from, 22):
+        a = _norm(ws.cell(r, 1).value)
+        if a and "eor" in a.lower():
+            continue
+        name_v = ws.cell(r, name_col).value
+        code_v = ws.cell(r, code_col).value
+        b_v = ws.cell(r, 2).value
+        if _cell_formula_text(name_v) or _cell_formula_text(code_v) or _cell_formula_text(b_v):
+            return r, code_col, name_col
+        if _norm(name_v) or _norm(code_v):
+            return r, code_col, name_col
+    mapped = UAE_EE_DATA_START
+    ft = _active_mapping().get("formulaTemplates")
+    block = ft.get("UAE EE") if isinstance(ft, dict) and isinstance(ft.get("UAE EE"), dict) else {}
+    if block.get("defaultExampleRow"):
+        mapped = int(block["defaultExampleRow"])
+    return mapped, code_col, name_col
 
 
 def _norm(value: Any) -> str:
@@ -367,11 +426,12 @@ def _copy_row_style_and_formula(
             dest.value = src.value
 
 
-def _retarget_ee_refs(formula: str, ee_from: int, ee_to: int) -> str:
+def _retarget_ee_refs(formula: str, ee_from: int, ee_to: int, *, ee_sheet: str = UAE_EE_SHEET) -> str:
     if not isinstance(formula, str) or not formula.startswith("="):
         return formula
+    escaped = re.escape(ee_sheet)
     return re.sub(
-        rf"('UAE EE'!\$?[A-Z]{{1,3}})\$?{ee_from}(?!\d)",
+        rf"('(?:{escaped}|UAE EE|UAE-EE)'!\$?[A-Z]{{1,3}})\$?{ee_from}(?!\d)",
         lambda m: f"{m.group(1)}{ee_to}",
         formula,
         flags=re.I,
@@ -381,12 +441,16 @@ def _retarget_ee_refs(formula: str, ee_from: int, ee_to: int) -> str:
 def expand_uae_employee_rows(wb, employee_count: int) -> None:
     n = max(int(employee_count), 1)
     _, l_data_start, _ = _uae_l_layout(target=True)
+    ee_name = _uae_ee_sheet_name(wb)
+    ee_start = UAE_EE_DATA_START
+    if ee_name:
+        ee_start, _, _ = _scan_uae_ee_layout(wb[ee_name])
     if UAE_SHEET in wb.sheetnames:
         uae = wb[UAE_SHEET]
         for i in range(1, n):
             dest = UAE_DATA_START + i
             l_row = l_data_start + i
-            ee_row = UAE_EE_DATA_START + i
+            ee_row = ee_start + i
             _copy_row_style_and_formula(
                 uae,
                 UAE_DATA_START,
@@ -398,17 +462,19 @@ def expand_uae_employee_rows(wb, employee_count: int) -> None:
             for c in range(1, 41):
                 cell = uae.cell(dest, c)
                 if isinstance(cell.value, str) and cell.value.startswith("="):
-                    cell.value = _retarget_ee_refs(cell.value, UAE_EE_DATA_START, ee_row)
+                    cell.value = _retarget_ee_refs(
+                        cell.value, ee_start, ee_row, ee_sheet=ee_name or UAE_EE_SHEET
+                    )
             # 姓名列等公式已由上面从母版首行复制并平移，勿再硬编码覆盖
 
-    if UAE_EE_SHEET in wb.sheetnames:
-        ee = wb[UAE_EE_SHEET]
+    if ee_name:
+        ee = wb[ee_name]
         for i in range(1, n):
-            dest = UAE_EE_DATA_START + i
+            dest = ee_start + i
             l_row = l_data_start + i
             _copy_row_style_and_formula(
                 ee,
-                UAE_EE_DATA_START,
+                ee_start,
                 dest,
                 max_col=40,
                 l_from=l_data_start,
@@ -1012,26 +1078,47 @@ def apply_uae_ee_codes(
 ) -> list[str]:
     """
     UAE EE!B = Client Code（库客户编号，同 PN!B9）
-    UAE EE!D = EE Code（按 Employee Name 匹配客户员工目录；无工号则用 employee_id）
+    UAE EE EE Code 列 = 按 EE Name / English Name / Employee Name 匹配员工库工号
     不写 UAE-L Emp ID：那是供应商工号，与 EE Code 不是同一字段。
     """
-    if UAE_EE_SHEET not in wb.sheetnames:
+    ee_name = _uae_ee_sheet_name(wb)
+    if not ee_name:
         return []
-    ws = wb[UAE_EE_SHEET]
+    ws = wb[ee_name]
+    data_start, code_col, _name_col = _scan_uae_ee_layout(ws)
     client_code = _pn_customer_id(pn_meta)
     directory = list(employee_directory or [])
     warnings: list[str] = []
 
+    header_row, l_data_start, name_headers = _uae_l_layout(target=True)
+    l_ws = wb[UAE_L_SHEET] if UAE_L_SHEET in wb.sheetnames else None
+    l_headers = _header_map(l_ws, header_row) if l_ws is not None else {}
+    uae_ws = wb[UAE_SHEET] if UAE_SHEET in wb.sheetnames else None
+
     for i, emp in enumerate(employees):
-        row = UAE_EE_DATA_START + i
+        row = data_start + i
         # Client Code：仅在有客户编号时写入数值；母版公式/空单元格一律不发明引用
         if client_code:
             ws.cell(row, 2).value = client_code
         # Client Name：母版公式保留（Connect 常用 UAE-L!C1；Auxilium 常用 PN!B8），勿覆盖
 
-        excel_names = _uae_excel_names(emp)
+        extra: list[Any] = []
+        if l_ws is not None:
+            for nh in name_headers:
+                col = l_headers.get(nh)
+                if col:
+                    extra.append(l_ws.cell(l_data_start + i, col).value)
+        if uae_ws is not None:
+            uae_name = uae_ws.cell(UAE_DATA_START + i, 2).value
+            if not _cell_formula_text(uae_name):
+                extra.append(uae_name)
+        excel_names = _uae_excel_names({**emp, "EE Name": extra[0] if extra else None})
+        for n in extra:
+            s = _norm(n)
+            if s and not s.startswith("=") and s.casefold() not in {x.casefold() for x in excel_names}:
+                excel_names.append(s)
         code, warn = match_ee_code(excel_names, directory)
-        ws.cell(row, 4).value = code  # 匹配不到显式清空，避免母版残留
+        ws.cell(row, code_col).value = code  # 匹配不到显式清空，避免母版残留
         if warn:
             warnings.append(f"UAE EE 第{i + 1}人：{warn}")
     return warnings

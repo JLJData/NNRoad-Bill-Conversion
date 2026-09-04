@@ -175,8 +175,6 @@ def apply_pn_meta(
         raise ValueError("客户 ID (PN!B9) 不能为空")
     if not pn.billing_address:
         raise ValueError("账单地址 (PN!B10) 不能为空")
-    if pn.due_date is None:
-        raise ValueError("Due date (PN!F11) 不能为空")
 
     invoice_date = pn.invoice_date or date.today()
     invoice_number = pn.invoice_number
@@ -194,7 +192,8 @@ def apply_pn_meta(
     ws[PN_CELLS["billing_address"]] = pn.billing_address
     ws[PN_CELLS["invoice_number"]] = invoice_number
     _write_pn_date_cell(ws, PN_CELLS["invoice_date"], invoice_date)
-    _write_pn_date_cell(ws, PN_CELLS["due_date"], pn.due_date)
+    if pn.due_date is not None:
+        _write_pn_date_cell(ws, PN_CELLS["due_date"], pn.due_date)
 
     return PnMeta(
         customer_name=pn.customer_name,
