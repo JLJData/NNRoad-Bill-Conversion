@@ -79,11 +79,32 @@ def _uae_l_layout(*, target: bool = False) -> tuple[int, int, list[str]]:
 
 
 def _emp_display_name(emp: dict[str, Any]) -> str:
-    for key in ("Employee Name", "English Name"):
-        name = _norm(emp.get(key))
-        if name:
-            return name
-    return ""
+    names = _uae_excel_names(emp)
+    return names[0] if names else ""
+
+
+def _uae_excel_names(emp: dict[str, Any]) -> list[str]:
+    """匹配 EE Code 用的姓名。Emp ID 仅在看起来像姓名时才参与（旧 ingest 可能把姓名写进该列）。"""
+    names: list[str] = []
+    seen: set[str] = set()
+    display = [_norm(emp.get("Employee Name")), _norm(emp.get("English Name"))]
+    for n in display:
+        if not n:
+            continue
+        folded = n.casefold()
+        if folded in seen:
+            continue
+        seen.add(folded)
+        names.append(n)
+    emp_id = _norm(emp.get("Emp ID"))
+    if emp_id:
+        folded = emp_id.casefold()
+        if folded not in seen:
+            # 有数字的更像供应商工号，不当姓名
+            if not any(ch.isdigit() for ch in emp_id):
+                seen.add(folded)
+                names.append(emp_id)
+    return names
 
 
 def _norm(value: Any) -> str:
@@ -991,7 +1012,8 @@ def apply_uae_ee_codes(
 ) -> list[str]:
     """
     UAE EE!B = Client Code（库客户编号，同 PN!B9）
-    UAE EE!D = EE Code（按姓名匹配客户员工目录）
+    UAE EE!D = EE Code（按 Employee Name 匹配客户员工目录；无工号则用 employee_id）
+    不写 UAE-L Emp ID：那是供应商工号，与 EE Code 不是同一字段。
     """
     if UAE_EE_SHEET not in wb.sheetnames:
         return []
@@ -1007,8 +1029,8 @@ def apply_uae_ee_codes(
             ws.cell(row, 2).value = client_code
         # Client Name：母版公式保留（Connect 常用 UAE-L!C1；Auxilium 常用 PN!B8），勿覆盖
 
-        excel_names = [_emp_display_name(emp)]
-        code, warn = match_ee_code([n for n in excel_names if n], directory)
+        excel_names = _uae_excel_names(emp)
+        code, warn = match_ee_code(excel_names, directory)
         ws.cell(row, 4).value = code  # 匹配不到显式清空，避免母版残留
         if warn:
             warnings.append(f"UAE EE 第{i + 1}人：{warn}")

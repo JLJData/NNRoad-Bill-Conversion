@@ -74,6 +74,8 @@ def _lookup_directory_row_for_emp(
         str(emp.get("EE Name") or ""),
         str(emp.get("Name") or ""),
         str(emp.get("employee_name") or ""),
+        # UAE 等：供应商无工号时 ingest 可能把姓名写进 Emp ID
+        str(emp.get("Emp ID") or ""),
     ]
     best: dict[str, Any] | None = None
     best_score = 0

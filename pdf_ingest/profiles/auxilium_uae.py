@@ -590,8 +590,10 @@ def parse_auxilium_payroll_draft(
                 "未识别员工工号/姓名列：请在列名对照中配置到 Emp ID / Employee Name，"
                 "或保证表头与这两列同名"
             )
+        id_from_name_fallback = False
         if not id_col:
             id_col = name_col
+            id_from_name_fallback = True
         if not name_col:
             name_col = id_col
 
@@ -643,7 +645,8 @@ def parse_auxilium_payroll_draft(
                 return v if v is not None else 0.0
 
             emp: dict[str, Any] = {
-                "Emp ID": ax_id or None,
+                # 供应商没有 Emp ID 列时不要把姓名写进工号；转换阶段按姓名查员工库
+                "Emp ID": None if id_from_name_fallback else (ax_id or None),
                 "Employee Name": name.upper() if name else None,
                 "Designation": _norm(_col_val(ws, row, colmap, "designation")) or None,
                 "Payroll Currency": "AED",
