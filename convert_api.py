@@ -801,6 +801,29 @@ async def hf_snapshot(
         _cleanup_dir(tmp_dir)
 
 
+def _excel_layout_kind(engine_id: str | None, pdf_profile_id: str | None, source_kind: str) -> str:
+    """
+    版式指纹：与历史上成功 INGESTED 的 layoutKind 对齐。
+    例: topsource_uk:excel / uk_payroll_calc:uk_l / uae_payroll_calc:vendor_payroll_draft
+    """
+    sk = (source_kind or "").strip().lower()
+    pid = (pdf_profile_id or "").strip()
+    eid = (engine_id or "").strip()
+    if sk in ("topsource_excel_invoice", "vendor_vertical_excel") and pid:
+        return f"{pid}:excel"
+    if sk == "uk_l":
+        return f"{(eid or 'uk_payroll_calc')}:uk_l"
+    if sk and eid:
+        return f"{eid}:{sk}"
+    if sk and pid:
+        return f"{pid}:{sk}"
+    if pid:
+        return f"{pid}:excel"
+    if eid:
+        return f"{eid}:excel"
+    return f"excel:{sk or 'unknown'}"
+
+
 @app.post("/file-role/classify")
 async def file_role_classify(
     file: UploadFile = File(...),
@@ -852,13 +875,16 @@ async def file_role_classify(
                 convert_mapping=mapping,
             )
             if isinstance(result, dict) and result.get("ok"):
+                source_kind = str(result.get("sourceKind") or result.get("layout") or "excel").strip()
+                layout_kind = _excel_layout_kind(eid, pid, source_kind)
                 return {
                     "ok": True,
                     "role": "CONVERT",
                     "reason": "excel_inspect_ok",
                     "fileName": name,
                     "sheetName": result.get("sheetName"),
-                    "sourceKind": result.get("sourceKind"),
+                    "sourceKind": source_kind,
+                    "layoutKind": layout_kind,
                 }
             return {
                 "ok": True,
@@ -879,6 +905,7 @@ async def file_role_classify(
                             "reason": "vendor_plugin",
                             "pluginId": plugin.plugin_id,
                             "fileName": name,
+                            "layoutKind": f"artifact:{(plugin.plugin_id or 'plugin').strip()}",
                         }
                 except Exception:
                     continue
@@ -894,6 +921,7 @@ async def file_role_classify(
                             "reason": "pdf_profile_keywords",
                             "fileName": name,
                             "pdfProfileId": pid,
+                            "layoutKind": f"{pid}:pdf",
                         }
                     return {
                         "ok": True,
@@ -901,6 +929,7 @@ async def file_role_classify(
                         "reason": "pdf_profile_mismatch",
                         "fileName": name,
                         "pdfProfileId": pid,
+                        "layoutKind": f"{pid}:pdf_mismatch",
                     }
                 except KeyError:
                     pass

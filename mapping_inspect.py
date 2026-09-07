@@ -675,11 +675,24 @@ def _inspect_uk_vertical_source(source_path: Path, mapping: dict[str, Any]) -> d
             "sampleEmployees": employees,
             "labelColumn": label_col,
             "amountColumn": amount_col,
+            "sourceKind": _uk_vertical_source_kind(name, title, sheet_names),
         }
     except Exception as exc:
         return {"ok": False, "message": str(exc)}
     finally:
         wb.close()
+
+
+def _uk_vertical_source_kind(sheet_name: str, title: str, sheet_names: list[str]) -> str:
+    """区分 UK-L 母版竖表 vs TopSource 一人一表发票等供应商原始竖表。"""
+    sn = (sheet_name or "").strip().upper()
+    if sn.startswith("UK-L") or any(str(n).strip().upper().startswith("UK-L") for n in (sheet_names or [])):
+        return "uk_l"
+    t = (title or "").lower()
+    if "salary calculation" in t or "topsource" in t:
+        return "topsource_excel_invoice"
+    # 无 UK-L、有竖表标签：仍按供应商原始竖表（TopSource Excel 常见）
+    return "vendor_vertical_excel"
 
 
 def _inspect_uae_pn(
