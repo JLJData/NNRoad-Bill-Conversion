@@ -60,18 +60,21 @@ _DATE_FMT = "yyyy/m/d"
 COL_EE_CODE = 1
 COL_NAME = 2
 COL_BASE = 3
+COL_OTHER = 9
 COL_ER_CONTRIB = 12
 COL_LIABILITY = 13
 COL_EE_SI = 14
 COL_EE_TAX = 15
 COL_EE_NHS = 16
 COL_EXPENSE = 10
+COL_MEDICAL = 17
 
 # 表头优先；找不到时回退固定列（默认母版兼容）
 _CYPRUS_FIELD_HEADERS: dict[str, tuple[list[str], int]] = {
     "ee_code": (["No. of EE", "EE Code", "Employee Code"], COL_EE_CODE),
     "name": (["Name of Employee", "Employee Name", "Name of EE"], COL_NAME),
     "base": (["Base salary", "Base Salary"], COL_BASE),
+    "other": (["Other ", "Other"], COL_OTHER),
     "er_contrib": (["Employer's contributions", "Employers contributions"], COL_ER_CONTRIB),
     "liability": (
         [
@@ -85,6 +88,7 @@ _CYPRUS_FIELD_HEADERS: dict[str, tuple[list[str], int]] = {
     "ee_tax": (["Employee's tax", "Employee tax"], COL_EE_TAX),
     "ee_nhs": (["Employee - N.H.S.-SI", "Employee - N.H.S. - SI"], COL_EE_NHS),
     "expense": (["Expense Reimbursment", "Expense Reimbursement"], COL_EXPENSE),
+    "medical": (["Medical Insurance", "Medical Insurance Cover"], COL_MEDICAL),
 }
 
 
@@ -399,12 +403,15 @@ def write_cyprus_l(ws: Worksheet, employees: list[dict[str, Any]]) -> None:
         "Name of Employee": name_col,
         "Employee Name": name_col,
         "Base salary": cols.get("base", COL_BASE),
+        "Other ": cols.get("other", COL_OTHER),
+        "Other": cols.get("other", COL_OTHER),
         "Employer's contributions": cols.get("er_contrib", COL_ER_CONTRIB),
         "Employer's & Public Liability": cols.get("liability", COL_LIABILITY),
         "Employee's Social Insurance": cols.get("ee_si", COL_EE_SI),
         "Employee's tax": cols.get("ee_tax", COL_EE_TAX),
         "Employee - N.H.S.-SI": cols.get("ee_nhs", COL_EE_NHS),
         "Expense Reimbursment": cols.get("expense", COL_EXPENSE),
+        "Medical Insurance": cols.get("medical", COL_MEDICAL),
     }
 
     for idx, emp in enumerate(employees):

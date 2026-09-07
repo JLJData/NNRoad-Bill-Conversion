@@ -136,34 +136,78 @@ def parse_at_invoice_pdf(pdf_path: Path) -> dict[str, Any]:
         period_label = f"{pm.group(1)}-{pm.group(2)}"
 
     employees: list[dict[str, Any]] = []
-    block_re = re.compile(
-        r"Monthly cost:\s*(?P<month>January|February|March|April|May|June|July|August|September|"
-        r"October|November|December)\s+(?P<year>\d{4})\s*-\s*(?P<name>[^\n]+?)\s+"
-        r"Gross Salary\s+(?P<gross>[\d,]+\.?\d*)\s*"
-        r"Employer's Contributions\s+(?P<er>[\d,]+\.?\d*)\s*"
-        r"Employer's\s*&\s*Public Liability\s+(?P<liab>[\d,]+\.?\d*)\s*"
-        r"Administration Fee\s+(?P<admin>[\d,]+\.?\d*)",
+    # 按 Monthly cost 切块：允许 Gross 与 ER Contributions 之间夹 Medical 等行（版式小差异）
+    month_alt = (
+        r"January|February|March|April|May|June|July|August|September|"
+        r"October|November|December"
+    )
+    chunks = re.split(rf"(?=Monthly cost:\s*(?:{month_alt})\s+\d{{4}})", text, flags=re.I)
+    head_re = re.compile(
+        rf"Monthly cost:\s*(?P<month>{month_alt})\s+(?P<year>\d{{4}})\s*-\s*(?P<name>.+?)\s+"
+        rf"Gross Salary\s+(?P<gross>[\d,]+\.?\d*)",
         flags=re.I | re.S,
     )
-    for m in block_re.finditer(text):
-        name = re.sub(r"\s+", " ", m.group("name")).strip()
+    for chunk in chunks:
+        head = head_re.search(chunk)
+        if not head:
+            continue
+        # 块内取到 Subtotal / 下一段 Monthly / TOTAL 为止
+        body = chunk
+        stop = re.search(r"\bSubtotal:|\bTOTAL DUE\b", chunk, flags=re.I)
+        if stop:
+            body = chunk[: stop.start()]
+
+        er_m = re.search(r"Employer's Contributions\s+([\d,]+\.?\d*)", body, flags=re.I)
+        liab_m = re.search(r"Employer's\s*&\s*Public Liability\s+([\d,]+\.?\d*)", body, flags=re.I)
+        admin_m = re.search(r"Administration Fee\s+([\d,]+\.?\d*)", body, flags=re.I)
+        if not er_m or not liab_m or not admin_m:
+            rough = re.sub(r"\s+", " ", head.group("name"))[:40]
+            warnings.append(f"Invoice 员工块字段不完整，已跳过: {rough}")
+            continue
+
+        name = re.sub(r"\s+", " ", head.group("name")).strip()
         name = re.sub(r"\s+Gross Salary.*$", "", name, flags=re.I).strip()
-        y = int(m.group("year"))
-        mo = _MONTHS.get(m.group("month").lower())
+        y = int(head.group("year"))
+        mo = _MONTHS.get(head.group("month").lower())
         if year is None:
             year, month = y, mo
-            period_label = f"{m.group('month')}-{y}"
-        employees.append(
-            {
-                "Employee Name": name,
-                "Name of Employee": name,
-                "Base salary": _as_float(m.group("gross")),
-                "Employer's contributions": _as_float(m.group("er")),
-                "Employer's & Public Liability": _as_float(m.group("liab")),
-                "_admin_fee": _as_float(m.group("admin")),
-                "_source": "invoice",
-            }
-        )
+            period_label = f"{head.group('month')}-{y}"
+
+        # Gross 与 ER 之间的 Medical = 当期；Admin 之后的 Medical = 补收（写入 Other）
+        er_pos = er_m.start()
+        admin_pos = admin_m.end()
+        medical_now = None
+        for mm in re.finditer(r"Medical Insurance Cover\s+([\d,]+\.?\d*)", body, flags=re.I):
+            val = _as_float(mm.group(1))
+            if val is None:
+                continue
+            if mm.start() < er_pos:
+                medical_now = (medical_now or 0.0) + val
+            elif mm.start() >= admin_pos:
+                # 补收累加到 Other
+                pass
+        medical_back = 0.0
+        for mm in re.finditer(r"Medical Insurance Cover\s+([\d,]+\.?\d*)", body, flags=re.I):
+            if mm.start() >= admin_pos:
+                val = _as_float(mm.group(1))
+                if val is not None:
+                    medical_back += val
+
+        row: dict[str, Any] = {
+            "Employee Name": name,
+            "Name of Employee": name,
+            "Base salary": _as_float(head.group("gross")),
+            "Employer's contributions": _as_float(er_m.group(1)),
+            "Employer's & Public Liability": _as_float(liab_m.group(1)),
+            "_admin_fee": _as_float(admin_m.group(1)),
+            "_source": "invoice",
+        }
+        if medical_now is not None:
+            row["Medical Insurance"] = medical_now
+        if medical_back > 0:
+            row["Other "] = medical_back
+            row["Other"] = medical_back
+        employees.append(row)
 
     if not employees:
         raise ValueError(f"A&T Invoice 未解析到员工块: {path.name}")
@@ -377,9 +421,15 @@ def merge_invoice_and_payroll(
             inv_er = inv.get("Employer's contributions")
             pay_er = hit.get("Employer's contributions")
             if inv_er is not None and pay_er is not None and abs(float(inv_er) - float(pay_er)) > 0.05:
-                warnings.append(
-                    f"{name}：Invoice ER Contributions {inv_er} ≠ Payroll {pay_er}，已用 Invoice"
+                med = inv.get("Medical Insurance")
+                explained = (
+                    med is not None
+                    and abs(float(inv_er) + float(med) - float(pay_er)) <= 0.05
                 )
+                if not explained:
+                    warnings.append(
+                        f"{name}：Invoice ER Contributions {inv_er} ≠ Payroll {pay_er}，已用 Invoice"
+                    )
         else:
             warnings.append(f"{name}：Payroll 中未匹配到同名员工，EE 扣款列为空")
             raise ValueError(
