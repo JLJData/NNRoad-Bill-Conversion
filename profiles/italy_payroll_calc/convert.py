@@ -151,11 +151,79 @@ def _italy_l_formula_cols(ws: Worksheet, data_start: int) -> dict[int, str]:
 
 
 def _emp_display_name(emp: dict[str, Any]) -> str:
-    for key in ("Employee Name", "Name"):
+    for key in ("Employee Name", "Name", "EE Name"):
         name = _norm(emp.get(key))
-        if name:
+        if name and not name.startswith("="):
             return name
     return ""
+
+
+def _italy_excel_names(emp: dict[str, Any]) -> list[str]:
+    names: list[str] = []
+    seen: set[str] = set()
+    for key in ("Employee Name", "Name", "EE Name", "employee_name"):
+        n = _norm(emp.get(key))
+        if not n or n.startswith("="):
+            continue
+        folded = n.casefold()
+        if folded in seen:
+            continue
+        seen.add(folded)
+        names.append(n)
+    return names
+
+
+def _italy_ee_sheet_name(wb) -> str | None:
+    mapping = _active_mapping()
+    pn = mapping.get("pnSheets") if isinstance(mapping.get("pnSheets"), dict) else {}
+    want = [str(pn.get("ee") or "").strip(), ITALY_EE_SHEET, "Italy-EE", "Italy_EE"]
+    names = list(wb.sheetnames)
+    lower = {n.lower(): n for n in names}
+    for w in want:
+        if not w:
+            continue
+        if w in names:
+            return w
+        hit = lower.get(w.lower())
+        if hit:
+            return hit
+    for n in names:
+        compact = re.sub(r"[\s\-_]", "", n).lower()
+        if compact == "italyee":
+            return n
+    return None
+
+
+def _scan_italy_ee_layout(ws: Worksheet) -> tuple[int, int, int]:
+    """返回 (data_start_row, ee_code_col, ee_name_col)。"""
+    code_col, name_col, header_row = 4, 5, None
+    for r in range(1, 12):
+        for c in range(1, 16):
+            h = re.sub(r"\s+", " ", _norm(ws.cell(r, c).value)).lower()
+            if h == "ee code":
+                code_col = c
+                header_row = r if header_row is None else min(header_row, r)
+            elif h == "ee name":
+                name_col = c
+                header_row = r if header_row is None else min(header_row, r)
+    start_from = (header_row or 3) + 1
+    for r in range(start_from, 22):
+        a = _norm(ws.cell(r, 1).value)
+        if a and "eor" in a.lower():
+            continue
+        name_v = ws.cell(r, name_col).value
+        code_v = ws.cell(r, code_col).value
+        b_v = ws.cell(r, 2).value
+        if _cell_formula_text(name_v) or _cell_formula_text(code_v) or _cell_formula_text(b_v):
+            return r, code_col, name_col
+        if _norm(name_v) or _norm(code_v):
+            return r, code_col, name_col
+    mapped = ITALY_EE_DATA_START
+    ft = _active_mapping().get("formulaTemplates")
+    block = ft.get("Italy EE") if isinstance(ft, dict) and isinstance(ft.get("Italy EE"), dict) else {}
+    if block.get("defaultExampleRow"):
+        mapped = int(block["defaultExampleRow"])
+    return mapped, code_col, name_col
 
 
 def parse_pay_period(label: Any) -> tuple[int, int] | None:
@@ -466,11 +534,12 @@ def _copy_row_style_and_formula(
             dest.value = src.value
 
 
-def _retarget_ee_refs(formula: str, ee_from: int, ee_to: int) -> str:
+def _retarget_ee_refs(formula: str, ee_from: int, ee_to: int, *, ee_sheet: str = ITALY_EE_SHEET) -> str:
     if not isinstance(formula, str) or not formula.startswith("="):
         return formula
+    escaped = re.escape(ee_sheet)
     return re.sub(
-        rf"('Italy EE'!\$?[A-Z]{{1,3}})\$?{ee_from}(?!\d)",
+        rf"('(?:{escaped}|Italy EE|Italy-EE)'!\$?[A-Z]{{1,3}})\$?{ee_from}(?!\d)",
         lambda m: f"{m.group(1)}{ee_to}",
         formula,
         flags=re.I,
@@ -480,12 +549,16 @@ def _retarget_ee_refs(formula: str, ee_from: int, ee_to: int) -> str:
 def expand_italy_employee_rows(wb, employee_count: int) -> None:
     n = max(int(employee_count), 1)
     _, l_data_start, _ = _italy_l_layout(target=True)
+    ee_name = _italy_ee_sheet_name(wb)
+    ee_start = ITALY_EE_DATA_START
+    if ee_name:
+        ee_start, _, _ = _scan_italy_ee_layout(wb[ee_name])
     if ITALY_SHEET in wb.sheetnames:
         italy = wb[ITALY_SHEET]
         for i in range(1, n):
             dest = ITALY_DATA_START + i
             l_row = l_data_start + i
-            ee_row = ITALY_EE_DATA_START + i
+            ee_row = ee_start + i
             _copy_row_style_and_formula(
                 italy,
                 ITALY_DATA_START,
@@ -497,16 +570,18 @@ def expand_italy_employee_rows(wb, employee_count: int) -> None:
             for c in range(1, 41):
                 cell = italy.cell(dest, c)
                 if isinstance(cell.value, str) and cell.value.startswith("="):
-                    cell.value = _retarget_ee_refs(cell.value, ITALY_EE_DATA_START, ee_row)
+                    cell.value = _retarget_ee_refs(
+                        cell.value, ee_start, ee_row, ee_sheet=ee_name or ITALY_EE_SHEET
+                    )
 
-    if ITALY_EE_SHEET in wb.sheetnames:
-        ee = wb[ITALY_EE_SHEET]
+    if ee_name:
+        ee = wb[ee_name]
         for i in range(1, n):
-            dest = ITALY_EE_DATA_START + i
+            dest = ee_start + i
             l_row = l_data_start + i
             _copy_row_style_and_formula(
                 ee,
-                ITALY_EE_DATA_START,
+                ee_start,
                 dest,
                 max_col=40,
                 l_from=l_data_start,
@@ -571,19 +646,46 @@ def apply_italy_ee_codes(
     employee_directory: list[dict[str, Any]] | None = None,
     pn_meta: PnMeta | dict[str, Any] | None = None,
 ) -> list[str]:
-    if ITALY_EE_SHEET not in wb.sheetnames:
+    """
+    Italy EE Client Code / EE Code：
+    EE Code 按 EE Name（及 Italy-L Employee Name）匹配员工库工号，不写供应商 Employee ID。
+    """
+    ee_sheet = _italy_ee_sheet_name(wb)
+    if not ee_sheet:
         return []
-    ws = wb[ITALY_EE_SHEET]
+    ws = wb[ee_sheet]
+    data_start, code_col, _name_col = _scan_italy_ee_layout(ws)
     client_code = _pn_customer_id(pn_meta)
     directory = list(employee_directory or [])
     warnings: list[str] = []
+
+    header_row, l_data_start, name_headers = _italy_l_layout(target=True)
+    l_ws = wb[ITALY_L_SHEET] if ITALY_L_SHEET in wb.sheetnames else None
+    l_headers = _header_map(l_ws, header_row) if l_ws is not None else {}
+    italy_ws = wb[ITALY_SHEET] if ITALY_SHEET in wb.sheetnames else None
+
     for i, emp in enumerate(employees):
-        row = ITALY_EE_DATA_START + i
+        row = data_start + i
         if client_code:
             ws.cell(row, 2).value = client_code
-        excel_names = [_emp_display_name(emp)]
-        code, warn = match_ee_code([n for n in excel_names if n], directory)
-        ws.cell(row, 4).value = code
+
+        extra: list[Any] = []
+        if l_ws is not None:
+            for nh in name_headers:
+                col = l_headers.get(nh)
+                if col:
+                    extra.append(l_ws.cell(l_data_start + i, col).value)
+        if italy_ws is not None:
+            italy_name = italy_ws.cell(ITALY_DATA_START + i, 2).value
+            if not _cell_formula_text(italy_name):
+                extra.append(italy_name)
+        excel_names = _italy_excel_names(emp)
+        for n in extra:
+            s = _norm(n)
+            if s and not s.startswith("=") and s.casefold() not in {x.casefold() for x in excel_names}:
+                excel_names.append(s)
+        code, warn = match_ee_code(excel_names, directory)
+        ws.cell(row, code_col).value = code
         if warn:
             warnings.append(f"Italy EE 第{i + 1}人：{warn}")
     return warnings
