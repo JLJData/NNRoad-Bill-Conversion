@@ -533,12 +533,14 @@ def convert_sources(
         raise ValueError("未提供源文件")
     excels = [p for p in paths if p.suffix.lower() in (".xlsx", ".xlsm", ".xls")]
     other = [p for p in paths if p not in excels]
+    warnings: list[str] = []
     if other:
-        raise ValueError(
-            "safeguard_italy 目前仅支持 Excel 源账单；"
-            f"不支持: {[p.name for p in other]}"
+        warnings.append(
+            "safeguard_italy 主源为 Excel，已忽略: " + ", ".join(p.name for p in other[:5])
         )
-    return convert_excels(
+    if not excels:
+        raise ValueError("safeguard_italy 目前仅支持 Excel 源账单，请上传 SGWI Payroll xlsx")
+    result = convert_excels(
         excels,
         output_path,
         template_path=template_path,
@@ -547,6 +549,11 @@ def convert_sources(
         fill_fx=fill_fx,
         convert_mapping=convert_mapping,
     )
+    if warnings:
+        w = list(result.get("warnings") or [])
+        w.extend(warnings)
+        result["warnings"] = w
+    return result
 
 
 def convert_pdf(*_args, **_kwargs):

@@ -428,11 +428,18 @@ PROFILE_MAPPING_OVERLAYS: dict[str, dict[str, Any]] = {
     },
     "eor_uk": {
         "sourceEmployeeSheet": {
-            "sheet": "UK-L",
-            "candidates": ["UK-L"],
+            # EMPANPAY 主源；UK-L 仍在 candidates，inspect/引擎会按内容探测列
+            "sheet": "Analysis of Payroll Totals",
+            "candidates": [
+                "Analysis of Payroll Totals",
+                "UK-L",
+                "UK-L (2)",
+                "UK-L (3)",
+            ],
             "layout": "vertical_label_amount",
-            "labelColumn": 1,
-            "amountColumn": 2,
+            # 默认按 EMPANPAY（B/D）；UK-L 样本会自动改探到 A/B
+            "labelColumn": 2,
+            "amountColumn": 4,
             "nameHeaders": ["Employee Name"],
             "nameLabel": "Employee Name",
         },
@@ -443,6 +450,7 @@ PROFILE_MAPPING_OVERLAYS: dict[str, dict[str, Any]] = {
             "labelColumn": 1,
             "amountColumn": 2,
         },
+        # 不注入 columnRename：默认别名在 eor_uk 引擎；Office「列名对照」覆盖
         "columnRename": {},
         # 与 TopSource 同源：读同客户 topsource_uk 配置的 factStore（Office 注入），不写死 profile_code
         "fxPolicy": {
@@ -555,6 +563,28 @@ PROFILE_MAPPING_OVERLAYS: dict[str, dict[str, Any]] = {
         "columnRename": {},
     },
 }
+
+
+# Office「列名对照」展示用（展示大小写）；不写入 columnRename。
+# 引擎运行时另有小写别名表；两边需保持语义一致。
+_BUILTIN_COLUMN_RENAME_BY_PROFILE: dict[str, dict[str, str]] = {
+    "eor_uk": {
+        "Gross Pay": "Gross Salary",
+        "Holiday Fund Paid": "Holiday Pay",
+        "Employer NI": "ER' NIC",
+        "Employer Pension": "ER' Pension (Auto Enrolment)",
+        "PAYE Tax": "PAYE (Estimated)",
+        "Employee NI": "EE'NIC",
+        "Employee Pension": "EE' Pension (Auto Enrolment)",
+    },
+}
+
+
+def get_builtin_column_rename(pdf_profile_id: str | None) -> dict[str, str]:
+    pid = str(pdf_profile_id or "").strip()
+    if not pid:
+        return {}
+    return copy.deepcopy(_BUILTIN_COLUMN_RENAME_BY_PROFILE.get(pid, {}))
 
 
 def resolve_convert_mapping(engine_id: str, raw: dict[str, Any] | None) -> dict[str, Any]:

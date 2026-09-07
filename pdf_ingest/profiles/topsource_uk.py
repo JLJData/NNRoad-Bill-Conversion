@@ -633,7 +633,24 @@ def convert_sources(
     if other:
         raise ValueError(f"不支持的文件类型: {[p.name for p in other]}")
     if pdfs and excels:
-        raise ValueError("同一批次请不要混传 PDF 与 Excel，请只传其中一类")
+        # 同批混传：TopSource 主源为 PDF 发票；Excel 忽略（Office 可标无关/误识别）
+        warnings_mix = [
+            f"同批含 PDF 与 Excel，已按 TopSource 主源仅采用 {len(pdfs)} 份 PDF，忽略 Excel: "
+            + ", ".join(p.name for p in excels[:5])
+            + ("…" if len(excels) > 5 else "")
+        ]
+        result = convert_pdfs(
+            pdfs,
+            output_path,
+            template_path=template_path,
+            pn_meta=pn_meta,
+            registry_dir=registry_dir,
+            fill_fx=fill_fx,
+        )
+        warnings = list(result.get("warnings") or [])
+        warnings.extend(warnings_mix)
+        result["warnings"] = warnings
+        return result
     if pdfs:
         return convert_pdfs(
             pdfs,

@@ -168,8 +168,23 @@ def run_vendor_to_source_batch(
 
     pdfs = [p for p in paths if p.suffix.lower() == ".pdf"]
     excels = [p for p in paths if p.suffix.lower() in _EXCEL_SUFFIXES]
+    mix_note = ""
     if pdfs and excels:
-        raise ValueError("同一批次请不要混传 PDF 与 Excel")
+        # 混传不再硬失败：能跑 PDF 则优先 PDF，否则走 Excel
+        if callable(getattr(mod, "convert_pdfs", None)) or callable(getattr(mod, "convert_pdf", None)):
+            mix_note = f"同批含 PDF 与 Excel，已优先采用 PDF（忽略 {len(excels)} 个 Excel）"
+            excels = []
+        else:
+            mix_note = f"同批含 PDF 与 Excel，当前版式仅支持 Excel，已采用 Excel（忽略 {len(pdfs)} 个 PDF）"
+            pdfs = []
+
+    def _with_mix_warning(result: dict[str, Any]) -> dict[str, Any]:
+        if mix_note and isinstance(result, dict):
+            warnings = list(result.get("warnings") or [])
+            warnings.append(mix_note)
+            result["warnings"] = warnings
+        return result
+
     if excels:
         excel_fn = getattr(mod, "convert_excels", None)
         if not callable(excel_fn):
@@ -186,8 +201,9 @@ def run_vendor_to_source_batch(
             fill_fx=fill_fx,
             convert_mapping=convert_mapping,
         )
-        return _finalize_pdf_result(result, profile_id=profile.profile_id)
-    return run_pdf_to_source_batch(
+        return _finalize_pdf_result(_with_mix_warning(result), profile_id=profile.profile_id)
+
+    result = run_pdf_to_source_batch(
         pdfs or paths,
         output_path,
         profile_id=profile.profile_id,
@@ -197,3 +213,4 @@ def run_vendor_to_source_batch(
         fill_fx=fill_fx,
         convert_mapping=convert_mapping,
     )
+    return _with_mix_warning(result)

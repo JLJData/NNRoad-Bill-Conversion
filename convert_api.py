@@ -16,7 +16,9 @@
   POST /convert  multipart: file, engine_id, region, template(可选), pn_meta(json可选), employee_directory(json数组可选)
   POST /pdf-to-source  multipart: file, profile_id(可选自动识别), pn_meta(json可选), template(可选)
   POST /pdf-to-source-batch  multipart: files[], profile_id, …
-  POST /vendor-to-source-batch  multipart: files[](pdf/xlsx), profile_id, …  # 按扩展名自动分流
+  POST /vendor-plugins/ingest-file  旁路识别（如 Admin Fee）
+  POST /file-role/classify          轻量角色探测（Excel inspect / PDF 关键字+旁路）
+  POST /mapping/inspect-source     样例源表头
   GET  /region-template?region=Taiwan  地区默认 PN 母版
   POST /excel-snapshot  multipart: file, sheet(可选默认PN), max_cells(可选默认300)
   POST /hf-snapshot     multipart: file, sheet(可选默认PN), max_cells(可选默认300)  # Node HyperFormula
@@ -235,8 +237,16 @@ def mapping_defaults(
     raw: dict = {}
     if pid:
         raw["pdfProfileId"] = pid
+    from convert_mapping import get_builtin_column_rename
+
     mapping = resolve_convert_mapping(eid, raw)
-    return {"engineId": eid, "pdfProfileId": pid or None, "mapping": mapping}
+    # builtinColumnRename：仅展示/预填用，不并进 mapping.columnRename
+    return {
+        "engineId": eid,
+        "pdfProfileId": pid or None,
+        "mapping": mapping,
+        "builtinColumnRename": get_builtin_column_rename(pid),
+    }
 
 
 @app.get("/pdf-profiles")
@@ -787,6 +797,131 @@ async def hf_snapshot(
     except Exception as exc:
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"HF 快照失败: {exc}") from exc
+    finally:
+        _cleanup_dir(tmp_dir)
+
+
+@app.post("/file-role/classify")
+async def file_role_classify(
+    file: UploadFile = File(...),
+    engine_id: str | None = Form(None),
+    pdf_profile_id: str | None = Form(None),
+    convert_mapping: str | None = Form(None),
+):
+    """
+    轻量文件角色探测（不做完整 convert）：
+    - Excel：按引擎 mapping inspect 表头 → CONVERT / ATTACHMENT
+    - PDF：旁路插件 → ARTIFACT；否则对照配置 pdf_profile 关键字 → CONVERT / ATTACHMENT
+    """
+    from bill_convert.vendor_plugins.registry import get_plugins_for_profile
+    from pdf_ingest.registry import get_pdf_profile
+    from pdf_ingest.text_extract import extract_pdf_text
+
+    _assert_safe_upload(file)
+    suffix = Path(file.filename or "file.bin").suffix.lower() or ""
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="上传文件为空")
+
+    tmp_dir = Path(tempfile.mkdtemp(prefix="file_role_"))
+    try:
+        path = _kept_upload_path(tmp_dir, file.filename, 0, "probe")
+        if suffix and path.suffix.lower() != suffix:
+            path = tmp_dir / f"{path.stem}{suffix}"
+        path.write_bytes(content)
+
+        eid = (engine_id or "").strip() or None
+        pid = (pdf_profile_id or "").strip() or None
+        name = file.filename or path.name
+
+        if suffix in (".xlsx", ".xlsm", ".xls"):
+            if not eid:
+                return {
+                    "ok": True,
+                    "role": "ATTACHMENT",
+                    "reason": "excel_no_engine",
+                    "fileName": name,
+                }
+            try:
+                mapping = parse_convert_mapping_payload(convert_mapping)
+            except Exception as exc:
+                raise HTTPException(status_code=400, detail=f"convert_mapping 无效: {exc}") from exc
+            result = inspect_source_headers(
+                source_path=path,
+                engine_id=eid,
+                convert_mapping=mapping,
+            )
+            if isinstance(result, dict) and result.get("ok"):
+                return {
+                    "ok": True,
+                    "role": "CONVERT",
+                    "reason": "excel_inspect_ok",
+                    "fileName": name,
+                    "sheetName": result.get("sheetName"),
+                    "sourceKind": result.get("sourceKind"),
+                }
+            return {
+                "ok": True,
+                "role": "ATTACHMENT",
+                "reason": "excel_inspect_fail",
+                "fileName": name,
+                "message": (result or {}).get("message") if isinstance(result, dict) else None,
+            }
+
+        if suffix == ".pdf":
+            plugins = get_plugins_for_profile(pid)
+            for plugin in plugins:
+                try:
+                    if plugin.classify_path(path):
+                        return {
+                            "ok": True,
+                            "role": "ARTIFACT",
+                            "reason": "vendor_plugin",
+                            "pluginId": plugin.plugin_id,
+                            "fileName": name,
+                        }
+                except Exception:
+                    continue
+            if pid:
+                try:
+                    profile = get_pdf_profile(pid)
+                    text = extract_pdf_text(path) or ""
+                    low = text.lower()
+                    if any(k in low for k in profile.detect_keywords):
+                        return {
+                            "ok": True,
+                            "role": "CONVERT",
+                            "reason": "pdf_profile_keywords",
+                            "fileName": name,
+                            "pdfProfileId": pid,
+                        }
+                    return {
+                        "ok": True,
+                        "role": "ATTACHMENT",
+                        "reason": "pdf_profile_mismatch",
+                        "fileName": name,
+                        "pdfProfileId": pid,
+                    }
+                except KeyError:
+                    pass
+            return {
+                "ok": True,
+                "role": "ATTACHMENT",
+                "reason": "pdf_no_profile",
+                "fileName": name,
+            }
+
+        return {
+            "ok": True,
+            "role": "ATTACHMENT",
+            "reason": "unsupported_type",
+            "fileName": name,
+        }
+    except HTTPException:
+        raise
+    except Exception as exc:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"文件角色探测失败: {exc}") from exc
     finally:
         _cleanup_dir(tmp_dir)
 

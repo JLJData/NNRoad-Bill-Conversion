@@ -25,7 +25,7 @@ PDF_PROFILES: dict[str, PdfProfile] = {
         label="EOR Services",
         region="UK",
         module="pdf_ingest.profiles.eor_uk",
-        description="EOR：PDF 按本版式解析；Excel 源则直接走 uk_payroll_calc",
+        description="EOR：PDF 与/或 EMPANPAY Excel → UK-L；混传时合并（PDF 元数据 + Excel 明细）",
         engine_ids=("uk_payroll_calc",),
         detect_keywords=(
             "eor services limited",

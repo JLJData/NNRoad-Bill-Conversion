@@ -405,11 +405,19 @@ def convert_sources(
     paths = [Path(p).resolve() for p in source_paths]
     pdfs = [p for p in paths if p.suffix.lower() == ".pdf"]
     other = [p for p in paths if p not in pdfs]
+    warnings: list[str] = []
     if other:
-        raise ValueError(f"biz_solutions_india 主源为 PDF；不支持: {[p.name for p in other]}")
+        warnings.append(
+            "biz_solutions_india 主源为 PDF，已忽略: " + ", ".join(p.name for p in other[:5])
+        )
     if not pdfs:
         raise ValueError("请上传 Biz Solutions Tax Invoice PDF")
-    return convert_pdfs(pdfs, output_path, **kwargs)
+    result = convert_pdfs(pdfs, output_path, **kwargs)
+    if warnings:
+        w = list(result.get("warnings") or [])
+        w.extend(warnings)
+        result["warnings"] = w
+    return result
 
 
 def main(argv: list[str] | None = None) -> int:

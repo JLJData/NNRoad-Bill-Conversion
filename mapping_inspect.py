@@ -599,7 +599,7 @@ def inspect_pn_headers(
 
 
 def _inspect_uk_vertical_source(source_path: Path, mapping: dict[str, Any]) -> dict[str, Any]:
-    """UK-L 竖表：A 列标签视为「表头」，便于列名对照。"""
+    """UK 竖表：标签列视为「表头」，便于列名对照（兼容 UK-L A/B 与 EMPANPAY B/D）。"""
     src_spec = mapping.get("sourceEmployeeSheet") if isinstance(mapping.get("sourceEmployeeSheet"), dict) else {}
     try:
         wb = load_workbook(source_path, data_only=True, read_only=True)
@@ -614,26 +614,58 @@ def _inspect_uk_vertical_source(source_path: Path, mapping: dict[str, Any]) -> d
         if not name:
             return {"ok": False, "message": "工作簿无工作表", "sheetNames": sheet_names}
         ws = wb[name]
-        label_col = int(src_spec.get("labelColumn") or 1)
+
+        preferred_label = int(src_spec.get("labelColumn") or 0) or None
+        preferred_amount = int(src_spec.get("amountColumn") or 0) or None
+        try:
+            from pdf_ingest.profiles.eor_uk import detect_uk_vertical_columns
+
+            label_col, amount_col = detect_uk_vertical_columns(
+                ws,
+                preferred_label=preferred_label,
+                preferred_amount=preferred_amount,
+            )
+        except Exception:
+            label_col = preferred_label or 1
+            amount_col = preferred_amount or 2
+
         headers: list[dict[str, str]] = []
         seen: set[str] = set()
+        skip = {"details", "amount in gbp", "description", "this period"}
         for row in range(1, min((ws.max_row or 1), 80) + 1):
             raw = ws.cell(row, label_col).value
             key = norm(raw)
             if not key or key in seen:
                 continue
-            # 跳过明显非金额标签的标题行
-            if key.lower() in {"details", "amount in gbp"}:
+            if key.lower() in skip:
                 continue
             seen.add(key)
             headers.append({"key": key, "label": key})
         employees: list[dict[str, str]] = []
-        # 标题行常含员工名
+        # 标题行常含员工名（UK-L A3）
         title = norm(ws.cell(3, 1).value)
         if title and "salary calculation" in title.lower():
             en = title.split("-")[0].strip() if "-" in title else title
-            if en:
+            if en and "salary calculation" not in en.lower():
                 employees.append({"cnName": "", "enName": en})
+
+        if not headers:
+            return {
+                "ok": False,
+                "message": (
+                    f"竖表未识别到标签（sheet={name}, labelCol={label_col}, amountCol={amount_col}），"
+                    "请确认是 UK-L 或 Analysis of Payroll Totals"
+                ),
+                "sheetName": name,
+                "sheetNames": sheet_names,
+                "headerRow": 0,
+                "layout": "vertical_label_amount",
+                "headers": [],
+                "sampleEmployees": employees,
+                "labelColumn": label_col,
+                "amountColumn": amount_col,
+            }
+
         return {
             "ok": True,
             "sheetName": name,
@@ -641,6 +673,8 @@ def _inspect_uk_vertical_source(source_path: Path, mapping: dict[str, Any]) -> d
             "layout": "vertical_label_amount",
             "headers": headers,
             "sampleEmployees": employees,
+            "labelColumn": label_col,
+            "amountColumn": amount_col,
         }
     except Exception as exc:
         return {"ok": False, "message": str(exc)}
