@@ -84,6 +84,9 @@ def generate_invoice_number(customer_id: str, bill_date: date, sequence: int) ->
     """
     规则: PN-{客户ID}-{MMDDYYYY}{当天第几单}
     例: PN-CUS15253-031820261
+
+    Office 转换会由 ABP 按「同客户+同发票日已审核通过进账单管理」预填 invoice_number，
+    此时不会走本地 .pn_invoice_seq.json；本函数仅用于本地 CLI / 未预填时的兜底。
     """
     cid = customer_id.strip()
     if not cid:
