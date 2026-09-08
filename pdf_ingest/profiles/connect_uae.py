@@ -56,8 +56,16 @@ _PERIOD_RE = re.compile(
     r"['’]?\s*(\d{4})",
     re.I,
 )
+# 金额：有千分位必须整组；无千分位优先「整数.小数」，避免 9198.95 被 \d{1,3} 截成 919
+_AMOUNT_PAT = (
+    r"(?:"
+    r"\d{1,3}(?:,\d{3})+(?:\.\d+)?"
+    r"|\d+\.\d+"
+    r"|\d+"
+    r")"
+)
 _NAME_AED_RE = re.compile(
-    r"([A-Za-z][A-Za-z .']*?)\s*[-–—]\s*AED\s*([0-9]{1,3}(?:,[0-9]{3})*(?:\.\d+)?|\d+(?:\.\d+)?)",
+    r"([A-Za-z][A-Za-z .']*?)\s*[-–—]\s*AED\s*(" + _AMOUNT_PAT + r")",
     re.I,
 )
 # CR76056 等新版：• Kevin Willmaser - Aug 2026: 18418.00 AED
@@ -67,23 +75,21 @@ _NAME_PERIOD_AED_RE = re.compile(
     r"(?:January|February|March|April|May|June|July|August|September|October|November|December|"
     r"Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)"
     r"['’]?\s*\d{4}\s*:\s*"
-    r"([0-9]{1,3}(?:,[0-9]{3})*(?:\.\d+)?|\d+(?:\.\d+)?)\s*AED",
+    r"(" + _AMOUNT_PAT + r")\s*AED",
     re.I,
 )
 # CR77401：• Mohamad Fiazul Huq -  41800.00 AED（金额在 AED 前，无月份）
 _NAME_AMOUNT_AED_RE = re.compile(
     r"(?:[•\u2022]\s*)?"
     r"([A-Za-z][A-Za-z .']*?)\s*[-–—]\s*"
-    r"([0-9]{1,3}(?:,[0-9]{3})*(?:\.\d+)?|\d+(?:\.\d+)?)\s*AED",
+    r"(" + _AMOUNT_PAT + r")\s*AED",
     re.I,
 )
 _NAME_GBP_RE = re.compile(
-    r"([A-Za-z][A-Za-z .']*?)\s*[-–—]\s*[£￡]\s*([0-9]{1,3}(?:,[0-9]{3})*(?:\.\d+)?|\d+(?:\.\d+)?)",
+    r"([A-Za-z][A-Za-z .']*?)\s*[-–—]\s*[£￡]\s*(" + _AMOUNT_PAT + r")",
     re.I,
 )
-_MONEY_RE = re.compile(
-    r"(?<![A-Za-z])([0-9]{1,3}(?:,[0-9]{3})*(?:\.\d+)?|\d+(?:\.\d+)?)(?!\s*%)"
-)
+_MONEY_RE = re.compile(r"(?<![A-Za-z])(" + _AMOUNT_PAT + r")(?!\s*%)")
 # 「Commission - Kevin Willmaser 1.00 59,342.94」行首姓名
 _LINE_KIND_NAME_RE = re.compile(
     r"^\s*\d+\s+"
@@ -287,7 +293,8 @@ def parse_connect_invoice(
             # "Emiratization Fee 2.00 660.00" / "Emiritisation Fee - Per Employee ... 1.00 1,320.00"
             m_fee = re.search(
                 r"(?:emir[ia]tisation|emiratization)\s+fee\b[^\n]*?"
-                r"(?<![0-9,])(\d+(?:\.\d+)?)\s+([0-9]{1,3}(?:,[0-9]{3})*\.\d{2}|\d+\.\d{2})(?!\d)",
+                r"(?<![0-9,])(\d+(?:\.\d+)?)\s+"
+                r"(\d{1,3}(?:,\d{3})+\.\d{2}|\d+\.\d{2})(?!\d)",
                 block,
                 re.I,
             )

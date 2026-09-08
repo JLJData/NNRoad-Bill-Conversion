@@ -30,6 +30,7 @@ from pdf_ingest.label_pairs import (
     extract_label_amounts,
     norm_label,
     parse_money,
+    AMOUNT_token,
 )
 from pdf_ingest.text_extract import extract_pdf_text
 from pn_meta import PnMeta
@@ -454,22 +455,29 @@ def parse_at_payroll_pdf(pdf_path: Path) -> dict[str, Any]:
         else:
             display = raw_name
 
-        basic_m = re.search(r"Basic Salary:\s*([\d.]+,\d{2}|\d[\d,]*\.?\d*)", part, flags=re.I)
+        basic_m = re.search(r"Basic Salary:\s*(" + AMOUNT_token + r")", part, flags=re.I)
         base = _as_float(basic_m.group(1)) if basic_m else None
 
         # Deductions：Social Ins / Tax-1 / N.H.S.-SI（Notice 行上的 EE NHS，勿取 Contributions 侧）
-        si_m = re.search(r"(?:^|\n)[^\n]*?\bBasic\b[^\n]*?\bSocial Ins\s+([\d.]+,\d{2}|\d[\d.,]*)", part, flags=re.I)
+        si_m = re.search(
+            r"(?:^|\n)[^\n]*?\bBasic\b[^\n]*?\bSocial Ins\s+(" + AMOUNT_token + r")",
+            part,
+            flags=re.I,
+        )
         if not si_m:
-            si_m = re.search(r"Social Ins\s+([\d.]+,\d{2}|\d[\d.,]*)", part, flags=re.I)
-        tax_m = re.search(r"Tax-1\s+([\d.]+,\d{2}|\d[\d.,]*)", part, flags=re.I)
+            si_m = re.search(r"Social Ins\s+(" + AMOUNT_token + r")", part, flags=re.I)
+        tax_m = re.search(r"Tax-1\s+(" + AMOUNT_token + r")", part, flags=re.I)
         nhs_m = re.search(
-            r"Notice\s+[\d.,]+\s+[\d.,]+\s+N\.H\.S\.-SI\s+([\d.]+,\d{2}|\d[\d.,]*)",
+            r"Notice\s+[\d.,]+\s+[\d.,]+\s+N\.H\.S\.-SI\s+(" + AMOUNT_token + r")",
             part,
             flags=re.I,
         )
         if not nhs_m:
             # 回退：取较小的那个 NHS（EE 通常小于 ER）
-            nhs_vals = [_as_float(x) for x in re.findall(r"N\.H\.S\.-SI\s+([\d.]+,\d{2}|\d[\d.,]*)", part, flags=re.I)]
+            nhs_vals = [
+                _as_float(x)
+                for x in re.findall(r"N\.H\.S\.-SI\s+(" + AMOUNT_token + r")", part, flags=re.I)
+            ]
             nhs_vals = [x for x in nhs_vals if x is not None]
             nhs = min(nhs_vals) if nhs_vals else None
         else:
@@ -478,14 +486,23 @@ def parse_at_payroll_pdf(pdf_path: Path) -> dict[str, Any]:
         # ER contributions：Ear.+Con. 块末行第三个数
         er = None
         er_m = re.search(
-            r"Ear\.\+Con\.\s*[\d.,]+\s+([\d.,]+)\s+([\d.,]+)\s+([\d.,]+)",
+            r"Ear\.\+Con\.\s*[\d.,]+\s+("
+            + AMOUNT_token
+            + r")\s+("
+            + AMOUNT_token
+            + r")\s+("
+            + AMOUNT_token
+            + r")",
             part,
             flags=re.I | re.S,
         )
         if er_m:
             er = _as_float(er_m.group(3))
         else:
-            triples = re.findall(r"([\d.]+,\d{2})\s+([\d.]+,\d{2})\s+([\d.]+,\d{2})", part)
+            triples = re.findall(
+                r"(" + AMOUNT_token + r")\s+(" + AMOUNT_token + r")\s+(" + AMOUNT_token + r")",
+                part,
+            )
             if triples:
                 er = _as_float(triples[-1][2])
 

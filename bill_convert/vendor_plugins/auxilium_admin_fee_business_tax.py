@@ -32,8 +32,10 @@ PROVENANCE_SOURCE = f"plugin:{PLUGIN_ID}"
 FACT_KEY_VAT = "auxilium.admin_fee.total_vat"  # committed / prev
 FACT_KEY_LATEST_VAT = "auxilium.admin_fee.latest_vat"  # newest upload / curr
 
+# 有千分位必须整组；无千分位优先「整数.小数」，避免 9198.95 被 \d{1,3} 截成 919
 _VAT_RE = re.compile(
-    r"Total\s+VAT\s*:?\s*(?:5%\s*)?([0-9]{1,3}(?:,[0-9]{3})*(?:\.[0-9]+)?|\d+(?:\.\d+)?)",
+    r"Total\s+VAT\s*:?\s*(?:5%\s*)?"
+    r"(\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+\.\d+|\d+)",
     re.IGNORECASE,
 )
 _INV_NO_RE = re.compile(r"Invoice\s+Number\s*\n?\s*(INV-\d+)", re.IGNORECASE)

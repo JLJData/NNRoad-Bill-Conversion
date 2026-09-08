@@ -37,6 +37,19 @@ def parse_money(value: Any) -> float | None:
         return None
 
 
+# 金额：先美式千分位 9,198.95，再欧式 4.448,82；禁止 \d{1,3}(?:,\d{3})* 可选千分位（会把 9198.95 截成 919）
+AMOUNT_token = (
+    r"(?:"
+    r"\d{1,3}(?:,\d{3})+(?:\.\d+)?"
+    r"|\d{1,3}(?:\.\d{3})+,\d{2}"
+    r"|\d+,\d{2}"
+    r"|\d+\.\d+"
+    r"|\d+"
+    r")"
+)
+AMOUNT_TOKEN_RE = re.compile(AMOUNT_token)
+
+
 def extract_label_amounts(
     text: str,
     labels: list[str],
@@ -57,16 +70,7 @@ def extract_label_amounts(
         seen.add(key)
         uniq.append(norm_label(lab))
 
-    # 金额：先美式千分位 4,448.82，再欧式 4.448,82，避免 4,448.82 被吃成 4,44
-    amount = (
-        r"(?:"
-        r"\d{1,3}(?:,\d{3})+(?:\.\d+)?"
-        r"|\d{1,3}(?:\.\d{3})+,\d{2}"
-        r"|\d+,\d{2}"
-        r"|\d+\.\d+"
-        r"|\d+"
-        r")"
-    )
+    amount = AMOUNT_token
     hits: list[dict[str, Any]] = []
     occupied: list[tuple[int, int]] = []
     for lab in sorted(uniq, key=len, reverse=True):
