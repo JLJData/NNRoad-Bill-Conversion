@@ -961,11 +961,11 @@ async def mapping_inspect_source(
     engine_id: str = Form(...),
     convert_mapping: str | None = Form(None),
 ):
-    """上传样例源账单，按当前映射识别表头（供下拉）。"""
+    """上传样例源账单，按当前映射识别表头（供下拉）。支持 Excel；A&T 等支持 PDF 标签。"""
     _assert_safe_upload(file)
     suffix = Path(file.filename or "source.xlsx").suffix.lower() or ".xlsx"
-    if suffix not in (".xlsx", ".xlsm"):
-        raise HTTPException(status_code=400, detail=f"仅支持 .xlsx/.xlsm，当前: {suffix}")
+    if suffix not in (".xlsx", ".xlsm", ".pdf"):
+        raise HTTPException(status_code=400, detail=f"仅支持 .xlsx/.xlsm/.pdf，当前: {suffix}")
     try:
         mapping = parse_convert_mapping_payload(convert_mapping)
     except Exception as exc:

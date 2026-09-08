@@ -39,6 +39,29 @@ def inspect_source_headers(
 ) -> dict[str, Any]:
     engine_id = (engine_id or "").strip()
     mapping = resolve_convert_mapping(engine_id, convert_mapping)
+    source_path = Path(source_path)
+    suffix = source_path.suffix.lower()
+
+    # 扩展名丢失时用魔数识别 PDF（ABP 旧逻辑曾把样例一律存成 .xlsx）
+    is_pdf = suffix == ".pdf"
+    if not is_pdf and source_path.is_file():
+        try:
+            head = source_path.read_bytes()[:5]
+            is_pdf = head.startswith(b"%PDF")
+        except OSError:
+            is_pdf = False
+
+    # A&T 等：PDF 样例 → 标签列表（与 Excel 列名对照同一套 UI）
+    if is_pdf:
+        pid = str(mapping.get("pdfProfileId") or "").strip()
+        if engine_id == "cyprus_payroll_calc" and (not pid or pid == "at_technical_cyprus"):
+            from pdf_ingest.profiles.at_technical_cyprus import inspect_at_pdf_labels
+
+            return inspect_at_pdf_labels(source_path, convert_mapping=mapping)
+        return {
+            "ok": False,
+            "message": f"引擎「{engine_id}」/版式「{pid or '—'}」暂不支持 PDF 标签识别",
+        }
 
     if engine_id == "tw_payroll_calc":
         return _inspect_tw_source(source_path, mapping)
@@ -52,6 +75,8 @@ def inspect_source_headers(
         return _inspect_uk_vertical_source(source_path, mapping)
     if engine_id == "italy_payroll_calc":
         return _inspect_italy_source(source_path, mapping)
+    if engine_id == "cyprus_payroll_calc":
+        return _inspect_fixed_header_source(source_path, mapping, default_sheet="Cyprus-L", default_row=7)
 
     return {"ok": False, "message": f"引擎「{engine_id}」暂不支持表头识别"}
 

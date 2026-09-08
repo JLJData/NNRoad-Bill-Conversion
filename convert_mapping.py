@@ -577,6 +577,14 @@ _BUILTIN_COLUMN_RENAME_BY_PROFILE: dict[str, dict[str, str]] = {
         "Employee NI": "EE'NIC",
         "Employee Pension": "EE' Pension (Auto Enrolment)",
     },
+    # A&T Invoice PDF 标签 → Cyprus-L（Medical 补收由解析按位置写入 Other）
+    "at_technical_cyprus": {
+        "Gross Salary": "Base salary",
+        "Employer's Contributions": "Employer's contributions",
+        "Employer's & Public Liability": "Employer's & Public Liability",
+        "Administration Fee": "_admin_fee",
+        "Medical Insurance Cover": "Medical Insurance",
+    },
 }
 
 

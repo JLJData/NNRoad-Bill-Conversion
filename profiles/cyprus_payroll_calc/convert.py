@@ -396,6 +396,8 @@ def write_cyprus_l(ws: Worksheet, employees: list[dict[str, Any]]) -> None:
 
     header_row, _ = _cyprus_l_layout(target=True)
     cols = _resolve_cyprus_cols(ws, header_row, None)
+    headers = _header_map(ws, header_row)
+    headers_l = {k.lower(): col for k, col in headers.items()}
     name_col = cols.get("name", COL_NAME)
     ee_col = cols.get("ee_code", COL_EE_CODE)
     field_cols = {
@@ -407,6 +409,8 @@ def write_cyprus_l(ws: Worksheet, employees: list[dict[str, Any]]) -> None:
         "Other": cols.get("other", COL_OTHER),
         "Employer's contributions": cols.get("er_contrib", COL_ER_CONTRIB),
         "Employer's & Public Liability": cols.get("liability", COL_LIABILITY),
+        # 母版表头常被截断；写出时与完整名视为同一列
+        "Employer's & Public Liabilit": cols.get("liability", COL_LIABILITY),
         "Employee's Social Insurance": cols.get("ee_si", COL_EE_SI),
         "Employee's tax": cols.get("ee_tax", COL_EE_TAX),
         "Employee - N.H.S.-SI": cols.get("ee_nhs", COL_EE_NHS),
@@ -422,10 +426,44 @@ def write_cyprus_l(ws: Worksheet, employees: list[dict[str, Any]]) -> None:
         ee_code = _norm(emp.get("No. of EE") or emp.get("_ee_code"))
         if ee_code and ee_col not in formula_by_col:
             ws.cell(row, ee_col).value = ee_code
-        for key, col in field_cols.items():
-            if key in ("Name of Employee", "Employee Name", "No. of EE"):
+        written_cols: set[int] = set()
+        # Liability 完整名与截断名指向同一物理列：
+        # - 两键数值不同 → 合计（两个供应商标签都指到该列）
+        # - 两键数值相同 → 只写一次（避免别名复制导致 685×2）
+        liab_col = cols.get("liability", COL_LIABILITY)
+        liab_keys = ("Employer's & Public Liability", "Employer's & Public Liabilit")
+        liab_vals: list[float] = []
+        for lk in liab_keys:
+            if lk in emp and emp[lk] is not None:
+                try:
+                    liab_vals.append(float(emp[lk]))
+                except (TypeError, ValueError):
+                    pass
+        if liab_vals and liab_col not in formula_by_col:
+            if len(liab_vals) == 2 and abs(liab_vals[0] - liab_vals[1]) <= 0.05:
+                liab_sum = liab_vals[0]
+            else:
+                liab_sum = sum(liab_vals)
+            _set_cell_value(ws.cell(row, liab_col), liab_sum)
+            written_cols.add(liab_col)
+
+        write_keys = [
+            k
+            for k in field_cols.keys()
+            if k
+            not in (
+                "Name of Employee",
+                "Employee Name",
+                "No. of EE",
+                "Employer's & Public Liability",
+                "Employer's & Public Liabilit",
+            )
+        ]
+        for key in write_keys:
+            col = field_cols.get(key)
+            if col is None:
                 continue
-            if col in formula_by_col:
+            if col in formula_by_col or col in written_cols:
                 continue
             if key not in emp:
                 continue
@@ -438,8 +476,44 @@ def write_cyprus_l(ws: Worksheet, employees: list[dict[str, Any]]) -> None:
                 if dt is not None:
                     cell.value = dt
                     cell.number_format = _DATE_FMT
+                    written_cols.add(col)
                     continue
             _set_cell_value(cell, val)
+            written_cols.add(col)
+
+        # columnRename 指到 OT/Bonus 等非固定键时：按 Cyprus-L 表头名落格
+        for key, val in emp.items():
+            if val is None or key is None:
+                continue
+            sk = str(key)
+            if sk.startswith("_") or sk in (
+                "Employee Name",
+                "Name of Employee",
+                "No. of EE",
+                "From",
+                "To",
+                "Employer's & Public Liability",
+                "Employer's & Public Liabilit",
+            ):
+                continue
+            if sk in field_cols:
+                col = field_cols.get(sk)
+                if col is None or col in formula_by_col or col in written_cols:
+                    continue
+            else:
+                col = headers.get(sk) or headers_l.get(sk.lower())
+                if col is None or col in formula_by_col or col in written_cols:
+                    continue
+            cell = ws.cell(row, col)
+            if is_date_column_header(sk):
+                dt = coerce_datetime_for_excel(val)
+                if dt is not None:
+                    cell.value = dt
+                    cell.number_format = _DATE_FMT
+                    written_cols.add(col)
+                    continue
+            _set_cell_value(cell, val)
+            written_cols.add(col)
 
 
 def _copy_row_style_and_formula(

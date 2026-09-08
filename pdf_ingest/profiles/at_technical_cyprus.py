@@ -23,11 +23,37 @@ from typing import Any
 from openpyxl import load_workbook
 
 from bill_convert.person import compact_person_name, score_person_name_match
+from convert_mapping import get_builtin_column_rename
+from pdf_ingest.label_pairs import (
+    apply_label_amounts,
+    build_label_rename_map,
+    extract_label_amounts,
+    norm_label,
+    parse_money,
+)
 from pdf_ingest.text_extract import extract_pdf_text
 from pn_meta import PnMeta
 from region_templates import get_region_template
 
 CYPRUS_L_SHEET = "Cyprus-L"
+
+# Invoice 默认识别的供应商标签（可被 builtinColumnRename / columnRename 扩展）
+_AT_INVOICE_DEFAULT_LABELS = [
+    "Gross Salary",
+    "Medical Insurance Cover",
+    "Employer's Contributions",
+    "Employer's & Public Liability",
+    "Administration Fee",
+]
+
+# 供应商标签 → Cyprus-L / 内部字段（builtin；Office 列名对照可覆盖）
+_AT_INVOICE_BUILTIN_RENAME = {
+    "Gross Salary": "Base salary",
+    "Employer's Contributions": "Employer's contributions",
+    "Employer's & Public Liability": "Employer's & Public Liability",
+    "Administration Fee": "_admin_fee",
+    "Medical Insurance Cover": "Medical Insurance",
+}
 
 _MONTHS = {
     "january": 1,
@@ -58,38 +84,28 @@ _MONTHS = {
 
 
 def _as_float(value: Any) -> float | None:
-    if value is None or value == "":
-        return None
-    if isinstance(value, (int, float)) and not isinstance(value, bool):
-        return float(value)
-    text = str(value).strip().replace("\xa0", "").replace(" ", "")
-    if not text:
-        return None
-    if re.search(r",\d{2}$", text) and "." in text:
-        text = text.replace(".", "").replace(",", ".")
-    elif text.count(",") == 1 and "." not in text:
-        text = text.replace(",", ".")
-    else:
-        text = text.replace(",", "")
-    try:
-        return float(text)
-    except ValueError:
-        return None
+    return parse_money(value)
+
+
+def _invoice_label_catalog(convert_mapping: dict[str, Any] | None) -> tuple[list[str], dict[str, str]]:
+    """返回 (待抽取标签列表, vendor_label_key→目标字段)。"""
+    mapping = convert_mapping if isinstance(convert_mapping, dict) else {}
+    rename_raw = mapping.get("columnRename") if isinstance(mapping.get("columnRename"), dict) else {}
+    # profile 内置 + Office 对照；get_builtin 可能为空时用本文件默认
+    builtin = get_builtin_column_rename("at_technical_cyprus") or dict(_AT_INVOICE_BUILTIN_RENAME)
+    rename_map = build_label_rename_map(builtin=builtin, column_rename=rename_raw)
+    labels = list(_AT_INVOICE_DEFAULT_LABELS)
+    for src in list(builtin.keys()) + list(rename_raw.keys()):
+        s = norm_label(str(src))
+        if s and s not in labels:
+            labels.append(s)
+    return labels, rename_map
 
 
 def _period_bounds(year: int, month: int) -> tuple[date, date]:
     start = date(year, month, 1)
     end = date(year, month, calendar.monthrange(year, month)[1])
     return start, end
-
-
-def _westernize_name(name: str) -> str:
-    """Sidorov Anatoly → Anatoly Sidorov（两词时）；已是 First Last 则保持。"""
-    parts = [p for p in re.split(r"\s+", (name or "").strip()) if p]
-    if len(parts) == 2:
-        # Invoice 用 First Last；Payroll 用 Last First — 无法绝对判断，合并时以 invoice 为准
-        return f"{parts[0]} {parts[1]}"
-    return " ".join(parts)
 
 
 def classify_at_pdf(text: str, path: Path | None = None) -> str:
@@ -102,15 +118,75 @@ def classify_at_pdf(text: str, path: Path | None = None) -> str:
         return "invoice"
     if "invoice" in name:
         return "invoice"
-    if "payroll" in name:
+    if "payroll" in name or "journal" in name:
         return "payroll"
     return "unknown"
 
 
-def parse_at_invoice_pdf(pdf_path: Path) -> dict[str, Any]:
+def _fields_from_invoice_block(
+    body: str,
+    labels: list[str],
+    rename_map: dict[str, str],
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    """
+    块内按标签抽金额再映射。Medical：ER 之前→Medical Insurance；Admin 之后→Other。
+    返回 (fields, hits)。
+    """
+    hits = extract_label_amounts(body, labels)
+    er_start = None
+    admin_end = None
+    for h in hits:
+        lk = norm_label(str(h["label"])).lower()
+        if "employer's contributions" in lk or lk == "employers contributions":
+            er_start = int(h["start"])
+        if "administration fee" in lk:
+            admin_end = int(h["end"])
+
+    # 先按 rename 汇总，再对 Medical 按位置拆分
+    medical_now = 0.0
+    medical_back = 0.0
+    filtered: list[dict[str, Any]] = []
+    for h in hits:
+        lk = norm_label(str(h["label"])).lower()
+        if "medical insurance" in lk:
+            val = float(h["value"])
+            if er_start is not None and int(h["start"]) < er_start:
+                medical_now += val
+            elif admin_end is not None and int(h["start"]) >= admin_end:
+                medical_back += val
+            else:
+                medical_now += val
+            continue
+        filtered.append(h)
+
+    fields = apply_label_amounts(filtered, rename_map)
+    if medical_now:
+        # Medical 位置拆分优先于 columnRename（当期 / 补收语义固定）
+        fields["Medical Insurance"] = medical_now
+    if medical_back:
+        fields["Other "] = medical_back
+        fields["Other"] = medical_back
+    return fields, hits
+
+
+def _invoice_source_label_present(hits: list[dict[str, Any]], *needles: str) -> bool:
+    for h in hits:
+        lk = norm_label(str(h.get("label") or "")).lower()
+        for n in needles:
+            if n in lk:
+                return True
+    return False
+
+
+def parse_at_invoice_pdf(
+    pdf_path: Path,
+    *,
+    convert_mapping: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     path = Path(pdf_path).resolve()
     text = extract_pdf_text(path)
     warnings: list[str] = []
+    labels, rename_map = _invoice_label_catalog(convert_mapping)
 
     inv_m = re.search(r"Invoice\s+(AT\d+)", text, flags=re.I)
     invoice_no = inv_m.group(1).strip() if inv_m else None
@@ -136,34 +212,26 @@ def parse_at_invoice_pdf(pdf_path: Path) -> dict[str, Any]:
         period_label = f"{pm.group(1)}-{pm.group(2)}"
 
     employees: list[dict[str, Any]] = []
-    # 按 Monthly cost 切块：允许 Gross 与 ER Contributions 之间夹 Medical 等行（版式小差异）
+    skipped: list[str] = []
     month_alt = (
         r"January|February|March|April|May|June|July|August|September|"
         r"October|November|December"
     )
     chunks = re.split(rf"(?=Monthly cost:\s*(?:{month_alt})\s+\d{{4}})", text, flags=re.I)
     head_re = re.compile(
-        rf"Monthly cost:\s*(?P<month>{month_alt})\s+(?P<year>\d{{4}})\s*-\s*(?P<name>.+?)\s+"
-        rf"Gross Salary\s+(?P<gross>[\d,]+\.?\d*)",
-        flags=re.I | re.S,
+        rf"Monthly cost:\s*(?P<month>{month_alt})\s+(?P<year>\d{{4}})\s*-\s*(?P<name>[^\n]+)",
+        flags=re.I,
     )
+    heads_seen = 0
     for chunk in chunks:
         head = head_re.search(chunk)
         if not head:
             continue
-        # 块内取到 Subtotal / 下一段 Monthly / TOTAL 为止
+        heads_seen += 1
         body = chunk
         stop = re.search(r"\bSubtotal:|\bTOTAL DUE\b", chunk, flags=re.I)
         if stop:
             body = chunk[: stop.start()]
-
-        er_m = re.search(r"Employer's Contributions\s+([\d,]+\.?\d*)", body, flags=re.I)
-        liab_m = re.search(r"Employer's\s*&\s*Public Liability\s+([\d,]+\.?\d*)", body, flags=re.I)
-        admin_m = re.search(r"Administration Fee\s+([\d,]+\.?\d*)", body, flags=re.I)
-        if not er_m or not liab_m or not admin_m:
-            rough = re.sub(r"\s+", " ", head.group("name"))[:40]
-            warnings.append(f"Invoice 员工块字段不完整，已跳过: {rough}")
-            continue
 
         name = re.sub(r"\s+", " ", head.group("name")).strip()
         name = re.sub(r"\s+Gross Salary.*$", "", name, flags=re.I).strip()
@@ -173,44 +241,51 @@ def parse_at_invoice_pdf(pdf_path: Path) -> dict[str, Any]:
             year, month = y, mo
             period_label = f"{head.group('month')}-{y}"
 
-        # Gross 与 ER 之间的 Medical = 当期；Admin 之后的 Medical = 补收（写入 Other）
-        er_pos = er_m.start()
-        admin_pos = admin_m.end()
-        medical_now = None
-        for mm in re.finditer(r"Medical Insurance Cover\s+([\d,]+\.?\d*)", body, flags=re.I):
-            val = _as_float(mm.group(1))
-            if val is None:
-                continue
-            if mm.start() < er_pos:
-                medical_now = (medical_now or 0.0) + val
-            elif mm.start() >= admin_pos:
-                # 补收累加到 Other
-                pass
-        medical_back = 0.0
-        for mm in re.finditer(r"Medical Insurance Cover\s+([\d,]+\.?\d*)", body, flags=re.I):
-            if mm.start() >= admin_pos:
-                val = _as_float(mm.group(1))
-                if val is not None:
-                    medical_back += val
+        fields, hits = _fields_from_invoice_block(body, labels, rename_map)
+        # 结构完整性看供应商标签是否抽出，不因 columnRename 指错 Cyprus-L 列而整人丢弃
+        has_gross = _invoice_source_label_present(hits, "gross salary")
+        has_er = _invoice_source_label_present(
+            hits, "employer's contributions", "employers contributions"
+        )
+        has_liab = _invoice_source_label_present(hits, "public liability")
+        if not (has_gross and has_er and has_liab):
+            miss_src = []
+            if not has_gross:
+                miss_src.append("Gross Salary")
+            if not has_er:
+                miss_src.append("Employer's Contributions")
+            if not has_liab:
+                miss_src.append("Employer's & Public Liability")
+            msg = f"Invoice「{name}」缺供应商标签 {', '.join(miss_src)}，已跳过"
+            warnings.append(msg)
+            skipped.append(msg)
+            continue
+
+        if fields.get("Base salary") is None and fields.get("Gross Salary") is not None:
+            fields["Base salary"] = fields.get("Gross Salary")
+        if fields.get("Base salary") is None:
+            warnings.append(
+                f"Invoice「{name}」列名对照后无 Base salary"
+                f"（请确认 Gross Salary → Base salary）；金额仍保留在对照目标列"
+            )
 
         row: dict[str, Any] = {
             "Employee Name": name,
             "Name of Employee": name,
-            "Base salary": _as_float(head.group("gross")),
-            "Employer's contributions": _as_float(er_m.group(1)),
-            "Employer's & Public Liability": _as_float(liab_m.group(1)),
-            "_admin_fee": _as_float(admin_m.group(1)),
             "_source": "invoice",
+            "_label_hits": list(fields.keys()),
         }
-        if medical_now is not None:
-            row["Medical Insurance"] = medical_now
-        if medical_back > 0:
-            row["Other "] = medical_back
-            row["Other"] = medical_back
+        row.update(fields)
         employees.append(row)
 
     if not employees:
-        raise ValueError(f"A&T Invoice 未解析到员工块: {path.name}")
+        detail = "；".join(skipped[:5]) if skipped else "未匹配到 Monthly cost 员工行"
+        if heads_seen and skipped:
+            detail = (
+                f"识别到 {heads_seen} 个员工块但均被跳过（多半是 PDF 缺标签，"
+                f"而非列名对照问题）：{detail}"
+            )
+        raise ValueError(f"A&T Invoice 未解析到员工块: {path.name} — {detail}")
 
     start = end = None
     if year and month:
@@ -233,6 +308,113 @@ def parse_at_invoice_pdf(pdf_path: Path) -> dict[str, Any]:
         "warnings": warnings,
         "source_file": path.name,
         "text": text,
+        "labels": labels,
+        "label_rename": {k: rename_map[k] for k in rename_map},
+    }
+
+
+def inspect_at_pdf_labels(
+    pdf_path: Path,
+    *,
+    convert_mapping: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """映射页样例：从 Invoice/Payroll PDF 抽出供应商标签，供列名对照。"""
+    path = Path(pdf_path).resolve()
+    text = extract_pdf_text(path)
+    kind = classify_at_pdf(text, path)
+    labels_cfg, rename_map = _invoice_label_catalog(convert_mapping)
+    if kind == "payroll":
+        # Payroll 侧暂列常见扣款/工资标签，便于对照；正式合并仍走专用解析
+        labels_cfg = list(
+            dict.fromkeys(
+                labels_cfg
+                + [
+                    "Basic Salary",
+                    "Social Ins",
+                    "Tax-1",
+                    "N.H.S.-SI",
+                ]
+            )
+        )
+    hits = extract_label_amounts(text, labels_cfg)
+    # 同标签可出现多次（如 Medical 当期 + 补收）；对照表仍按标签名去重一行
+    occ_count: dict[str, int] = {}
+    occ_values: dict[str, list[float]] = {}
+    for h in hits:
+        lab = norm_label(str(h["label"]))
+        key = lab.lower()
+        occ_count[key] = occ_count.get(key, 0) + 1
+        try:
+            occ_values.setdefault(key, []).append(float(h["value"]))
+        except (TypeError, ValueError):
+            pass
+
+    headers: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for h in hits:
+        lab = norm_label(str(h["label"]))
+        key = lab.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        target = rename_map.get(key) or ""
+        n = int(occ_count.get(key, 1))
+        vals = occ_values.get(key) or []
+        label_show = lab if n <= 1 else f"{lab} (×{n})"
+        row: dict[str, Any] = {"key": lab, "label": label_show, "mappedTo": target, "hitCount": n}
+        if vals:
+            row["sampleValues"] = vals
+        headers.append(row)
+
+    employees: list[dict[str, str]] = []
+    medical_note = ""
+    if kind == "invoice":
+        try:
+            parsed = parse_at_invoice_pdf(path, convert_mapping=convert_mapping)
+            for e in parsed.get("employees") or []:
+                en = str(e.get("Employee Name") or "").strip()
+                if en:
+                    employees.append({"cnName": "", "enName": en})
+                    med = e.get("Medical Insurance")
+                    other = e.get("Other") if e.get("Other") is not None else e.get("Other ")
+                    if med is not None or other is not None:
+                        bits = [en]
+                        if med is not None:
+                            bits.append(f"Medical Insurance={med}")
+                        if other is not None:
+                            bits.append(f"Other={other}")
+                        if not medical_note:
+                            medical_note = "；同标签多次：ER 前→Medical Insurance，Admin 后→Other（例：" + "，".join(bits) + "）"
+        except Exception as exc:
+            return {
+                "ok": False,
+                "message": str(exc),
+                "sourceKind": "pdf_label",
+                "pdfKind": kind,
+                "headers": headers,
+            }
+
+    hit_total = len(hits)
+    uniq_total = len(headers)
+    hint = (
+        f"已从供应商 PDF 抽取标签命中 {hit_total} 次（去重后 {uniq_total} 项）；"
+        f"请在「列名对照」中配置 供应商标签 → Cyprus-L 列"
+        f"{medical_note}"
+    )
+    return {
+        "ok": True if headers or employees else False,
+        "message": None if (headers or employees) else "未识别到 PDF 标签",
+        "sheetName": path.name,
+        "headerRow": 0,
+        "layout": "pdf_label_amount",
+        "sourceKind": "pdf_label",
+        "pdfKind": kind,
+        "headers": headers,
+        "hitCount": hit_total,
+        "uniqueLabelCount": uniq_total,
+        "sampleEmployees": employees,
+        "employees": employees,
+        "hint": hint,
     }
 
 
@@ -376,6 +558,40 @@ def _match_emp(name: str, pool: list[dict[str, Any]]) -> dict[str, Any] | None:
     return best if best_score >= 70 else None
 
 
+def recover_cyprus_l_field_aliases(
+    employees: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], list[str]]:
+    """
+    不改写列名对照结果，只提示。
+    注意：不要把「…Liabilit」键复制成完整 Liability 键——两者指向同一物理列，
+    写出若再合计会把 Contributions 金额算两次（685→1370）。
+    """
+    typo = "Employer's & Public Liabilit"
+    full = "Employer's & Public Liability"
+    warnings: list[str] = []
+    out: list[dict[str, Any]] = []
+    for emp in employees:
+        row = dict(emp)
+        tv, fv = row.get(typo), row.get(full)
+        er = row.get("Employer's contributions")
+        name = str(row.get("Employee Name") or row.get("Name of Employee") or "")
+        if tv is not None and fv is not None:
+            try:
+                if abs(float(tv) - float(fv)) > 0.05:
+                    warnings.append(
+                        f"{name}：完整名与截断名 Liability 键均有值且不同"
+                        f"（{fv} / {tv}），将合计写入 Public Liabilit 列"
+                    )
+            except (TypeError, ValueError):
+                pass
+        elif tv is not None and er is None and fv is None:
+            warnings.append(
+                f"{name}：有金额在截断表头「{typo}」，将写入 Public Liabilit 列"
+            )
+        out.append(row)
+    return out, warnings
+
+
 def merge_invoice_and_payroll(
     invoice: dict[str, Any] | None,
     payroll: dict[str, Any] | None,
@@ -498,7 +714,7 @@ def convert_sources(
             if invoice:
                 warnings.append(f"重复 Invoice，忽略: {p.name}")
                 continue
-            invoice = parse_at_invoice_pdf(p)
+            invoice = parse_at_invoice_pdf(p, convert_mapping=mapping)
         elif kind == "payroll":
             if payroll:
                 warnings.append(f"重复 Payroll，忽略: {p.name}")
@@ -509,7 +725,7 @@ def convert_sources(
             if "empl.id:" in text.lower():
                 payroll = parse_at_payroll_pdf(p)
             else:
-                invoice = parse_at_invoice_pdf(p)
+                invoice = parse_at_invoice_pdf(p, convert_mapping=mapping)
 
     if not invoice and not payroll:
         raise ValueError("未能解析任何 A&T Invoice / Payroll PDF")
@@ -520,6 +736,8 @@ def convert_sources(
 
     employees, merge_warnings = merge_invoice_and_payroll(invoice, payroll)
     warnings.extend(merge_warnings)
+    employees, alias_warnings = recover_cyprus_l_field_aliases(employees)
+    warnings.extend(alias_warnings)
 
     tpl = (template_path or get_region_template("Cyprus")).resolve()
     if not tpl.is_file():
