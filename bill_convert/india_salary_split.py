@@ -1,9 +1,8 @@
 # -*- coding: utf-8 -*-
 """India 映射：按员工维护薪资拆分 + PT/IIT（indiaSalarySplit）。
 
-薪资：Basic / HRA / Telephone / LTA / Special / Wellness Stipend（合计应对齐 PDF CTC）
+薪资：Basic / HRA / Telephone / LTA / Special / Bonus / Wellness Stipend（合计应对齐 PDF CTC）
 另两项：Professional tax / IIT（扣款项，不计入 CTC 校验）
-Bonus 不在映射维护，写入时置 0。
 """
 from __future__ import annotations
 
@@ -18,6 +17,7 @@ SALARY_KEYS = (
     "telephone",
     "lta",
     "special",
+    "bonus",
     "wellness",
 )
 
@@ -36,6 +36,7 @@ SPLIT_TO_EMP_FIELD: dict[str, str] = {
     "telephone": "Telephone allowance",
     "lta": "LTA",
     "special": "Special allowance",
+    "bonus": "Bonus",
     "wellness": "Wellness Stipend",
     "professionalTax": "Professional tax",
     "iit": "IIT",
@@ -44,7 +45,7 @@ SPLIT_TO_EMP_FIELD: dict[str, str] = {
 EMP_FIELD_TO_SPLIT: dict[str, str] = {v: k for k, v in SPLIT_TO_EMP_FIELD.items()}
 
 # indiaSalarySplit provenance / 写入：India-L 表头名（按表头行动态解析列号）
-INDIA_SPLIT_PROVENANCE_FIELDS: tuple[str, ...] = tuple(SPLIT_TO_EMP_FIELD.values()) + ("Bonus",)
+INDIA_SPLIT_PROVENANCE_FIELDS: tuple[str, ...] = tuple(SPLIT_TO_EMP_FIELD.values())
 
 # write_india_l 可写字段（表头名须与母版一致）
 INDIA_L_KNOWN_DATA_FIELDS: tuple[str, ...] = (
@@ -65,6 +66,7 @@ _ALIAS: dict[str, str] = {
     "lta": "lta",
     "special": "special",
     "special allowance": "special",
+    "bonus": "bonus",
     "wellness": "wellness",
     "wellness stipend": "wellness",
     "professional tax": "professionalTax",
@@ -105,7 +107,7 @@ def _parse_entry(entry: Any) -> dict[str, float]:
 
 
 def parse_india_salary_splits(mapping: dict[str, Any] | None) -> dict[str, dict[str, float]]:
-    """mapping.indiaSalarySplit: { employeeName: { basic, hra, ..., wellness, professionalTax, iit } }"""
+    """mapping.indiaSalarySplit: { employeeName: { basic, hra, ..., bonus, wellness, professionalTax, iit } }"""
     if not isinstance(mapping, dict):
         return {}
     raw = None
@@ -163,7 +165,7 @@ def apply_salary_split_to_employee(
     fallback_ctc_to_basic: bool = True,
 ) -> dict[str, Any]:
     """
-    有映射则写入薪资六项 + PT/IIT；Bonus 置 0。
+    有映射则写入薪资七项（含 Bonus）+ PT/IIT。
     无匹配时：若 fallback_ctc_to_basic，则 CTC 整笔进 Basic。
     """
     warn = warnings if warnings is not None else []
@@ -175,7 +177,6 @@ def apply_salary_split_to_employee(
         emp["_india_salary_split_from_mapping"] = True
         for key, field in SPLIT_TO_EMP_FIELD.items():
             emp[field] = round(float(split.get(key) or 0.0), 2)
-        emp["Bonus"] = 0.0
 
         salary_sum = round(sum(float(split.get(k) or 0.0) for k in SALARY_KEYS), 2)
         pdf_ctc = _as_float(ctc if ctc is not None else emp.get("_ctc"))
@@ -205,7 +206,7 @@ def apply_salary_split_to_employee(
         if raw_present:
             warn.append(
                 f"{name or '员工'}：indiaSalarySplit 有内容但无法解析出有效金额"
-                f"（请确认键名为 basic/hra/telephone/lta/special/wellness/professionalTax/iit）"
+                f"（请确认键名为 basic/hra/telephone/lta/special/bonus/wellness/professionalTax/iit）"
             )
         else:
             warn.append(

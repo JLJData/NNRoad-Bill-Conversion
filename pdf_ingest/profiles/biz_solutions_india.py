@@ -4,10 +4,11 @@ Biz Solutions（India）Tax Invoice PDF → India-L（profile: biz_solutions_ind
 
 当前策略：
   - 从 PDF 提取：员工名、账期、Monthly CTC 总额、CGST+SGST（Business Tax）
+  - 账期兼容全称与缩写：June-2026 / April 2026 / Jan'2026 / Mar 2026 等
   - Business Tax 取整见 mapping.indiaBusinessTaxRoundMode / indiaBusinessTaxRoundDigits（默认 ROUND 到整数）
   - 票面多出对不上 CTC/GST/合计的金额行则中止（避免 Expense Claim / Deduction 被写成 0）；
     mapping.ignoreUnknownInvoiceAmounts=true 时可忽略并继续（写入 warnings）
-  - 薪资六项 + PT/IIT 走 mapping.indiaSalarySplit；Bonus 固定 0
+  - 薪资七项（含 Bonus）+ PT/IIT 走 mapping.indiaSalarySplit
   - 未配置拆分时：CTC 整笔进 Basic（其余 0）并 warning
 
 用法:
@@ -36,20 +37,39 @@ from bill_convert.india_business_tax import (
 
 INDIA_L_SHEET = "India-L"
 
+# 全称 + 常见三字母缩写（票面常见 Jan'2026 / Mar 2026）
 _MONTHS = {
     "january": 1,
+    "jan": 1,
     "february": 2,
+    "feb": 2,
     "march": 3,
+    "mar": 3,
     "april": 4,
+    "apr": 4,
     "may": 5,
     "june": 6,
+    "jun": 6,
     "july": 7,
+    "jul": 7,
     "august": 8,
+    "aug": 8,
     "september": 9,
+    "sept": 9,
+    "sep": 9,
     "october": 10,
+    "oct": 10,
     "november": 11,
+    "nov": 11,
     "december": 12,
+    "dec": 12,
 }
+
+# 长名优先，避免 Sep 抢先吃掉 September
+_MONTH_TOKEN_RE = (
+    r"January|February|March|April|May|June|July|August|September|October|November|December|"
+    r"Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sept|Sep|Oct|Nov|Dec"
+)
 
 
 def _norm(value: Any) -> str:
@@ -121,20 +141,23 @@ def parse_biz_solutions_pdf(
     if not employee_name:
         raise ValueError(f"未能解析员工姓名: {path.name}")
 
-    # 账期：month of June-2026 / for June-2026
+    # 账期：month of June-2026 / April\n2026 / Jan'2026 / Mar 2026 / for Feb'2026
     period_label = None
     year = month = None
     m = re.search(
-        r"(?:month of|for)\s+"
-        r"(January|February|March|April|May|June|July|August|September|October|November|December)"
-        r"\s*[\-–]?\s*(\d{4})",
+        rf"(?:month\s+of|for)\s+"
+        rf"({_MONTH_TOKEN_RE})"
+        rf"\.?\s*[\-–']?\s*(\d{{4}})",
         text,
         re.I,
     )
     if m:
-        month = _MONTHS[m.group(1).lower()]
+        month = _MONTHS.get(m.group(1).lower())
         year = int(m.group(2))
-        period_label = f"{m.group(1)}-{m.group(2)}"
+        if month:
+            period_label = f"{m.group(1)}-{m.group(2)}"
+        else:
+            year = None
     if not year or not month:
         warnings.append("未解析到账期，India-L 账期将留空")
         start = end = None
