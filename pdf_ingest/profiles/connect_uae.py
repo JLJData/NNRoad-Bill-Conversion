@@ -5,6 +5,7 @@ Connect Resources（UAE）税票 PDF → UAE-L。
 - 以 PDF 为准抽取：员工月薪、Commission、报销、EOSB、Emiratization、账期、发票号
 - Basic / Housing / Transport：mapping.connectSalarySplit 按姓名维护；缺省整笔进 Basic
 - Agency Fees 不写入 Recurring Fee（母版公式保留）
+- 仅认月度工资税票（Monthly Payroll / outsourcing）；Credit Note、Health Insurance 不当 CONVERT
 """
 from __future__ import annotations
 
@@ -64,8 +65,9 @@ _AMOUNT_PAT = (
     r"|\d+"
     r")"
 )
+# 允许「AED - 7,190.48」这类票面写法（AED 与金额之间多一个横杠）
 _NAME_AED_RE = re.compile(
-    r"([A-Za-z][A-Za-z .']*?)\s*[-–—]\s*AED\s*(" + _AMOUNT_PAT + r")",
+    r"([A-Za-z][A-Za-z .']*?)\s*[-–—]\s*AED\s*[-–—]?\s*(" + _AMOUNT_PAT + r")",
     re.I,
 )
 # CR76056 等新版：• Kevin Willmaser - Aug 2026: 18418.00 AED
@@ -187,12 +189,35 @@ def _match_split(splits: dict[str, Any], name: str) -> dict[str, Any] | None:
     return None
 
 
+# 非工资正本：贷项、医保等（同供应商抬头也绝不当 CONVERT）
+_CONNECT_REJECT_RE = re.compile(
+    r"tax\s+credit\s+note|\bcredit\s+note\b|health\s+insurance|medical\s+insurance",
+    re.I,
+)
+# 工资税票描述块
+_CONNECT_PAYROLL_RE = re.compile(
+    r"monthly\s+payroll|payroll\s*&\s*outsourcing|outsourcing\s+services",
+    re.I,
+)
+
+
 def looks_like_connect_invoice(path: Path, text: str | None = None) -> bool:
-    name = path.name.lower()
-    if name.startswith("cr") and name.endswith(".pdf"):
-        return True
-    body = (text if text is not None else extract_pdf_text(path)).lower()
-    return "connect resources" in body and ("tax invoice" in body or "invoice#" in body)
+    """是否为可转换的 Connect 月度工资税票（排除 Credit Note / Health Insurance 等）。"""
+    body = text if text is not None else extract_pdf_text(path)
+    if not body or not str(body).strip():
+        return False
+    low = str(body).lower()
+    if "connect resources" not in low:
+        return False
+    if _CONNECT_REJECT_RE.search(low):
+        return False
+    if not ("tax invoice" in low or "invoice#" in low or "invoice #" in low):
+        return False
+    return bool(_CONNECT_PAYROLL_RE.search(low))
+
+
+# 供 /file-role/classify：有则优先于 registry.detect_keywords
+looks_like_convert_source = looks_like_connect_invoice
 
 
 def parse_connect_invoice(
@@ -348,6 +373,10 @@ def parse_connect_invoice(
                     for n in names:
                         emp = _ensure_emp(emps, n)
                         emp["expenses"] = round(float(emp.get("expenses") or 0) + each, 6)
+                    if len(names) > 1:
+                        warnings.append(
+                            f"报销「{', '.join(names)}」票面合计 {total} 未拆到人，已按人均 {each} 分摊；请核对"
+                        )
             continue
 
         for hit in name_hits:

@@ -911,14 +911,29 @@ async def file_role_classify(
                     continue
             if pid:
                 try:
+                    import importlib
+
                     profile = get_pdf_profile(pid)
                     text = extract_pdf_text(path) or ""
                     low = text.lower()
-                    if any(k in low for k in profile.detect_keywords):
+                    # 版式模块若提供 looks_like_convert_source，优先用之（如 Connect 排除贷项/医保）
+                    matched = None
+                    reason = "pdf_profile_keywords"
+                    try:
+                        mod = importlib.import_module(profile.module)
+                        looks = getattr(mod, "looks_like_convert_source", None)
+                        if callable(looks):
+                            matched = bool(looks(path, text))
+                            reason = "pdf_profile_looks_like"
+                    except Exception:
+                        matched = None
+                    if matched is None:
+                        matched = any(k in low for k in profile.detect_keywords)
+                    if matched:
                         return {
                             "ok": True,
                             "role": "CONVERT",
-                            "reason": "pdf_profile_keywords",
+                            "reason": reason,
                             "fileName": name,
                             "pdfProfileId": pid,
                             "layoutKind": f"{pid}:pdf",

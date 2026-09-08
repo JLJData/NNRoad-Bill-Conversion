@@ -92,6 +92,19 @@ _CYPRUS_FIELD_HEADERS: dict[str, tuple[list[str], int]] = {
 }
 
 
+def _cyprus_header_names_for_field(field: str) -> list[str]:
+    """mapping.fieldHeaders[field] 优先，否则用内置候选表头名。"""
+    names, _ = _CYPRUS_FIELD_HEADERS[field]
+    mapping = _active_mapping()
+    custom = mapping.get("fieldHeaders") if isinstance(mapping.get("fieldHeaders"), dict) else {}
+    raw = custom.get(field)
+    if isinstance(raw, list) and raw:
+        out = [str(x).strip() for x in raw if x is not None and str(x).strip()]
+        if out:
+            return out
+    return list(names)
+
+
 def _cyprus_meta_cells() -> tuple[tuple[int, int], tuple[int, int]]:
     """账期起止格：mapping.metaCells.periodFrom / periodTo，默认 C2 / E2。"""
     mapping = _active_mapping()
@@ -108,13 +121,9 @@ def _resolve_cyprus_cols(ws, header_row: int, warnings: list[str] | None = None)
             header_map.setdefault(k, v)
     except Exception:
         pass
-    mapping = _active_mapping()
-    custom = mapping.get("fieldHeaders") if isinstance(mapping.get("fieldHeaders"), dict) else {}
     out: dict[str, int] = {}
-    for field, (names, fallback) in _CYPRUS_FIELD_HEADERS.items():
-        use_names = names
-        if isinstance(custom.get(field), list) and custom.get(field):
-            use_names = [str(x) for x in custom[field] if x]
+    for field, (_names, fallback) in _CYPRUS_FIELD_HEADERS.items():
+        use_names = _cyprus_header_names_for_field(field)
         col = resolve_col_with_fallback(
             header_map,
             field=field,
@@ -276,15 +285,7 @@ def parse_cyprus_l_employees(ws: Worksheet, warnings: list[str] | None = None) -
 
     name_col = cols["name"]
     ee_col = cols.get("ee_code", COL_EE_CODE)
-    field_pairs = [
-        ("Base salary", cols.get("base", COL_BASE)),
-        ("Employer's contributions", cols.get("er_contrib", COL_ER_CONTRIB)),
-        ("Employer's & Public Liability", cols.get("liability", COL_LIABILITY)),
-        ("Employee's Social Insurance", cols.get("ee_si", COL_EE_SI)),
-        ("Employee's tax", cols.get("ee_tax", COL_EE_TAX)),
-        ("Employee - N.H.S.-SI", cols.get("ee_nhs", COL_EE_NHS)),
-        ("Expense Reimbursment", cols.get("expense", COL_EXPENSE)),
-    ]
+    # 按 mapping.fieldHeaders / 内置候选动态读列，不写死表头键
     used_cols = set(cols.values())
 
     employees: list[dict[str, Any]] = []
@@ -305,13 +306,16 @@ def parse_cyprus_l_employees(ws: Worksheet, warnings: list[str] | None = None) -
         if ee_code:
             emp["No. of EE"] = ee_code
             emp["_ee_code"] = ee_code
-        for key, col in field_pairs:
+        for field, col in cols.items():
+            if field in ("name", "ee_code") or col is None:
+                continue
+            if field not in _CYPRUS_FIELD_HEADERS:
+                continue
             val = ws.cell(row, col).value
-            if _cell_formula_text(val):
+            if _cell_formula_text(val) or val is None or val == "":
                 continue
-            if val is None or val == "":
-                continue
-            emp[key] = val
+            for key in _cyprus_header_names_for_field(field):
+                emp[key] = val
         for h, col in headers.items():
             if col in used_cols:
                 continue
@@ -400,23 +404,22 @@ def write_cyprus_l(ws: Worksheet, employees: list[dict[str, Any]]) -> None:
     headers_l = {k.lower(): col for k, col in headers.items()}
     name_col = cols.get("name", COL_NAME)
     ee_col = cols.get("ee_code", COL_EE_CODE)
-    field_cols = {
+    # 与 parse 一致：按 fieldHeaders / 内置候选生成「员工 dict 键 → 列」
+    field_cols: dict[str, int] = {
         "No. of EE": ee_col,
         "Name of Employee": name_col,
         "Employee Name": name_col,
-        "Base salary": cols.get("base", COL_BASE),
-        "Other ": cols.get("other", COL_OTHER),
-        "Other": cols.get("other", COL_OTHER),
-        "Employer's contributions": cols.get("er_contrib", COL_ER_CONTRIB),
-        "Employer's & Public Liability": cols.get("liability", COL_LIABILITY),
-        # 母版表头常被截断；写出时与完整名视为同一列
-        "Employer's & Public Liabilit": cols.get("liability", COL_LIABILITY),
-        "Employee's Social Insurance": cols.get("ee_si", COL_EE_SI),
-        "Employee's tax": cols.get("ee_tax", COL_EE_TAX),
-        "Employee - N.H.S.-SI": cols.get("ee_nhs", COL_EE_NHS),
-        "Expense Reimbursment": cols.get("expense", COL_EXPENSE),
-        "Medical Insurance": cols.get("medical", COL_MEDICAL),
     }
+    for field, col in cols.items():
+        if field in ("name", "ee_code") or col is None:
+            continue
+        if field not in _CYPRUS_FIELD_HEADERS:
+            continue
+        for key in _cyprus_header_names_for_field(field):
+            field_cols[key] = col
+    # 母版表头常被截断；写出时与完整名视为同一列
+    if "liability" in cols:
+        field_cols.setdefault("Employer's & Public Liabilit", cols["liability"])
 
     for idx, emp in enumerate(employees):
         row = data_start + idx

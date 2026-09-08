@@ -42,6 +42,7 @@ CYPRUS_L_SHEET = "Cyprus-L"
 _AT_INVOICE_DEFAULT_LABELS = [
     "Gross Salary",
     "Medical Insurance Cover",
+    "Medical Insurance",
     "Employer's Contributions",
     "Employer's & Public Liability",
     "Administration Fee",
@@ -54,6 +55,7 @@ _AT_INVOICE_BUILTIN_RENAME = {
     "Employer's & Public Liability": "Employer's & Public Liability",
     "Administration Fee": "_admin_fee",
     "Medical Insurance Cover": "Medical Insurance",
+    "Medical Insurance": "Medical Insurance",
 }
 
 _MONTHS = {
@@ -130,43 +132,25 @@ def _fields_from_invoice_block(
     rename_map: dict[str, str],
 ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     """
-    块内按标签抽金额再映射。Medical：ER 之前→Medical Insurance；Admin 之后→Other。
+    块内按标签抽金额再映射。
+    Medical（含当期 + Admin 后补收）全部合计写入 Medical Insurance。
     返回 (fields, hits)。
     """
     hits = extract_label_amounts(body, labels)
-    er_start = None
-    admin_end = None
-    for h in hits:
-        lk = norm_label(str(h["label"])).lower()
-        if "employer's contributions" in lk or lk == "employers contributions":
-            er_start = int(h["start"])
-        if "administration fee" in lk:
-            admin_end = int(h["end"])
 
-    # 先按 rename 汇总，再对 Medical 按位置拆分
-    medical_now = 0.0
-    medical_back = 0.0
+    medical_total = 0.0
     filtered: list[dict[str, Any]] = []
     for h in hits:
         lk = norm_label(str(h["label"])).lower()
         if "medical insurance" in lk:
-            val = float(h["value"])
-            if er_start is not None and int(h["start"]) < er_start:
-                medical_now += val
-            elif admin_end is not None and int(h["start"]) >= admin_end:
-                medical_back += val
-            else:
-                medical_now += val
+            medical_total += float(h["value"])
             continue
         filtered.append(h)
 
     fields = apply_label_amounts(filtered, rename_map)
-    if medical_now:
-        # Medical 位置拆分优先于 columnRename（当期 / 补收语义固定）
-        fields["Medical Insurance"] = medical_now
-    if medical_back:
-        fields["Other "] = medical_back
-        fields["Other"] = medical_back
+    if medical_total:
+        # 合计优先于 columnRename（当期 + 补收如 184.11+552.33）
+        fields["Medical Insurance"] = round(medical_total, 6)
     return fields, hits
 
 
@@ -377,15 +361,12 @@ def inspect_at_pdf_labels(
                 if en:
                     employees.append({"cnName": "", "enName": en})
                     med = e.get("Medical Insurance")
-                    other = e.get("Other") if e.get("Other") is not None else e.get("Other ")
-                    if med is not None or other is not None:
-                        bits = [en]
-                        if med is not None:
-                            bits.append(f"Medical Insurance={med}")
-                        if other is not None:
-                            bits.append(f"Other={other}")
+                    if med is not None:
                         if not medical_note:
-                            medical_note = "；同标签多次：ER 前→Medical Insurance，Admin 后→Other（例：" + "，".join(bits) + "）"
+                            medical_note = (
+                                f"；Medical 当期+补收已合计写入 Medical Insurance"
+                                f"（例：{en} Medical Insurance={med}）"
+                            )
         except Exception as exc:
             return {
                 "ok": False,

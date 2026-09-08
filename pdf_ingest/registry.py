@@ -64,7 +64,7 @@ PDF_PROFILES: dict[str, PdfProfile] = {
         label="Connect",
         region="UAE",
         module="pdf_ingest.profiles.connect_uae",
-        description="Connect Resources：Tax Invoice PDF → UAE-L；再经 uae_payroll_calc → PN",
+        description="Connect Resources：月度工资 Tax Invoice PDF → UAE-L（排除 Credit Note / Health Insurance）；再经 uae_payroll_calc → PN",
         engine_ids=("uae_payroll_calc",),
         detect_keywords=(
             "connect resources",

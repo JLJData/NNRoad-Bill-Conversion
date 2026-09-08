@@ -356,6 +356,7 @@ ENGINE_DEFAULTS: dict[str, dict[str, Any]] = {
             "ee_tax": ["Employee's tax"],
             "ee_nhs": ["Employee - N.H.S.-SI"],
             "expense": ["Expense Reimbursment", "Expense Reimbursement"],
+            "medical": ["Medical Insurance", "Medical Insurance Cover"],
         },
         "schemaVersion": 1,
         "sourceEmployeeSheet": {
@@ -577,13 +578,14 @@ _BUILTIN_COLUMN_RENAME_BY_PROFILE: dict[str, dict[str, str]] = {
         "Employee NI": "EE'NIC",
         "Employee Pension": "EE' Pension (Auto Enrolment)",
     },
-    # A&T Invoice PDF 标签 → Cyprus-L（Medical 补收由解析按位置写入 Other）
+    # A&T Invoice PDF 标签 → Cyprus-L（Medical 当期+补收合计进 Medical Insurance）
     "at_technical_cyprus": {
         "Gross Salary": "Base salary",
         "Employer's Contributions": "Employer's contributions",
         "Employer's & Public Liability": "Employer's & Public Liability",
         "Administration Fee": "_admin_fee",
         "Medical Insurance Cover": "Medical Insurance",
+        "Medical Insurance": "Medical Insurance",
     },
 }
 
