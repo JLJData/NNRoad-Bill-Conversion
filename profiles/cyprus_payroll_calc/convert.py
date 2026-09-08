@@ -93,16 +93,31 @@ _CYPRUS_FIELD_HEADERS: dict[str, tuple[list[str], int]] = {
 
 
 def _cyprus_header_names_for_field(field: str) -> list[str]:
-    """mapping.fieldHeaders[field] 优先，否则用内置候选表头名。"""
-    names, _ = _CYPRUS_FIELD_HEADERS[field]
+    """mapping.fieldHeaders[field] 优先，并并上内置别名（如母版截断表头）。"""
+    builtin, _ = _CYPRUS_FIELD_HEADERS[field]
     mapping = _active_mapping()
     custom = mapping.get("fieldHeaders") if isinstance(mapping.get("fieldHeaders"), dict) else {}
     raw = custom.get(field)
+    out: list[str] = []
+    seen: set[str] = set()
+
+    def _add(name: str) -> None:
+        s = str(name).strip()
+        if not s:
+            return
+        key = s.lower()
+        if key in seen:
+            return
+        seen.add(key)
+        out.append(s)
+
     if isinstance(raw, list) and raw:
-        out = [str(x).strip() for x in raw if x is not None and str(x).strip()]
-        if out:
-            return out
-    return list(names)
+        for x in raw:
+            if x is not None:
+                _add(str(x))
+    for x in builtin:
+        _add(x)
+    return out
 
 
 def _cyprus_meta_cells() -> tuple[tuple[int, int], tuple[int, int]]:
