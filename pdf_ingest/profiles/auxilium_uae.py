@@ -666,7 +666,10 @@ def parse_auxilium_payroll_draft(
                 "EC - OT2": f0("act_ot2"),
                 "EC - Workmen Comp": f0("workmen"),
                 "EC - Localization": localization,
-                "EC - Gratuity Accrual": f("gratuity_accrual"),
+                # 新草稿常只有 Accruals/Gratuity，无独立 EC - Gratuity Accrual 列
+                "EC - Gratuity Accrual": f("gratuity_accrual")
+                if f("gratuity_accrual") is not None
+                else f("gratuity"),
                 "EC - Health Insurance Installment": 0,
                 "EC - GOSI": f0("gosi"),
                 "EC - Admin Fees": None,

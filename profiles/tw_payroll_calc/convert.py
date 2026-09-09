@@ -86,8 +86,11 @@ PAYROLL_DUP_MIN_COL = 14
 # Pay Period / Start End：母版若误用金额格式会显示成 46,113.00，PN 的 MONTH/YEAR 仍可读序列，但页面很误导
 _DATE_FMT = "yyyy/m/d"
 
-# 源表有、但 TW-L 不直接写入的列（加班已汇总到「加班費」；Service Fee 由模板留空）
+# 源表有、但 TW-L 不直接写入的列：
+# - Service Fee：PN/TW 侧多由公式算，源表该列常空或与计费口径不同
+# - 加班明细：已汇总到「加班費」
 SKIP_SOURCE_HEADERS = frozenset({
+    "Service Fee",
     "Hr (1.34x)",
     "OT Payment (1.34x)",
     "Hr (1.67x)",
@@ -96,7 +99,6 @@ SKIP_SOURCE_HEADERS = frozenset({
     "OT Payment (1x)",
     "Hr (2.67x)",
     "OT Payment (2.67x)",
-    "Service Fee",
 })
 
 SICK_LEAVE_PAY_HEADER = "病假扣薪\nSick Leave\n(half pay)"
@@ -123,12 +125,15 @@ def _source_employee_spec() -> dict[str, Any]:
 
 
 def _skip_source_headers() -> frozenset[str]:
+    """引擎默认跳过列 ∪ Office mapping.skipSourceHeaders。"""
+    base = frozenset(norm(str(x)) for x in SKIP_SOURCE_HEADERS)
     raw = _active_mapping().get("skipSourceHeaders")
     if raw is None:
-        return frozenset()
+        return base
     if not raw:
-        return frozenset()
-    return frozenset(norm(str(x)) for x in raw)
+        # 显式空列表：仅跳过引擎默认（仍保留 OT 拆列）
+        return base
+    return base | frozenset(norm(str(x)) for x in raw)
 
 
 def _column_rename_map() -> dict[str, str]:
@@ -157,11 +162,40 @@ def _explicit_rename_targets(rename: dict[str, str] | None = None) -> set[str]:
     return out
 
 
-def map_source_header(source_header: str) -> str | None:
+def _rename_claimer_present(
+    rename: dict[str, str],
+    target_name: str,
+    present_keys: set[str],
+) -> bool:
+    """是否存在映射到 target、且本月源表实际出现的对照源列。"""
+    want = {norm(target_name), norm(target_name).rsplit("/", 1)[-1]}
+    want = {x for x in want if x}
+    present = set(present_keys)
+    present_children = {k.rsplit("/", 1)[-1] for k in present}
+    for src, tgt in rename.items():
+        tv = norm(tgt)
+        if not tv:
+            continue
+        if not (want & {tv, tv.rsplit("/", 1)[-1]}):
+            continue
+        sk = norm(src)
+        if not sk:
+            continue
+        if sk in present or sk.rsplit("/", 1)[-1] in present or sk.rsplit("/", 1)[-1] in present_children:
+            return True
+    return False
+
+
+def map_source_header(
+    source_header: str,
+    *,
+    present_keys: set[str] | None = None,
+) -> str | None:
     """
     源列 → 目标列。
-    - 有显式 columnRename：用对照结果
-    - 否则同名自动匹配；但若目标名已被其它源列显式对照占用，则跳过（避免 Total 盖掉 Hours→Total）
+    - 有显式 columnRename：用对照结果（完整资格化 key 或子列名均可命中）
+    - 否则同名自动匹配；但若目标名已被其它源列显式对照占用，则跳过
+      （仅当该对照源列本月真实存在时才占用，避免别名闲置月份误跳过同名列）
     """
     h = norm(source_header)
     if not h or h in _skip_source_headers():
@@ -169,12 +203,27 @@ def map_source_header(source_header: str) -> str | None:
     rename = _column_rename_map()
     if h in rename:
         return rename[h]
+    child = h.rsplit("/", 1)[-1]
+    if child and child in rename:
+        return rename[child]
+    # 对照表写了资格化源列，当前源 key 子段与之相同
+    for rk, rv in rename.items():
+        if rk.rsplit("/", 1)[-1] == child:
+            return rv
     claimed = _explicit_rename_targets(rename)
-    if h in claimed:
+
+    def _blocked(name: str) -> bool:
+        if name not in claimed:
+            return False
+        if present_keys is None:
+            return True
+        return _rename_claimer_present(rename, name, present_keys)
+
+    if _blocked(h):
         return None
     base = h.split("#", 1)[0]
-    child = base.rsplit("/", 1)[-1]
-    if base in claimed or child in claimed:
+    child2 = base.rsplit("/", 1)[-1]
+    if _blocked(base) or _blocked(child2):
         return None
     return h
 
@@ -280,21 +329,22 @@ def read_pc_employees(ws: Worksheet, header_row: int) -> list[dict[str, Any]]:
         raise ValueError(f"「{sheet_label}」表头行须包含 {' 或 '.join(name_header_list)}")
 
     employees: list[dict[str, Any]] = []
+    rename = _column_rename_map()
+    if rename:
+        check_column_rename_hits(rename, source_headers, strict_if_configured=True)
+    present_keys = {norm(k) for k in source_headers.keys() if norm(k)}
     for row in range(header_row + 1, (ws.max_row or 0) + 1):
         has_name = any(clean_value(ws.cell(row, col).value) for col in name_cols)
         if not has_name:
             continue
 
         record: dict[str, Any] = {}
-        rename = _column_rename_map()
-        if rename:
-            check_column_rename_hits(rename, source_headers, strict_if_configured=True)
         # 先写显式对照，再写同名自动匹配，避免后者覆盖前者
         ordered = list(source_headers.items())
         explicit_first = [(s, c) for s, c in ordered if norm(s) in rename]
         auto_rest = [(s, c) for s, c in ordered if norm(s) not in rename]
         for src_hdr, col in explicit_first + auto_rest:
-            target_hdr = map_source_header(src_hdr)
+            target_hdr = map_source_header(src_hdr, present_keys=present_keys)
             if target_hdr is None:
                 continue
             val = clean_value(ws.cell(row, col).value)

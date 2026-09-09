@@ -90,26 +90,26 @@ def _read_pdf_text(path: Path) -> str:
 
 def looks_like_auxilium_invoice(path: Path, text: str | None = None) -> bool:
     """
-    Auxilium 税票（Admin Fee 或普通 Invoice INV-xxxxx）。
-    不依赖文件名含 admin fee：上传后常被改成 source_0.pdf。
+    Auxilium Admin Fee 税票（供 Business Tax）。
+    不依赖文件名必须含 admin fee（上传后常被改成 source_0.pdf），
+    但会排除 Salary / Medical Insurance 等非 Admin Fee 发票。
     """
     p = Path(path)
     name = p.name.lower()
     body = (text if text is not None else _read_pdf_text(p)).lower().replace("\xa0", " ")
     if "payroll draft" in body:
         return False
-    if "total vat" in body and ("admin fee" in body or "management fee" in body):
+    # 医疗保险 / 薪资票：即使文件名误标 Admin Fee 也不进 VAT 事实
+    if "medical insurance" in body or "medical insurance" in name:
+        return False
+    if re.search(r"reference\s*\n?\s*[^\n]*salary", body) and "admin fee" not in body:
+        return False
+    if "total vat" in body and "admin fee" in body:
         return True
-    if "auxilium" in body and "total vat" in body and "tax invoice" in body:
+    if "total vat" in body and "management fee" in body:
         return True
-    if "tax invoice" in body and "total vat" in body and _INV_SEQ_RE.search(body):
-        return True
-    if "total vat" in body and _INV_SEQ_RE.search(body or name):
-        return True
-    # 正文抽不出字时：文件名带 INV-数字也视为候选（再在 parse 里抽 VAT）
-    if _INV_SEQ_RE.search(p.name) and p.suffix.lower() == ".pdf":
-        return True
-    if "admin" in name and "fee" in name:
+    # 正文抽不出字时：文件名带 admin fee + INV 才作候选
+    if "admin" in name and "fee" in name and _INV_SEQ_RE.search(p.name):
         return True
     return False
 

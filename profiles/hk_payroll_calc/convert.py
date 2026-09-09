@@ -109,23 +109,92 @@ def _skip_source_headers() -> set[str]:
     return {norm(x) for x in raw if x}
 
 
-def map_source_header(source_header: str) -> str | None:
+# 供应商偶发把 Base Salary 写成 Basic Salary（UECorp 2026-03 起）
+_DEFAULT_SOURCE_ALIASES: dict[str, str] = {
+    "Basic Salary": "Base Salary",
+}
+
+
+def _rename_claimer_present(
+    rename: dict[str, str],
+    target_name: str,
+    present_keys: set[str],
+) -> bool:
+    """是否存在「映射到 target_name」且本月源表里实际出现的对照源列。"""
+    want = {norm(target_name), norm(target_name).rsplit("/", 1)[-1]}
+    want = {x for x in want if x}
+    present = set(present_keys)
+    present_children = {k.rsplit("/", 1)[-1] for k in present}
+    for src, tgt in rename.items():
+        tv = norm(tgt)
+        if not tv:
+            continue
+        tgt_keys = {tv, tv.rsplit("/", 1)[-1]}
+        if not (want & tgt_keys):
+            continue
+        sk = norm(src)
+        if not sk:
+            continue
+        if sk in present or sk.rsplit("/", 1)[-1] in present or sk in present_children:
+            return True
+        if sk.rsplit("/", 1)[-1] in present_children:
+            return True
+    return False
+
+
+def map_source_header(
+    source_header: str,
+    *,
+    present_keys: set[str] | None = None,
+) -> str | None:
+    """
+    源列 → 目标列。
+    - columnRename 显式对照（完整 key / 子段）
+    - 引擎默认别名（Basic Salary → Base Salary）
+    - 否则同名；若目标名已被其它源列显式对照占用则跳过
+      （仅当该对照的源列本月真实存在时才占用，避免 Basic→Base 在
+       源表已是 Base Salary 的月份误跳过同名底薪列）
+    """
     h = norm(source_header)
     if not h or h in _skip_source_headers():
         return None
     rename = _column_rename()
     if h in rename:
         return rename[h]
-    claimed = {norm(v) for v in rename.values()}
-    for v in list(claimed):
-        base = v.split("#", 1)[0]
-        claimed.add(base)
-        claimed.add(base.rsplit("/", 1)[-1])
-    if h in claimed:
+    child = h.rsplit("/", 1)[-1]
+    if child and child in rename:
+        return rename[child]
+    for rk, rv in rename.items():
+        if rk.rsplit("/", 1)[-1] == child:
+            return rv
+    if h in _DEFAULT_SOURCE_ALIASES:
+        return _DEFAULT_SOURCE_ALIASES[h]
+    if child and child in _DEFAULT_SOURCE_ALIASES:
+        return _DEFAULT_SOURCE_ALIASES[child]
+
+    claimed: set[str] = set()
+    for v in rename.values():
+        nv = norm(v)
+        if not nv:
+            continue
+        claimed.add(nv)
+        claimed.add(nv.split("#", 1)[0])
+        claimed.add(nv.rsplit("/", 1)[-1])
+
+    def _blocked(name: str) -> bool:
+        if name not in claimed:
+            return False
+        # 无源表上下文：保持旧行为（目标被对照占用则跳过）
+        if present_keys is None:
+            return True
+        # 对照源列本月不存在 → 别名闲置，同名目标列放行
+        return _rename_claimer_present(rename, name, present_keys)
+
+    if _blocked(h):
         return None
     base = h.split("#", 1)[0]
-    child = base.rsplit("/", 1)[-1]
-    if base in claimed or child in claimed:
+    child2 = base.rsplit("/", 1)[-1]
+    if _blocked(base) or _blocked(child2):
         return None
     return h
 
@@ -178,19 +247,20 @@ def read_hk_l_employees(ws: Worksheet) -> list[dict[str, Any]]:
         raise ValueError(f"「Hong Kong-L」第 {header_row} 行须包含员工姓名表头（如 Name of Employee）")
 
     employees: list[dict[str, Any]] = []
+    rename = _column_rename()
+    if rename:
+        check_column_rename_hits(rename, source_headers, strict_if_configured=True)
+    present_keys = {norm(k) for k in source_headers.keys() if norm(k)}
     for row in range(data_start, (ws.max_row or 0) + 1):
         name = clean_value(ws.cell(row, name_col).value)
         if name is None:
             continue
         record: dict[str, Any] = {}
-        rename = _column_rename()
-        if rename:
-            check_column_rename_hits(rename, source_headers, strict_if_configured=True)
         ordered = list(source_headers.items())
         explicit_first = [(s, c) for s, c in ordered if norm(s) in rename]
         auto_rest = [(s, c) for s, c in ordered if norm(s) not in rename]
         for src_hdr, col in explicit_first + auto_rest:
-            target_hdr = map_source_header(src_hdr)
+            target_hdr = map_source_header(src_hdr, present_keys=present_keys)
             if target_hdr is None:
                 continue
             val = clean_value(ws.cell(row, col).value)

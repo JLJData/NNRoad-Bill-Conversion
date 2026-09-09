@@ -88,6 +88,9 @@ def check_column_rename_hits(
     """
     columnRename 已配置时，检查是否至少命中 1 个源表头。
     返回命中数；strict 且 0 命中时抛错。
+
+    特例：对照「A→B」在本月源表已直接使用 B（无 A）时视为别名闲置，不算配置错误
+    （例如 UECorp 1–2 月仍是 Base Salary，3 月起才是 Basic Salary）。
     """
     if not isinstance(rename, dict) or not rename:
         return 0
@@ -98,17 +101,33 @@ def check_column_rename_hits(
     if not keys:
         return 0
     keys_lower = {k.lower() for k in keys}
-    hits = 0
-    misses: list[str] = []
-    for src in rename.keys():
-        sk = norm(src)
+    # 资格化子段也可命中
+    child_keys = {k.rsplit("/", 1)[-1] for k in keys if "/" in k}
+    child_lower = {k.lower() for k in child_keys}
+
+    def _present(name: str) -> bool:
+        sk = norm(name)
         if not sk:
-            continue
+            return False
         if sk in keys or sk.lower() in keys_lower:
+            return True
+        child = sk.rsplit("/", 1)[-1]
+        return child in keys or child.lower() in keys_lower or child in child_keys or child.lower() in child_lower
+
+    hits = 0
+    idle_aliases = 0
+    misses: list[str] = []
+    for src, tgt in rename.items():
+        if not norm(src):
+            continue
+        if _present(str(src)):
             hits += 1
+        elif tgt and _present(str(tgt)):
+            # 源表已用目标列名，本月不需要这条别名
+            idle_aliases += 1
         else:
             misses.append(str(src))
-    if hits == 0 and rename:
+    if hits == 0 and idle_aliases == 0 and rename:
         msg = (
             "columnRename 已配置但未命中任何源表头，请核对映射里的供应商列名是否与账单一致"
             + (f"（样例未命中: {', '.join(misses[:5])}）" if misses else "")
@@ -120,6 +139,10 @@ def check_column_rename_hits(
     elif misses and warnings is not None:
         warnings.append(
             f"columnRename 部分未命中（{len(misses)} 项），例如: {', '.join(misses[:5])}"
+        )
+    elif idle_aliases and hits == 0 and warnings is not None:
+        warnings.append(
+            f"columnRename 本月未使用（源表已是目标列名，{idle_aliases} 条别名闲置）"
         )
     return hits
 
