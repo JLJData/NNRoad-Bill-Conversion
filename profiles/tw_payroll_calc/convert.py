@@ -580,6 +580,14 @@ def match_ee_code(
             best.append(row)
 
     if not best:
+        coded = [
+            row
+            for row in directory
+            if isinstance(row, dict) and norm(row.get("employee_code") or row.get("employeeCode"))
+        ]
+        # 目录已按客户过滤：客户下只有 1 人时，最高分就是他（即使拼音分很低）
+        if len(directory) == 1 and len(coded) == 1:
+            return norm(coded[0].get("employee_code") or coded[0].get("employeeCode")), None
         label = " / ".join(n for n in excel_names if n)
         return None, f"未匹配到 EE Code：{label}"
 

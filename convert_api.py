@@ -13,6 +13,7 @@
   GET  /engines
   GET  /pdf-profiles
   GET  /mapping/defaults?engineId=&pdfProfileId=  引擎默认映射（含 fixedValueWrites）
+  POST /unlock-xlsx  multipart: file, original_filename/duration/convert_mapping(可选)  加密源表解密
   POST /convert  multipart: file, engine_id, region, template(可选), pn_meta(json可选), employee_directory(json数组可选)
   POST /pdf-to-source  multipart: file, profile_id(可选自动识别), pn_meta(json可选), template(可选)
   POST /pdf-to-source-batch  multipart: files[], profile_id, …
@@ -47,6 +48,7 @@ from engines import list_engines
 from pdf_ingest.registry import list_pdf_profiles
 from pdf_ingest.runner import run_pdf_to_source, run_pdf_to_source_batch, run_vendor_to_source_batch
 from region_templates import list_regions, get_region_template
+from xlsx_unlock import collect_unlock_passwords, unlock_xlsx
 
 CONVERT_API_KEY = os.environ.get("CONVERT_API_KEY", "").strip()
 _DISABLE_DOCS = os.environ.get("CONVERT_DISABLE_DOCS", "").strip() in ("1", "true", "True", "yes")
@@ -66,6 +68,23 @@ BASE_DIR = Path(__file__).resolve().parent
 def _b64_json_header(payload: object) -> str:
     raw = json.dumps(payload, ensure_ascii=True, separators=(",", ":")).encode("utf-8")
     return base64.b64encode(raw).decode("ascii")
+
+
+def _with_unlock_hints(
+    mapping: dict | None,
+    *,
+    filename: str | None = None,
+    duration: str | None = None,
+) -> dict:
+    """临时文件常被存成 source.xlsx，把原名/账期注入 mapping 供解密猜密码。"""
+    out = dict(mapping) if isinstance(mapping, dict) else {}
+    name = (filename or "").strip()
+    if name:
+        out["_sourceOriginalName"] = name
+    dur = (duration or "").strip()
+    if dur:
+        out["_billDuration"] = dur
+    return out
 
 
 def _build_cell_provenance(result: dict) -> dict | None:
@@ -607,6 +626,64 @@ def region_template(region: str = Query(..., min_length=1)):
     )
 
 
+@app.post("/unlock-xlsx")
+async def unlock_xlsx_preview(
+    file: UploadFile = File(...),
+    original_filename: str | None = Form(None),
+    duration: str | None = Form(None),
+    convert_mapping: str | None = Form(None),
+    password: str | None = Form(None),
+):
+    """加密 xlsx 解密后返回；未加密则原样返回。供核对页左侧 JSZip 预览。"""
+    _assert_safe_upload(file)
+    hint_name = (original_filename or file.filename or "source.xlsx").strip() or "source.xlsx"
+    suffix = Path(hint_name).suffix.lower() or Path(file.filename or "").suffix.lower() or ".xlsx"
+    if suffix not in (".xlsx", ".xlsm"):
+        raise HTTPException(status_code=400, detail=f"仅支持 Excel（.xlsx/.xlsm），当前: {suffix}")
+    try:
+        mapping = parse_convert_mapping_payload(convert_mapping)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"convert_mapping 无效: {exc}") from exc
+    mapping = _with_unlock_hints(mapping, filename=hint_name, duration=duration)
+
+    tmp_dir = Path(tempfile.mkdtemp(prefix="xlsx_unlock_"))
+    source_path = tmp_dir / f"source{suffix}"
+    out_dir = tmp_dir / "out"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        content = await file.read()
+        if not content:
+            raise HTTPException(status_code=400, detail="上传文件为空")
+        source_path.write_bytes(content)
+        user_pwd = (password or "").strip()
+        auto_pwds = collect_unlock_passwords(source_path, mapping=mapping)
+        passwords = ([user_pwd] if user_pwd else []) + [p for p in auto_pwds if p != user_pwd]
+        unlocked = unlock_xlsx(
+            source_path,
+            out_dir,
+            passwords=passwords,
+        )
+        out_name = Path(hint_name).name
+        if Path(out_name).suffix.lower() not in (".xlsx", ".xlsm"):
+            out_name = f"{Path(out_name).stem}{suffix}"
+        return FileResponse(
+            path=str(unlocked),
+            filename=out_name,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            background=BackgroundTask(_cleanup_dir, tmp_dir),
+        )
+    except HTTPException:
+        _cleanup_dir(tmp_dir)
+        raise
+    except ValueError as exc:
+        _cleanup_dir(tmp_dir)
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        _cleanup_dir(tmp_dir)
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"解密失败: {exc}") from exc
+
+
 @app.post("/convert")
 async def convert(
     file: UploadFile = File(...),
@@ -617,6 +694,8 @@ async def convert(
     employee_directory: str | None = Form(None),
     convert_mapping: str | None = Form(None),
     output_prefix: str | None = Form(None),
+    original_filename: str | None = Form(None),
+    duration: str | None = Form(None),
 ):
     _assert_safe_upload(file)
     _assert_safe_upload(template)
@@ -636,6 +715,11 @@ async def convert(
         mapping = parse_convert_mapping_payload(convert_mapping)
     except Exception as exc:
         raise HTTPException(status_code=400, detail=f"convert_mapping 无效: {exc}") from exc
+    mapping = _with_unlock_hints(
+        mapping,
+        filename=original_filename or file.filename,
+        duration=duration,
+    )
 
     tmp_dir = Path(tempfile.mkdtemp(prefix="bill_convert_"))
     source_path = tmp_dir / f"source{suffix}"
@@ -975,6 +1059,8 @@ async def mapping_inspect_source(
     file: UploadFile = File(...),
     engine_id: str = Form(...),
     convert_mapping: str | None = Form(None),
+    original_filename: str | None = Form(None),
+    duration: str | None = Form(None),
 ):
     """上传样例源账单，按当前映射识别表头（供下拉）。支持 Excel；A&T 等支持 PDF 标签。"""
     _assert_safe_upload(file)
@@ -985,6 +1071,11 @@ async def mapping_inspect_source(
         mapping = parse_convert_mapping_payload(convert_mapping)
     except Exception as exc:
         raise HTTPException(status_code=400, detail=f"convert_mapping 无效: {exc}") from exc
+    mapping = _with_unlock_hints(
+        mapping,
+        filename=original_filename or file.filename,
+        duration=duration,
+    )
 
     tmp_dir = Path(tempfile.mkdtemp(prefix="map_insp_"))
     source_path = tmp_dir / f"source{suffix}"

@@ -67,6 +67,23 @@ def inspect_source_headers(
         return _inspect_tw_source(source_path, mapping)
     if engine_id in ("china_payroll_calc", "china_hrone"):
         return _inspect_fixed_header_source(source_path, mapping, default_sheet="计算结果", default_row=1)
+    if engine_id == "china_hrone_payment_notice":
+        import tempfile
+
+        from xlsx_unlock import collect_unlock_passwords, unlock_xlsx
+
+        try:
+            with tempfile.TemporaryDirectory(prefix="cn_hrone_inspect_") as tmp:
+                unlocked = unlock_xlsx(
+                    source_path,
+                    Path(tmp),
+                    passwords=collect_unlock_passwords(source_path, mapping=mapping),
+                )
+                return _inspect_fixed_header_source(
+                    unlocked, mapping, default_sheet="S-Payslip", default_row=7
+                )
+        except Exception as exc:
+            return {"ok": False, "message": str(exc)}
     if engine_id in ("hk_payroll_calc", "hk_vertical_l"):
         return _inspect_fixed_header_source(source_path, mapping, default_sheet="Hong Kong-L", default_row=7)
     if engine_id == "uae_payroll_calc":

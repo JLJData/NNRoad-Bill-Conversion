@@ -5,13 +5,17 @@
 - PN 母版误写 `="- "&+"Expense...` → 合法拼接
 - A1 用 =MID(CELL("filename",A1),...) 取表名 → 静态表名（避免自引用）
 - `=+'Sheet'!A1` 一元加号、EOMONTH(…)/TODAY() → HyperFormula 可算写法
+- 裸区域引用 `='Sheet'!F3:F4` → 单格（Excel 隐式交叉；HF 会 #VALUE!）
 """
 from __future__ import annotations
 
 import calendar
 import re
 from datetime import date, timedelta
+from typing import Any
 
+from openpyxl.cell.cell import MergedCell
+from openpyxl.worksheet.formula import ArrayFormula
 from openpyxl.worksheet.worksheet import Worksheet
 
 _AMP_PLUS_RE = re.compile(r"&\s*\+")
@@ -32,6 +36,14 @@ _SUMPRODUCT_YN_ARRAY_RE = re.compile(
     r"SUMPRODUCT\s*\(\s*\(\s*(\$?[A-Z]{1,3}\$?\d+:\$?[A-Z]{1,3}\$?\d+)\s*=\s*\"Y\"\s*\)\s*"
     r"\*\s*\(\s*(\$?[A-Z]{1,3}\$?\d+:\$?[A-Z]{1,3}\$?\d+)\s*\)\s*\)",
     re.IGNORECASE,
+)
+# 整格公式就是跨表/本表区域：='China-L'!AC3:AC4 或 =F3:F4
+_BARE_SHEET_RANGE_RE = re.compile(
+    r"^=\s*@?\s*(?:'([^']+)'|([A-Za-z0-9_]+))\s*!\s*"
+    r"\$?([A-Za-z]{1,3})\$?(\d+)\s*:\s*\$?([A-Za-z]{1,3})\$?(\d+)\s*$"
+)
+_BARE_LOCAL_RANGE_RE = re.compile(
+    r"^=\s*@?\s*\$?([A-Za-z]{1,3})\$?(\d+)\s*:\s*\$?([A-Za-z]{1,3})\$?(\d+)\s*$"
 )
 
 
@@ -142,7 +154,97 @@ def _rewrite_eomonth_to_date(formula: str) -> str:
     return f
 
 
-def normalize_formula_for_lucky(formula: str) -> str:
+def _col_index(letters: str) -> int:
+    n = 0
+    for ch in letters.upper():
+        n = n * 26 + (ord(ch) - 64)
+    return n
+
+
+def _col_letters(index: int) -> str:
+    from openpyxl.utils import get_column_letter
+
+    return get_column_letter(index)
+
+
+def _intersect_range_cell(
+    col1: str,
+    row1: int,
+    col2: str,
+    row2: int,
+    *,
+    excel_row: int | None,
+    excel_col: int | None,
+) -> tuple[str, int]:
+    """Excel 隐式交叉：单列区域按公式行取格，否则取左上角。"""
+    r_a, r_b = (row1, row2) if row1 <= row2 else (row2, row1)
+    i1, i2 = _col_index(col1), _col_index(col2)
+    c_a, c_b = (i1, i2) if i1 <= i2 else (i2, i1)
+    if c_a == c_b:
+        row_out = excel_row if excel_row is not None and r_a <= excel_row <= r_b else r_a
+        return _col_letters(c_a), row_out
+    if r_a == r_b:
+        col_out = excel_col if excel_col is not None and c_a <= excel_col <= c_b else c_a
+        return _col_letters(col_out), r_a
+    row_out = excel_row if excel_row is not None and r_a <= excel_row <= r_b else r_a
+    col_out = excel_col if excel_col is not None and c_a <= excel_col <= c_b else c_a
+    return _col_letters(col_out), row_out
+
+
+def flatten_bare_range_ref(
+    formula: str,
+    *,
+    excel_row: int | None = None,
+    excel_col: int | None = None,
+) -> str:
+    """
+    母版表头常见：点选 China-L 两行合并格后写成 ='China-L'!AC3:AC4。
+    Excel 当单值（隐式交叉 / 合并格左上）；HyperFormula 当数组 → #VALUE!。
+    """
+    if not (isinstance(formula, str) and formula.startswith("=")):
+        return formula
+    text = formula.strip()
+    m = _BARE_SHEET_RANGE_RE.fullmatch(text)
+    if m:
+        sheet_ref = f"'{m.group(1)}'" if m.group(1) is not None else str(m.group(2))
+        col_out, row_out = _intersect_range_cell(
+            m.group(3),
+            int(m.group(4)),
+            m.group(5),
+            int(m.group(6)),
+            excel_row=excel_row,
+            excel_col=excel_col,
+        )
+        return f"={sheet_ref}!{col_out}{row_out}"
+    m = _BARE_LOCAL_RANGE_RE.fullmatch(text)
+    if m:
+        col_out, row_out = _intersect_range_cell(
+            m.group(1),
+            int(m.group(2)),
+            m.group(3),
+            int(m.group(4)),
+            excel_row=excel_row,
+            excel_col=excel_col,
+        )
+        return f"={col_out}{row_out}"
+    return formula
+
+
+def _cell_formula_text(value: Any) -> str | None:
+    if isinstance(value, ArrayFormula):
+        text = getattr(value, "text", None)
+        return text if isinstance(text, str) and text.startswith("=") else None
+    if isinstance(value, str) and value.startswith("="):
+        return value
+    return None
+
+
+def normalize_formula_for_lucky(
+    formula: str,
+    *,
+    excel_row: int | None = None,
+    excel_col: int | None = None,
+) -> str:
     """单条公式改写，供转换写盘前 / 扫描修复复用。"""
     if not (isinstance(formula, str) and formula.startswith("=")):
         return formula
@@ -159,21 +261,28 @@ def normalize_formula_for_lucky(formula: str) -> str:
     if _TODAY_RE.search(f) and not _EOMONTH_HEAD_RE.search(f):
         today = date.today()
         f = _TODAY_RE.sub(f"DATE({today.year},{today.month},{today.day})", f)
+    f = flatten_bare_range_ref(f, excel_row=excel_row, excel_col=excel_col)
     return f
 
 
 def fix_workbook_lucky_formulas(wb) -> int:
-    """整本扫描：一元加号 / &+ / EOMONTH(TODAY()) / TODAY()。"""
+    """整本扫描：一元加号 / &+ / EOMONTH(TODAY()) / TODAY() / 裸区域引用。"""
     n = 0
     for name in wb.sheetnames:
         ws = wb[name]
         for row in ws.iter_rows():
             for cell in row:
-                v = cell.value
-                if not (isinstance(v, str) and v.startswith("=")):
+                if isinstance(cell, MergedCell):
                     continue
-                nv = normalize_formula_for_lucky(v)
-                if nv != v:
+                text = _cell_formula_text(cell.value)
+                if not text:
+                    continue
+                nv = normalize_formula_for_lucky(
+                    text,
+                    excel_row=cell.row,
+                    excel_col=cell.column,
+                )
+                if nv != text:
                     cell.value = nv
                     n += 1
     return n

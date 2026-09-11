@@ -20,6 +20,12 @@ ENGINES: dict[str, ConvertEngine] = {
         module="profiles.china_payroll_calc.convert",
         description="源账单 sheet「计算结果」→ China PN",
     ),
+    "china_hrone_payment_notice": ConvertEngine(
+        engine_id="china_hrone_payment_notice",
+        label="China HROne Payment Notice",
+        module="profiles.china_hrone_payment_notice.convert",
+        description="源账单 S-Payslip / S-Payroll Report → China-L / China-L (2)，不改 PN/China 公式",
+    ),
     "hk_payroll_calc": ConvertEngine(
         engine_id="hk_payroll_calc",
         label="HK Payroll Calculation",

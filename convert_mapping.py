@@ -70,6 +70,73 @@ ENGINE_DEFAULTS: dict[str, dict[str, Any]] = {
             "defaultCurrency": "CNY",
         },
     },
+    "china_hrone_payment_notice": {
+        "schemaVersion": 1,
+        "sourceEmployeeSheet": {
+            "sheet": "S-Payslip",
+            "candidates": ["S-Payslip"],
+            "headerRow": 7,
+            "parentHeaderRow": 6,
+            "dataStartRow": 8,
+            "nameHeaders": ["Name 姓名", "Name", "姓名"],
+        },
+        "targetL": {
+            "sheet": "China-L",
+            "candidates": ["China-L"],
+            "headerRow": 4,
+            "parentHeaderRow": 3,
+            "dataStartRow": 5,
+        },
+        "columnRename": {},
+        "lSheetCopies": [
+            {
+                "source": {
+                    "sheet": "S-Payslip",
+                    "candidates": ["S-Payslip"],
+                    "headerRow": 7,
+                    "parentHeaderRow": 6,
+                    "dataStartRow": 8,
+                    "nameHeaders": ["Name 姓名", "Name", "姓名"],
+                },
+                "target": {
+                    "sheet": "China-L",
+                    "candidates": ["China-L"],
+                    "headerRow": 4,
+                    "parentHeaderRow": 3,
+                    "dataStartRow": 5,
+                },
+                "metaRowCopy": {"sourceRow": 4, "targetRow": 1},
+            },
+            {
+                "source": {
+                    "sheet": "S-Payroll Report",
+                    "candidates": ["S-Payroll Report"],
+                    "headerRow": 7,
+                    "parentHeaderRow": 6,
+                    "dataStartRow": 8,
+                    "nameHeaders": ["Name 姓名", "Name", "姓名"],
+                },
+                "target": {
+                    "sheet": "China-L (2)",
+                    "candidates": ["China-L (2)"],
+                    "headerRow": 4,
+                    "parentHeaderRow": 3,
+                    "dataStartRow": 5,
+                },
+                "metaRowCopy": {"sourceRow": 4, "targetRow": 1},
+            },
+        ],
+        "formulaTemplates": {"applyDefaultToAllEmployees": False},
+        "employeeFormulaStyles": [],
+        "skipSourceHeaders": [],
+        "fxPolicy": {
+            "mode": "vendor_bill",
+            "sourceSheetHints": ["S-Payment Notice", "Payment Notice", "付款通知"],
+            "sourceCell": "C51",
+            "fallback": "none",
+            "defaultCurrency": "CNY",
+        },
+    },
     "hk_payroll_calc": {
         "schemaVersion": 1,
         "sourceEmployeeSheet": {
@@ -618,6 +685,7 @@ def resolve_convert_mapping(engine_id: str, raw: dict[str, Any] | None) -> dict[
             "connectSalarySplit",
             "indiaSalarySplit",
             "indiaSalarySplits",
+            "lSheetCopies",
         ):
             if whole_key in override:
                 base[whole_key] = copy.deepcopy(override.pop(whole_key))
@@ -629,7 +697,7 @@ def resolve_convert_mapping(engine_id: str, raw: dict[str, Any] | None) -> dict[
     if pid and pid in PROFILE_MAPPING_OVERLAYS:
         overlay = copy.deepcopy(PROFILE_MAPPING_OVERLAYS[pid])
         # 布局键以 profile 为准；薪资拆分等保留用户配置
-        for key in ("sourceEmployeeSheet", "targetL", "fxPolicy"):
+        for key in ("sourceEmployeeSheet", "targetL", "fxPolicy", "lSheetCopies"):
             if key in overlay:
                 merged[key] = copy.deepcopy(overlay[key])
         # columnRename 不从 profile overlay 注入：只认配置里保存的映射
