@@ -45,6 +45,7 @@ from bill_convert.formula_layout import (
 )
 from bill_convert.formula_layout import _default_example_row as default_example_row_for_mapping
 from bill_convert.headers import list_qualified_header_cells
+from profiles.tw_payroll_calc.convert import match_ee_code
 
 DEFAULT_TEMPLATE = get_region_template("China")
 
@@ -430,7 +431,8 @@ def apply_china_sheet_names_from_directory(
     china_data_start_row: int = CHINA_DATA_START_ROW,
 ) -> tuple[list[str], list[str]]:
     """
-    写入 China!B（EE Name）：只用员工库名称（按工号匹配），绝不使用供应商账单「姓名」。
+    写入 China!B（EE Name）：按账单「姓名」（含拼音）匹配员工库，写入库名称；不看工号。
+    与 china_hrone_payment_notice / TW 的 match_ee_code 一致（杨明华 ↔ Minghua）。
     China EE!E = China!B{row}，须在公式扩行之后覆盖母版占位（如 CPT）。
     未匹配或库姓名为空时清空该格并记 warning。
 
@@ -442,18 +444,28 @@ def apply_china_sheet_names_from_directory(
     dir_list = [r for r in (directory or []) if isinstance(r, dict)]
     for i, emp in enumerate(employees):
         row = china_data_start_row + i
-        code = emp.get("工号")
+        bill_name = str(emp.get("姓名") or "").strip()
         cell = ws_china.cell(row, _CHINA_EE_NAME_COL)
         if not dir_list:
             cell.value = None
             written.append("")
-            warnings.append(f"第{i + 1}人：未传入员工库，China!B 未写入库名称（工号 {code or '（空）'}）")
+            warnings.append(
+                f"第{i + 1}人：未传入员工库，China!B 未写入库名称（姓名 {bill_name or '（空）'}）"
+            )
             continue
-        hit = _directory_row_by_employee_code(code, dir_list)
+        matched_code, warn = match_ee_code([bill_name] if bill_name else [], dir_list)
+        if warn:
+            cell.value = None
+            written.append("")
+            warnings.append(f"第{i + 1}人：{warn}，China!B 未填")
+            continue
+        hit = _directory_row_by_employee_code(matched_code, dir_list) if matched_code else None
         if hit is None:
             cell.value = None
             written.append("")
-            warnings.append(f"第{i + 1}人：工号 {code or '（空）'} 未在员工库匹配，China!B 未填（不用供应商姓名）")
+            warnings.append(
+                f"第{i + 1}人：姓名 {bill_name or '（空）'} 未在员工库匹配，China!B 未填"
+            )
             continue
         lib_name = (
             str(hit.get("employee_name") or hit.get("employeeName") or "").strip()
@@ -462,7 +474,9 @@ def apply_china_sheet_names_from_directory(
         if not lib_name:
             cell.value = None
             written.append("")
-            warnings.append(f"第{i + 1}人：工号 {code} 已匹配员工库，但库中姓名为空，China!B 未填")
+            warnings.append(
+                f"第{i + 1}人：姓名 {bill_name} 已匹配员工库，但库中姓名为空，China!B 未填"
+            )
             continue
         cell.value = lib_name
         written.append(lib_name)
@@ -1155,7 +1169,7 @@ def _convert_impl(
         ee_snapshots=ee_snaps,
     )
     clear_excess_china_formula_rows(wb, len(employees))
-    # 公式扩行可能带上母版占位名（如 CPT）；用工号查员工库覆盖 China!B（只用库名称）
+    # 公式扩行可能带上母版占位名（如 CPT）；按姓名查员工库覆盖 China!B（只用库名称）
     name_warnings, lib_names = apply_china_sheet_names_from_directory(
         wb[CHINA_SHEET],
         employees,
@@ -1191,7 +1205,7 @@ def _convert_impl(
             name_warnings.append(
                 "公式配对未命中：映射要求 China 示例行 "
                 + ",".join(str(x) for x in sorted(want_rows))
-                + "，但实际全部落在默认行；请检查员工库工号是否与账单「工号」一致"
+                + "，但实际全部落在默认行；请检查员工库姓名是否能与账单「姓名」匹配（含拼音）"
             )
             formula_match_hint = "style-row-miss"
         elif not want_rows:

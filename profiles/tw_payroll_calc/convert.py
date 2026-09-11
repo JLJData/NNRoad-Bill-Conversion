@@ -86,19 +86,10 @@ PAYROLL_DUP_MIN_COL = 14
 # Pay Period / Start End：母版若误用金额格式会显示成 46,113.00，PN 的 MONTH/YEAR 仍可读序列，但页面很误导
 _DATE_FMT = "yyyy/m/d"
 
-# 源表有、但 TW-L 不直接写入的列：
+# 源表有、但 TW-L 不直接写入的列（同事确认：仅 Service Fee；OT 明细须写入）
 # - Service Fee：PN/TW 侧多由公式算，源表该列常空或与计费口径不同
-# - 加班明细：已汇总到「加班費」
 SKIP_SOURCE_HEADERS = frozenset({
     "Service Fee",
-    "Hr (1.34x)",
-    "OT Payment (1.34x)",
-    "Hr (1.67x)",
-    "OT Payment (1.67x)",
-    "Hr (1x)",
-    "OT Payment (1x)",
-    "Hr (2.67x)",
-    "OT Payment (2.67x)",
 })
 
 SICK_LEAVE_PAY_HEADER = "病假扣薪\nSick Leave\n(half pay)"
@@ -131,7 +122,7 @@ def _skip_source_headers() -> frozenset[str]:
     if raw is None:
         return base
     if not raw:
-        # 显式空列表：仅跳过引擎默认（仍保留 OT 拆列）
+        # 显式空列表：仅跳过引擎默认（Service Fee）
         return base
     return base | frozenset(norm(str(x)) for x in raw)
 

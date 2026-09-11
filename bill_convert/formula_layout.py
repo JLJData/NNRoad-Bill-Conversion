@@ -15,7 +15,6 @@ from bill_convert.formula_copy import (
 from bill_convert.mapping_spec import mapping_section
 from bill_convert.person import (
     bill_employee_like_entry,
-    norm_person_name,
     score_person_name_match,
 )
 
@@ -35,36 +34,9 @@ def _codes_soft_equal(a: str, b: str) -> bool:
     return a == b_tail or b == a_tail or a_tail == b_tail
 
 
-def _lookup_directory_row_for_emp(
-    emp: dict[str, Any],
-    directory: list[dict[str, Any]] | None,
-) -> dict[str, Any] | None:
-    if not directory:
-        return None
-
-    # 账单有工号时优先按工号对齐员工库（库名常与供应商姓名不一致）
-    bill_code = _bill_employee_code(emp)
-    if bill_code:
-        soft: list[dict[str, Any]] = []
-        for row in directory:
-            if not isinstance(row, dict):
-                continue
-            got = _norm_code(row.get("employee_code") or row.get("employeeCode"))
-            if got and _codes_soft_equal(bill_code, got):
-                soft.append(row)
-        if len(soft) == 1:
-            return soft[0]
-        if len(soft) > 1:
-            exact = [
-                r
-                for r in soft
-                if _norm_code(r.get("employee_code") or r.get("employeeCode")) == bill_code
-            ]
-            if len(exact) == 1:
-                return exact[0]
-            return soft[0]
-
-    bill_labels = [
+def _bill_person_name_labels(emp: dict[str, Any]) -> list[str]:
+    """账单侧用于认人的姓名字段（不含供应商工号）。"""
+    return [
         str(emp.get("CN Name") or ""),
         str(emp.get("EN Name") or ""),
         str(emp.get("姓名") or ""),
@@ -77,6 +49,17 @@ def _lookup_directory_row_for_emp(
         # UAE 等：供应商无工号时 ingest 可能把姓名写进 Emp ID
         str(emp.get("Emp ID") or ""),
     ]
+
+
+def _lookup_directory_row_for_emp(
+    emp: dict[str, Any],
+    directory: list[dict[str, Any]] | None,
+) -> dict[str, Any] | None:
+    """账单人 → 员工库：只按姓名（含拼音）匹配，不看供应商工号。"""
+    if not directory:
+        return None
+
+    bill_labels = _bill_person_name_labels(emp)
     best: dict[str, Any] | None = None
     best_score = 0
     for row in directory:
@@ -280,7 +263,7 @@ def sort_code_for_employee(
     emp: dict[str, Any],
     employee_directory: list[dict[str, Any]] | None = None,
 ) -> str:
-    """排序用工号：优先员工库编码，否则账单上的工号。"""
+    """排序键：先按姓名命中员工库后取其库编码；未命中再用账单工号（仅排序，不参与认人）。"""
     if not isinstance(emp, dict):
         return ""
     dir_code = _directory_employee_code(_lookup_directory_row_for_emp(emp, employee_directory))
@@ -382,10 +365,7 @@ def _resolve_style_directory_person(
 
 
 def _emp_matches_directory_person(emp: dict[str, Any], dir_row: dict[str, Any]) -> bool:
-    bill_code = _bill_employee_code(emp)
-    dir_code = _norm_code(dir_row.get("employee_code") or dir_row.get("employeeCode"))
-    if bill_code and dir_code and _codes_soft_equal(bill_code, dir_code):
-        return True
+    """账单人 ↔ 员工库行：只按姓名（含拼音），不看工号。"""
     return bill_employee_like_entry(
         emp,
         {
@@ -410,27 +390,13 @@ def _style_for_employee(
     if not styles:
         return {}
 
-    bill_code = _bill_employee_code(emp)
-
-    # 核心：映射人 → 员工库 → 用工号对齐账单（库名可以 ≠ 供应商姓名）
+    # 映射人 → 员工库 → 按姓名对齐账单（库名可与供应商姓名拼音对应）
     for entry in styles:
         dir_row = _resolve_style_directory_person(entry, employee_directory)
         if dir_row is not None and _emp_matches_directory_person(emp, dir_row):
             return entry
-        # 映射带 employeeId 且已解析到库行：再用库工号对账单工号（防止 entry.employeeCode 为空）
-        if dir_row is not None and bill_code:
-            dir_code = _norm_code(dir_row.get("employee_code") or dir_row.get("employeeCode"))
-            if dir_code and _codes_soft_equal(bill_code, dir_code):
-                return entry
 
-    # 账单工号 ↔ 映射 employeeCode
-    if bill_code:
-        for entry in styles:
-            got = _norm_code(entry.get("employeeCode") or entry.get("employee_code"))
-            if got and _codes_soft_equal(bill_code, got):
-                return entry
-
-    # 账单 → 库 → employeeId
+    # 账单 → 库（按姓名）→ employeeId ↔ 映射
     dir_row = _lookup_directory_row_for_emp(emp, employee_directory)
     if dir_row is not None:
         eid = dir_row.get("employee_id") or dir_row.get("employeeId")
@@ -444,7 +410,7 @@ def _style_for_employee(
             except (TypeError, ValueError):
                 pass
 
-    # 姓名直接糊配（最后手段）：映射 cnName ↔ 账单姓名
+    # 姓名直接匹配：映射 cnName/enName ↔ 账单姓名
     for entry in styles:
         if _style_entry_matches_employee(entry, emp):
             return entry
