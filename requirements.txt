@@ -2,6 +2,8 @@ openpyxl>=3.1.0
 msoffcrypto-tool>=5.0.0
 pypinyin>=0.51.0
 Pillow>=10.0.0
+# RHEL python3.9 解析 PEP604 注解（str | None）；3.10+ 不需要
+eval_type_backport>=0.2.0
 fastapi>=0.110.0
 uvicorn[standard]>=0.27.0
 python-multipart>=0.0.9
