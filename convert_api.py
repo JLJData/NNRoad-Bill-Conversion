@@ -49,6 +49,7 @@ from pdf_ingest.registry import list_pdf_profiles
 from pdf_ingest.runner import run_pdf_to_source, run_pdf_to_source_batch, run_vendor_to_source_batch
 from region_templates import list_regions, get_region_template
 from xlsx_unlock import collect_unlock_passwords, unlock_xlsx
+from convert_i18n import parse_accept_language, reset_locale, set_locale, get_locale, translate_outbound
 
 CONVERT_API_KEY = os.environ.get("CONVERT_API_KEY", "").strip()
 _DISABLE_DOCS = os.environ.get("CONVERT_DISABLE_DOCS", "").strip() in ("1", "true", "True", "yes")
@@ -63,6 +64,28 @@ app = FastAPI(
     openapi_url=None if _DOCS_OFF else "/openapi.json",
 )
 BASE_DIR = Path(__file__).resolve().parent
+
+
+@app.middleware("http")
+async def _locale_middleware(request: Request, call_next):
+    """根据 Accept-Language 设置 locale；业务代码仍写中文，出口再翻译。"""
+    raw = request.headers.get("accept-language")
+    token = set_locale(parse_accept_language(raw))
+    try:
+        if request.url.path in (
+            "/convert",
+            "/pdf-to-source",
+            "/pdf-to-source-batch",
+            "/vendor-to-source-batch",
+        ):
+            print(f"[locale] path={request.url.path} accept-language={raw!r} -> {get_locale()}")
+        return await call_next(request)
+    finally:
+        reset_locale(token)
+
+
+def _outbound_warning_list(warnings: list | None) -> list[str]:
+    return [str(translate_outbound(str(w)))[:240] for w in (warnings or [])[:30]]
 
 
 def _b64_json_header(payload: object) -> str:
@@ -766,7 +789,7 @@ async def convert(
             # 响应头避免非 ASCII；条数提示即可，详情在服务日志
             headers["X-Convert-Warnings"] = str(len(warnings))
             try:
-                detail = [str(w)[:240] for w in warnings[:30]]
+                detail = _outbound_warning_list(warnings)
                 headers["X-Convert-Warning-Detail"] = _b64_json_header(detail)
             except Exception as _wexc:
                 print(f"[convert-warning-detail] skipped: {_wexc}")
@@ -1135,7 +1158,8 @@ async def mapping_inspect_pn(
 
 @app.exception_handler(HTTPException)
 async def http_exc_handler(_, exc: HTTPException):
-    return JSONResponse(status_code=exc.status_code, content={"ok": False, "msg": exc.detail})
+    detail = translate_outbound(exc.detail)
+    return JSONResponse(status_code=exc.status_code, content={"ok": False, "msg": detail})
 
 
 if __name__ == "__main__":
