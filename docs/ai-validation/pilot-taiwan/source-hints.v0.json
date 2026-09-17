@@ -1,0 +1,315 @@
+{
+  "status": "draft_not_enabled",
+  "formatVersion": 0,
+  "schemaId": "employee-pay-components",
+  "schemaVersion": "0.1-draft",
+  "sourceKind": "xlsx",
+  "sheet": "Payroll calculation",
+  "headerRowHint": 2,
+  "headerMarkers": [
+    "BU",
+    "CN Name",
+    "EN Name"
+  ],
+  "firstDataRowHint": 4,
+  "skipRowsWithoutEntity": true,
+  "entityHeaders": {
+    "nativeName": "CN Name",
+    "latinName": "EN Name"
+  },
+  "employeeIdPolicy": "extract_only_if_present_do_not_invent",
+  "periodSource": {
+    "sheet": "Summary",
+    "payrollMonthCell": "B2",
+    "periodTextCell": "B3"
+  },
+  "currency": {
+    "canonical": "TWD",
+    "sourceLabels": [
+      "NTD"
+    ],
+    "evidence": {
+      "sheet": "Summary",
+      "cell": "B9"
+    }
+  },
+  "fields": [
+    {
+      "field": "basic_salary",
+      "sourceHeaderAliases": [
+        "薪資\nBasic Salary"
+      ],
+      "headerCellObserved": "J2"
+    },
+    {
+      "field": "phone_allowance",
+      "sourceHeaderAliases": [
+        "Allw- Phone/ Communication"
+      ],
+      "headerCellObserved": "K2"
+    },
+    {
+      "field": "transport_allowance",
+      "sourceHeaderAliases": [
+        "Allw \nTransportation"
+      ],
+      "headerCellObserved": "L2"
+    },
+    {
+      "field": "back_pay",
+      "sourceHeaderAliases": [
+        "Back Pay"
+      ],
+      "headerCellObserved": "M2"
+    },
+    {
+      "field": "meal_allowance",
+      "sourceHeaderAliases": [
+        "伙食津貼Allw Meal"
+      ],
+      "headerCellObserved": "N2"
+    },
+    {
+      "field": "sick_leave_deduction",
+      "sourceHeaderAliases": [
+        "病假扣薪\nSick Leave\n(half pay)"
+      ],
+      "headerCellObserved": "P2"
+    },
+    {
+      "field": "variable_bonus",
+      "sourceHeaderAliases": [
+        "Bonus VB"
+      ],
+      "headerCellObserved": "Q2"
+    },
+    {
+      "field": "incentive",
+      "sourceHeaderAliases": [
+        "Incentives"
+      ],
+      "headerCellObserved": "R2"
+    },
+    {
+      "field": "expense_reimbursement",
+      "sourceHeaderAliases": [
+        "報帳\nReimb Claim"
+      ],
+      "headerCellObserved": "S2"
+    },
+    {
+      "field": "unused_leave_payment",
+      "sourceHeaderAliases": [
+        "特休結算\nUntaken AL"
+      ],
+      "headerCellObserved": "T2"
+    },
+    {
+      "field": "severance_payment",
+      "sourceHeaderAliases": [
+        "資遣費\nSeverance"
+      ],
+      "headerCellObserved": "U2"
+    },
+    {
+      "field": "overtime_payment",
+      "sourceHeaderAliases": [
+        "加班費\nOvertime Payment"
+      ],
+      "headerCellObserved": "V2"
+    },
+    {
+      "field": "employer_insurance_total",
+      "sourceHeaderAliases": [
+        "ER Insurance"
+      ],
+      "headerCellObserved": "BE2"
+    }
+  ],
+  "instructions": [
+    "Extract independently from original files only.",
+    "Keep missing distinct from zero; preserve deduction signs.",
+    "Record source file, sheet, cell and raw text.",
+    "Read displayed source facts; do not invent financial calculations.",
+    "Report formula cells without readable values as unreadable.",
+    "Capture unexpected financial items for review; do not alter mapping."
+  ],
+  "knownOutsideComparison": [
+    {
+      "header": "Position ",
+      "treatment": "recognized_outside_pilot_comparison_not_automatically_verified"
+    },
+    {
+      "header": "Start Date",
+      "treatment": "recognized_outside_pilot_comparison_not_automatically_verified"
+    },
+    {
+      "header": "End Date",
+      "treatment": "recognized_outside_pilot_comparison_not_automatically_verified"
+    },
+    {
+      "header": "FT/PT",
+      "treatment": "recognized_outside_pilot_comparison_not_automatically_verified"
+    },
+    {
+      "header": "時薪 Hourly Rate",
+      "treatment": "recognized_outside_pilot_comparison_not_automatically_verified"
+    },
+    {
+      "header": "時數\nHours Worked",
+      "treatment": "recognized_outside_pilot_comparison_not_automatically_verified"
+    },
+    {
+      "header": "病假時數 Sick Leave Hours",
+      "treatment": "recognized_outside_pilot_comparison_not_automatically_verified"
+    },
+    {
+      "header": "Hr (1.34x)",
+      "treatment": "recognized_outside_pilot_comparison_not_automatically_verified"
+    },
+    {
+      "header": "OT Payment (1.34x)",
+      "treatment": "recognized_outside_pilot_comparison_not_automatically_verified"
+    },
+    {
+      "header": "Hr (1.67x)",
+      "treatment": "recognized_outside_pilot_comparison_not_automatically_verified"
+    },
+    {
+      "header": "OT Payment (1.67x)",
+      "treatment": "recognized_outside_pilot_comparison_not_automatically_verified"
+    },
+    {
+      "header": "Hr (1x)",
+      "treatment": "recognized_outside_pilot_comparison_not_automatically_verified"
+    },
+    {
+      "header": "OT Payment (1x)",
+      "treatment": "recognized_outside_pilot_comparison_not_automatically_verified"
+    },
+    {
+      "header": "Hr (2.67x)",
+      "treatment": "recognized_outside_pilot_comparison_not_automatically_verified"
+    },
+    {
+      "header": "OT Payment (2.67x)",
+      "treatment": "recognized_outside_pilot_comparison_not_automatically_verified"
+    },
+    {
+      "header": "勞保級距\nInsured Salary Grading - LI",
+      "treatment": "recognized_outside_pilot_comparison_not_automatically_verified"
+    },
+    {
+      "header": "勞退級距 Pension Salary Grading",
+      "treatment": "recognized_outside_pilot_comparison_not_automatically_verified"
+    },
+    {
+      "header": "健保級距\nInsured Salary Grading - HI",
+      "treatment": "recognized_outside_pilot_comparison_not_automatically_verified"
+    },
+    {
+      "header": "健保眷屬\nHI Dependent (person)",
+      "treatment": "recognized_outside_pilot_comparison_not_automatically_verified"
+    },
+    {
+      "header": "勞保投保天數\nLI Days",
+      "treatment": "recognized_outside_pilot_comparison_not_automatically_verified"
+    },
+    {
+      "header": "所得稅代扣\nWithholding Tax",
+      "treatment": "recognized_outside_pilot_comparison_not_automatically_verified"
+    },
+    {
+      "header": "勞保自付\nLI EE",
+      "treatment": "recognized_outside_pilot_comparison_not_automatically_verified"
+    },
+    {
+      "header": "勞保自付(調整)\nLI EE 1T",
+      "treatment": "recognized_outside_pilot_comparison_not_automatically_verified"
+    },
+    {
+      "header": "勞退自提\nPension EE",
+      "treatment": "recognized_outside_pilot_comparison_not_automatically_verified"
+    },
+    {
+      "header": "勞退自提 (調整)\nPension EE 1T",
+      "treatment": "recognized_outside_pilot_comparison_not_automatically_verified"
+    },
+    {
+      "header": "健保自付\nHI EE",
+      "treatment": "recognized_outside_pilot_comparison_not_automatically_verified"
+    },
+    {
+      "header": "健保自付(調整)\nHI EE 1T",
+      "treatment": "recognized_outside_pilot_comparison_not_automatically_verified"
+    },
+    {
+      "header": "健保眷屬\nHI\nDep",
+      "treatment": "recognized_outside_pilot_comparison_not_automatically_verified"
+    },
+    {
+      "header": "二代健保\n自付\n2G HI EE",
+      "treatment": "recognized_outside_pilot_comparison_not_automatically_verified"
+    },
+    {
+      "header": "Gross Taxable Income",
+      "treatment": "recognized_outside_pilot_comparison_not_automatically_verified"
+    },
+    {
+      "header": "Net Salary",
+      "treatment": "recognized_outside_pilot_comparison_not_automatically_verified"
+    },
+    {
+      "header": "勞保雇主 \nLI ER",
+      "treatment": "recognized_outside_pilot_comparison_not_automatically_verified"
+    },
+    {
+      "header": "勞保雇主\nLI ER\n1T",
+      "treatment": "recognized_outside_pilot_comparison_not_automatically_verified"
+    },
+    {
+      "header": "勞退雇主\nPension ER 6%",
+      "treatment": "recognized_outside_pilot_comparison_not_automatically_verified"
+    },
+    {
+      "header": "勞退雇主\nPension \nER 1T",
+      "treatment": "recognized_outside_pilot_comparison_not_automatically_verified"
+    },
+    {
+      "header": "健保雇主\nHI ER",
+      "treatment": "recognized_outside_pilot_comparison_not_automatically_verified"
+    },
+    {
+      "header": "健保雇主\nHI ER\n1T",
+      "treatment": "recognized_outside_pilot_comparison_not_automatically_verified"
+    },
+    {
+      "header": "二代健保\n雇主\n2G HI ER",
+      "treatment": "recognized_outside_pilot_comparison_not_automatically_verified"
+    },
+    {
+      "header": "二代健保\n雇主\n2G HI ER \n1T",
+      "treatment": "recognized_outside_pilot_comparison_not_automatically_verified"
+    },
+    {
+      "header": "團保\nGI",
+      "treatment": "recognized_outside_pilot_comparison_not_automatically_verified"
+    },
+    {
+      "header": "Gross Salary\n(payable)",
+      "treatment": "recognized_outside_pilot_comparison_not_automatically_verified"
+    },
+    {
+      "header": "Service Fee",
+      "treatment": "recognized_outside_pilot_comparison_not_automatically_verified"
+    },
+    {
+      "header": "Operation \nFee",
+      "treatment": "recognized_outside_pilot_comparison_not_automatically_verified"
+    },
+    {
+      "header": "Total",
+      "treatment": "recognized_outside_pilot_comparison_not_automatically_verified"
+    }
+  ]
+}

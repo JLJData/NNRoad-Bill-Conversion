@@ -1,0 +1,132 @@
+{
+  "status": "draft_not_enabled",
+  "formatVersion": 0,
+  "schemaId": "employee-pay-components",
+  "schemaVersion": "0.1-draft",
+  "productionProfileId": null,
+  "productionTemplateVersionId": null,
+  "template": {
+    "path": "templates/taiwan/template.xlsx",
+    "sha256": "5e399d7cb183692c8c7a94e883fb463d68920b730d78a5c43217842914ca2dd3"
+  },
+  "resultSheet": "TW",
+  "headerRow": 4,
+  "firstEmployeeRowHint": 9,
+  "entity": {
+    "latinNameColumn": "B",
+    "sourceFormulaPattern": "='TW-L'!C{row}",
+    "internalCodeColumn": "C",
+    "internalCodeIsNotSupplierId": true,
+    "association": "unique_identity_only_otherwise_review"
+  },
+  "rowBounds": "resolve_active_employee_rows_from_current_conversion_manifest_and_validate_identity",
+  "formulaValues": "require_successful_recalculation_bound_to_result_revision",
+  "headerNormalization": [
+    "trim",
+    "collapse_whitespace"
+  ],
+  "onHeaderMismatch": "reject_binding",
+  "onDuplicateHeaderMatch": "review",
+  "fields": [
+    {
+      "field": "basic_salary",
+      "columnHint": "K",
+      "expectedHeader": "Basic\nSalary",
+      "firstRowFormulaObserved": "='TW-L'!N9",
+      "comparisonMode": "compare_reported_fact"
+    },
+    {
+      "field": "phone_allowance",
+      "columnHint": "N",
+      "expectedHeader": "Allw- Phone/ Communication",
+      "firstRowFormulaObserved": "='TW-L'!O9",
+      "comparisonMode": "compare_reported_fact"
+    },
+    {
+      "field": "transport_allowance",
+      "columnHint": "O",
+      "expectedHeader": "Allw \nTransportation",
+      "firstRowFormulaObserved": "='TW-L'!P9",
+      "comparisonMode": "compare_reported_fact"
+    },
+    {
+      "field": "back_pay",
+      "columnHint": "P",
+      "expectedHeader": "Back Pay",
+      "firstRowFormulaObserved": "='TW-L'!Q9",
+      "comparisonMode": "compare_reported_fact"
+    },
+    {
+      "field": "meal_allowance",
+      "columnHint": "Q",
+      "expectedHeader": "伙食津貼Allw Meal",
+      "firstRowFormulaObserved": "='TW-L'!R9",
+      "comparisonMode": "compare_reported_fact"
+    },
+    {
+      "field": "sick_leave_deduction",
+      "columnHint": "S",
+      "expectedHeader": "病假扣薪\nSick Leave\n(half pay)",
+      "firstRowFormulaObserved": "='TW-L'!U9",
+      "comparisonMode": "review_recalculated_value"
+    },
+    {
+      "field": "variable_bonus",
+      "columnHint": "V",
+      "expectedHeader": "Bonus VB",
+      "firstRowFormulaObserved": "='TW-L'!X9",
+      "comparisonMode": "compare_reported_fact"
+    },
+    {
+      "field": "incentive",
+      "columnHint": "W",
+      "expectedHeader": "Incentives",
+      "firstRowFormulaObserved": "='TW-L'!Y9",
+      "comparisonMode": "compare_reported_fact"
+    },
+    {
+      "field": "expense_reimbursement",
+      "columnHint": "AC",
+      "expectedHeader": "Expense\nClaim",
+      "firstRowFormulaObserved": "='TW-L'!Z9",
+      "comparisonMode": "compare_reported_fact"
+    },
+    {
+      "field": "unused_leave_payment",
+      "columnHint": "X",
+      "expectedHeader": "特休結算\nUntaken AL",
+      "firstRowFormulaObserved": "='TW-L'!AA9",
+      "comparisonMode": "compare_reported_fact"
+    },
+    {
+      "field": "severance_payment",
+      "columnHint": "Y",
+      "expectedHeader": "資遣費\nSeverance",
+      "firstRowFormulaObserved": "='TW-L'!AB9",
+      "comparisonMode": "compare_reported_fact"
+    },
+    {
+      "field": "overtime_payment",
+      "columnHint": "M",
+      "expectedHeader": "OT",
+      "firstRowFormulaObserved": "='TW-L'!AC9",
+      "comparisonMode": "compare_reported_fact"
+    },
+    {
+      "field": "employer_insurance_total",
+      "columnHint": "AA",
+      "expectedHeader": "ER insurance",
+      "firstRowFormulaObserved": "='TW-L'!BL9",
+      "comparisonMode": "compare_reported_fact"
+    }
+  ],
+  "pnRollupChecks": [
+    {
+      "label": "labor_cost",
+      "formulaExample": "=TW!J9+TW!Z9",
+      "scope": "deterministic_code_calculation_only",
+      "notAnAIExtractionField": true
+    }
+  ],
+  "automaticPassEnabled": false
+}

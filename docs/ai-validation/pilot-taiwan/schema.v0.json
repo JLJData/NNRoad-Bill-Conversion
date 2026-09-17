@@ -1,0 +1,201 @@
+{
+  "status": "draft_not_enabled",
+  "formatVersion": 0,
+  "schemaId": "employee-pay-components",
+  "schemaVersion": "0.1-draft",
+  "recordScope": "employee_period_currency",
+  "decimalEncoding": "string",
+  "fieldStates": [
+    "found",
+    "missing",
+    "unreadable",
+    "not_applicable"
+  ],
+  "blankIsZero": false,
+  "fields": [
+    {
+      "field": "basic_salary",
+      "labelZh": "基本工资",
+      "type": "decimal",
+      "unit": "currency",
+      "sourceKind": "supplier_reported_fact",
+      "requiredOutputEntry": true,
+      "comparison": {
+        "mode": "compare_reported_fact",
+        "diagnosticTolerance": "0",
+        "productionTolerance": null,
+        "missingIsZero": false
+      }
+    },
+    {
+      "field": "phone_allowance",
+      "labelZh": "通讯补贴",
+      "type": "decimal",
+      "unit": "currency",
+      "sourceKind": "supplier_reported_fact",
+      "requiredOutputEntry": true,
+      "comparison": {
+        "mode": "compare_reported_fact",
+        "diagnosticTolerance": "0",
+        "productionTolerance": null,
+        "missingIsZero": false
+      }
+    },
+    {
+      "field": "transport_allowance",
+      "labelZh": "交通补贴",
+      "type": "decimal",
+      "unit": "currency",
+      "sourceKind": "supplier_reported_fact",
+      "requiredOutputEntry": true,
+      "comparison": {
+        "mode": "compare_reported_fact",
+        "diagnosticTolerance": "0",
+        "productionTolerance": null,
+        "missingIsZero": false
+      }
+    },
+    {
+      "field": "back_pay",
+      "labelZh": "补发工资",
+      "type": "decimal",
+      "unit": "currency",
+      "sourceKind": "supplier_reported_fact",
+      "requiredOutputEntry": true,
+      "comparison": {
+        "mode": "compare_reported_fact",
+        "diagnosticTolerance": "0",
+        "productionTolerance": null,
+        "missingIsZero": false
+      }
+    },
+    {
+      "field": "meal_allowance",
+      "labelZh": "伙食补贴",
+      "type": "decimal",
+      "unit": "currency",
+      "sourceKind": "supplier_reported_fact",
+      "requiredOutputEntry": true,
+      "comparison": {
+        "mode": "compare_reported_fact",
+        "diagnosticTolerance": "0",
+        "productionTolerance": null,
+        "missingIsZero": false
+      }
+    },
+    {
+      "field": "sick_leave_deduction",
+      "labelZh": "病假扣款",
+      "type": "decimal",
+      "unit": "currency",
+      "sourceKind": "supplier_reported_fact",
+      "requiredOutputEntry": true,
+      "comparison": {
+        "mode": "review_recalculated_value",
+        "diagnosticTolerance": "0",
+        "productionTolerance": null,
+        "missingIsZero": false
+      }
+    },
+    {
+      "field": "variable_bonus",
+      "labelZh": "浮动奖金",
+      "type": "decimal",
+      "unit": "currency",
+      "sourceKind": "supplier_reported_fact",
+      "requiredOutputEntry": true,
+      "comparison": {
+        "mode": "compare_reported_fact",
+        "diagnosticTolerance": "0",
+        "productionTolerance": null,
+        "missingIsZero": false
+      }
+    },
+    {
+      "field": "incentive",
+      "labelZh": "激励奖金",
+      "type": "decimal",
+      "unit": "currency",
+      "sourceKind": "supplier_reported_fact",
+      "requiredOutputEntry": true,
+      "comparison": {
+        "mode": "compare_reported_fact",
+        "diagnosticTolerance": "0",
+        "productionTolerance": null,
+        "missingIsZero": false
+      }
+    },
+    {
+      "field": "expense_reimbursement",
+      "labelZh": "费用报销",
+      "type": "decimal",
+      "unit": "currency",
+      "sourceKind": "supplier_reported_fact",
+      "requiredOutputEntry": true,
+      "comparison": {
+        "mode": "compare_reported_fact",
+        "diagnosticTolerance": "0",
+        "productionTolerance": null,
+        "missingIsZero": false
+      }
+    },
+    {
+      "field": "unused_leave_payment",
+      "labelZh": "未休假结算",
+      "type": "decimal",
+      "unit": "currency",
+      "sourceKind": "supplier_reported_fact",
+      "requiredOutputEntry": true,
+      "comparison": {
+        "mode": "compare_reported_fact",
+        "diagnosticTolerance": "0",
+        "productionTolerance": null,
+        "missingIsZero": false
+      }
+    },
+    {
+      "field": "severance_payment",
+      "labelZh": "离职补偿",
+      "type": "decimal",
+      "unit": "currency",
+      "sourceKind": "supplier_reported_fact",
+      "requiredOutputEntry": true,
+      "comparison": {
+        "mode": "compare_reported_fact",
+        "diagnosticTolerance": "0",
+        "productionTolerance": null,
+        "missingIsZero": false
+      }
+    },
+    {
+      "field": "overtime_payment",
+      "labelZh": "加班费汇总",
+      "type": "decimal",
+      "unit": "currency",
+      "sourceKind": "supplier_reported_fact",
+      "requiredOutputEntry": true,
+      "comparison": {
+        "mode": "compare_reported_fact",
+        "diagnosticTolerance": "0",
+        "productionTolerance": null,
+        "missingIsZero": false
+      }
+    },
+    {
+      "field": "employer_insurance_total",
+      "labelZh": "雇主保险合计（供应商列示）",
+      "type": "decimal",
+      "unit": "currency",
+      "sourceKind": "supplier_reported_fact",
+      "requiredOutputEntry": true,
+      "comparison": {
+        "mode": "compare_reported_fact",
+        "diagnosticTolerance": "0",
+        "productionTolerance": null,
+        "missingIsZero": false
+      }
+    }
+  ],
+  "unknownItems": "retain_source_evidence_and_review",
+  "automaticPassEnabled": false
+}
