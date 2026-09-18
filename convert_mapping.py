@@ -737,11 +737,25 @@ _BUILTIN_COLUMN_RENAME_BY_PROFILE: dict[str, dict[str, str]] = {
 }
 
 
-def get_builtin_column_rename(pdf_profile_id: str | None) -> dict[str, str]:
+def get_builtin_column_rename(
+    pdf_profile_id: str | None, engine_id: str | None = None
+) -> dict[str, str]:
     pid = str(pdf_profile_id or "").strip()
-    if not pid:
-        return {}
-    return copy.deepcopy(_BUILTIN_COLUMN_RENAME_BY_PROFILE.get(pid, {}))
+    if pid:
+        hit = _BUILTIN_COLUMN_RENAME_BY_PROFILE.get(pid)
+        if hit:
+            return copy.deepcopy(hit)
+    eid = str(engine_id or "").strip()
+    if eid == "china_hrone":
+        eid = "china_payroll_calc"
+    if eid == "hk_vertical_l":
+        eid = "hk_payroll_calc"
+    # Indonesia：引擎默认 columnRename 同时作为 UI 预填（无 pdf profile 或 overlay 为空时）
+    if eid == "indonesia_payroll_calc":
+        rename = (ENGINE_DEFAULTS.get(eid) or {}).get("columnRename") or {}
+        if isinstance(rename, dict) and rename:
+            return copy.deepcopy(rename)
+    return {}
 
 
 def resolve_convert_mapping(engine_id: str, raw: dict[str, Any] | None) -> dict[str, Any]:

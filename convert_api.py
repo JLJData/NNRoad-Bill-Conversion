@@ -287,7 +287,7 @@ def mapping_defaults(
         "engineId": eid,
         "pdfProfileId": pid or None,
         "mapping": mapping,
-        "builtinColumnRename": get_builtin_column_rename(pid),
+        "builtinColumnRename": get_builtin_column_rename(pid, eid),
     }
 
 
