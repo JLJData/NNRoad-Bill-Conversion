@@ -4,9 +4,11 @@ from __future__ import annotations
 from typing import Any
 
 from bill_convert.vendor_plugins.auxilium_admin_fee_business_tax import AuxiliumAdminFeeBusinessTaxPlugin
+from bill_convert.vendor_plugins.link_compliance_cash_advance import LinkComplianceCashAdvancePlugin
 
 _PLUGINS: list[Any] = [
     AuxiliumAdminFeeBusinessTaxPlugin(),
+    LinkComplianceCashAdvancePlugin(),
 ]
 
 

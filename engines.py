@@ -78,7 +78,7 @@ ENGINES: dict[str, ConvertEngine] = {
         engine_id="indonesia_payroll_calc",
         label="Indonesia Payroll Calculation",
         module="profiles.indonesia_payroll_calc.convert",
-        description="源账单 Link Compliance 工资明细 Excel（或 Indonesia-L）→ Indonesia PN",
+        description="源账单 Link Compliance 工资明细 Excel（或 Indonesia-L）→ Indonesia PN；Tax Invoice PDF 旁路写 Cash Advance",
     ),
 }
 

@@ -127,6 +127,20 @@ PDF_PROFILES: dict[str, PdfProfile] = {
             "at professional technical management",
         ),
     ),
+    "link_compliance_id": PdfProfile(
+        profile_id="link_compliance_id",
+        label="Link Compliance",
+        region="Indonesia",
+        module="pdf_ingest.profiles.link_compliance_id",
+        description="Link Compliance：主源为工资明细 Excel；Tax Invoice PDF 仅旁路抽取 Cash Advance → PN",
+        engine_ids=("indonesia_payroll_calc",),
+        detect_keywords=(
+            "link compliance",
+            "link compliance pte",
+            "info@linkcompliance.com",
+            "cash advance",
+        ),
+    ),
 }
 
 

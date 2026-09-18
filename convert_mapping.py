@@ -461,7 +461,8 @@ ENGINE_DEFAULTS: dict[str, dict[str, Any]] = {
         ],
         "fxPolicy": {"mode": "none"},
     },
-    # Indonesia 中性默认；Link Compliance 工资明细 Excel → Indonesia-L
+    # Indonesia：默认 columnRename 必须覆盖「非同名」列（资格化 key 完全一致才算同名）。
+    # 仅 HEALTH INSURANCE… 可同名自动配；其余须出现在此表，前端映射可见。
     "indonesia_payroll_calc": {
         "schemaVersion": 1,
         "metaCells": {
@@ -472,10 +473,10 @@ ENGINE_DEFAULTS: dict[str, dict[str, Any]] = {
         "sourceEmployeeSheet": {
             "sheet": "Sheet1",
             "candidates": ["Sheet1", "Indonesia-L"],
-            "headerRow": 6,
-            "subHeaderRow": 7,
+            # 子表头行；父行 = headerRow-1（供资格化 父/子）
+            "headerRow": 7,
             "dataStartRow": 8,
-            "nameHeaders": ["EMPLOYEE NAME", "Employee Name", "Name of Employee"],
+            "nameHeaders": ["Name of Employee", "EMPLOYEE NAME", "Employee Name"],
             "layout": "link_compliance_payroll",
         },
         "targetL": {
@@ -484,27 +485,17 @@ ENGINE_DEFAULTS: dict[str, dict[str, Any]] = {
             "headerRow": 7,
             "dataStartRow": 8,
         },
-        "columnRename": {},
-        "fieldHeaders": {
-            "name": ["Name of Employee", "Employee Name", "EMPLOYEE NAME"],
-            "base": ["Base Salary", "BASIC PAY (IDR)", "BASIC PAY"],
-            "ot": ["OT"],
-            "salary_adj": ["Salary Adjusment", "Salary Adjustment"],
-            "bonus": ["Bonus"],
-            "other": ["Other ", "Other"],
-            "expense": ["Expense Reimbursment", "Expense Reimbursement"],
-            "pph21": ["INCOME TAX (PPH21)", "INCOME TAX", "PPH21"],
-            "jht_ee": ["JHT 2%"],
-            "jp_ee": ["JP 1%"],
-            "bpjs_ee": ["BPJS KESEHATAN 1%"],
-            "jkk": ["JKK 0.24%"],
-            "jht_er": ["JHT 3.7%"],
-            "jp_er": ["JP 2%"],
-            "jkm": ["JKM  0.3%", "JKM 0.3%"],
-            "bpjs_er": [
-                "HEALTH INSURANCE (BPJS KESEHATAN) 4%",
-                "BPJS KESEHATAN 4%",
-            ],
+        "columnRename": {
+            "EMPLOYEE NAME": "Name of Employee",
+            "BASIC PAY (IDR)": "Base Salary",
+            "SOCIAL INSURANCE (BPJS KETENAGAKERJAAN)/JKK 0.24%": "JKK 0.24%",
+            "SOCIAL INSURANCE (BPJS KETENAGAKERJAAN)/JHT 3.7%": "JHT 3.7%",
+            "SOCIAL INSURANCE (BPJS KETENAGAKERJAAN)/JP 2%": "JP 2%",
+            "SOCIAL INSURANCE (BPJS KETENAGAKERJAAN)/JKM  0.3%": "JKM  0.3%",
+            "DEDUCTION/JP 1%": "JP 1%",
+            "DEDUCTION/BPJS KESEHATAN 1%": "BPJS KESEHATAN 1%",
+            "DEDUCTION/INCOME TAX (PPH21)": "INCOME TAX (PPH21)",
+            # 注意：不映射 DEDUCTION/JHT 2% → 母版 K 列为公式 ROUND(C*2%,0)
         },
         "formulaTemplates": {
             "applyDefaultToAllEmployees": True,
@@ -689,6 +680,24 @@ PROFILE_MAPPING_OVERLAYS: dict[str, dict[str, Any]] = {
         },
         "columnRename": {},
     },
+    "link_compliance_id": {
+        "sourceEmployeeSheet": {
+            "sheet": "Sheet1",
+            "candidates": ["Sheet1", "Indonesia-L"],
+            "headerRow": 7,
+            "dataStartRow": 8,
+            "nameHeaders": ["Name of Employee", "EMPLOYEE NAME", "Employee Name"],
+            "layout": "link_compliance_payroll",
+        },
+        "targetL": {
+            "sheet": "Indonesia-L",
+            "candidates": ["Indonesia-L"],
+            "headerRow": 7,
+            "dataStartRow": 8,
+        },
+        # columnRename 不注入 overlay：以引擎默认 / Office 已存映射为准；预填见 builtinColumnRename
+        "columnRename": {},
+    },
 }
 
 
@@ -712,6 +721,18 @@ _BUILTIN_COLUMN_RENAME_BY_PROFILE: dict[str, dict[str, str]] = {
         "Administration Fee": "_admin_fee",
         "Medical Insurance Cover": "Medical Insurance",
         "Medical Insurance": "Medical Insurance",
+    },
+    # 与 ENGINE_DEFAULTS.indonesia_payroll_calc.columnRename 保持一致（前端预填可见）
+    "link_compliance_id": {
+        "EMPLOYEE NAME": "Name of Employee",
+        "BASIC PAY (IDR)": "Base Salary",
+        "SOCIAL INSURANCE (BPJS KETENAGAKERJAAN)/JKK 0.24%": "JKK 0.24%",
+        "SOCIAL INSURANCE (BPJS KETENAGAKERJAAN)/JHT 3.7%": "JHT 3.7%",
+        "SOCIAL INSURANCE (BPJS KETENAGAKERJAAN)/JP 2%": "JP 2%",
+        "SOCIAL INSURANCE (BPJS KETENAGAKERJAAN)/JKM  0.3%": "JKM  0.3%",
+        "DEDUCTION/JP 1%": "JP 1%",
+        "DEDUCTION/BPJS KESEHATAN 1%": "BPJS KESEHATAN 1%",
+        "DEDUCTION/INCOME TAX (PPH21)": "INCOME TAX (PPH21)",
     },
 }
 

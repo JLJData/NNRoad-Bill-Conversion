@@ -8,7 +8,7 @@ Indonesia：Link Compliance 工资明细 Excel（或已是 Indonesia-L）→ Ind
 原则：
 - PN / Indonesia / Indonesia EE 以母版公式为准；只写 Indonesia-L 数据与必要元数据。
 - EE Code 必须来自员工库匹配，禁止沿用供应商账单工号。
-- Cash Advance 等 PDF 发票项一期不自动写入（人工 / 后续 pdf_ingest）。
+- Cash Advance：从 Link Compliance Tax Invoice PDF 旁路抽取，写入 PN!A18/E18（见 vendor_plugins.link_compliance_cash_advance）。
 """
 from __future__ import annotations
 
@@ -26,15 +26,21 @@ from openpyxl import load_workbook
 from openpyxl.worksheet.formula import ArrayFormula
 from openpyxl.worksheet.worksheet import Worksheet
 
-from bill_convert.convert_checks import merge_warnings, parse_cell_ref, sanity_check_convert_result
+from bill_convert.convert_checks import (
+    check_column_rename_hits,
+    merge_warnings,
+    parse_cell_ref,
+    sanity_check_convert_result,
+)
 from bill_convert.formula_copy import shift_row_formula
 from bill_convert.formula_layout import sort_employees_by_code
+from bill_convert.headers import list_qualified_header_cells
 from convert_mapping import find_sheet_name, resolve_convert_mapping
 from fx_rate import get_indonesia_pn_fx_rate
 from pn_meta import PnMeta, apply_pn_meta
 from profiles.tw_payroll_calc.convert import match_ee_code
 from region_templates import get_region_template
-from xlsx_convert_utils import coerce_datetime_for_excel
+from xlsx_convert_utils import coerce_datetime_for_excel, norm
 from xlsx_luckysheet_compat import apply_luckysheet_compat
 from xlsx_postprocess import postprocess_converted_xlsx
 
@@ -55,49 +61,38 @@ _DATE_FMT = "yyyy/m/d"
 COL_EE_CODE = 1
 COL_NAME = 2
 
-# 目标 Indonesia-L 字段 → 默认列（表头匹配失败时兜底）
-_TARGET_FIELD_COLS: dict[str, int] = {
-    "name": 2,
-    "base": 3,
-    "ot": 4,
-    "salary_adj": 5,
-    "bonus": 6,
-    "other": 7,
-    "expense": 8,
-    "pph21": 10,
-    # jht_ee(K) 母版为公式，默认不写
-    "jp_ee": 12,
-    "bpjs_ee": 13,
-    "jkk": 15,
-    "jht_er": 16,
-    "jp_er": 17,
-    "jkm": 18,
-    "bpjs_er": 19,
-}
+# Indonesia-L 目标表头（写盘键）；同名自动配须与源资格化 key 完全一致
+_TARGET_L_HEADERS: tuple[str, ...] = (
+    "No. of EE",
+    "Name of Employee",
+    "Base Salary",
+    "OT",
+    "Salary Adjusment",
+    "Bonus",
+    "Other",
+    "Other ",
+    "Expense Reimbursment",
+    "Gross Salary",
+    "INCOME TAX (PPH21)",
+    "JHT 2%",
+    "JP 1%",
+    "BPJS KESEHATAN 1%",
+    "Net Salary",
+    "JKK 0.24%",
+    "JHT 3.7%",
+    "JP 2%",
+    "JKM  0.3%",
+    "HEALTH INSURANCE (BPJS KESEHATAN) 4%",
+    "Total Cost",
+)
 
-# 源 Link Compliance 字段 → 写入员工 dict 时使用的标准键（与 target 表头对齐）
-_SOURCE_TO_TARGET_KEYS: dict[str, str] = {
-    "base": "Base Salary",
-    "ot": "OT",
-    "salary_adj": "Salary Adjusment",
-    "bonus": "Bonus",
-    "other": "Other ",
-    "expense": "Expense Reimbursment",
-    "pph21": "INCOME TAX (PPH21)",
-    "jp_ee": "JP 1%",
-    "bpjs_ee": "BPJS KESEHATAN 1%",
-    "jkk": "JKK 0.24%",
-    "jht_er": "JHT 3.7%",
-    "jp_er": "JP 2%",
-    "jkm": "JKM  0.3%",
-    "bpjs_er": "HEALTH INSURANCE (BPJS KESEHATAN) 4%",
-}
+# 母版公式列 / EE Code：不从源表写入
+_SKIP_WRITE_TARGETS = frozenset(
+    {"No. of EE", "Gross Salary", "JHT 2%", "Net Salary", "Total Cost"}
+)
 
-# 缺省写 0 的薪资可选列（与样例 PN 一致：OT 留空，Adj/Bonus/Other/Expense 写 0）
+# 缺省写 0（样例 PN：Adj/Bonus/Other/Expense）
 _ZERO_FILL_KEYS = ("Salary Adjusment", "Bonus", "Other ", "Expense Reimbursment")
-
-# 源表常缺、不必告警的字段
-_OPTIONAL_SOURCE_FIELDS = frozenset({"ot", "salary_adj", "bonus", "other", "expense", "jht_ee"})
 
 _ACTIVE_MAPPING: dict[str, Any] | None = None
 
@@ -203,75 +198,62 @@ def _indonesia_l_layout(*, target: bool = False) -> tuple[int, int]:
         header = int(spec.get("headerRow") or INDONESIA_L_HEADER_ROW)
         data_start = int(spec.get("dataStartRow") or INDONESIA_L_DATA_START)
     else:
-        header = int(spec.get("headerRow") or 6)
+        header = int(spec.get("headerRow") or 7)
         data_start = int(spec.get("dataStartRow") or 8)
     return header, data_start
 
 
-def _field_header_names(field: str) -> list[str]:
+def _source_parent_row(header_row: int) -> int | None:
     mapping = _active_mapping()
-    custom = mapping.get("fieldHeaders") if isinstance(mapping.get("fieldHeaders"), dict) else {}
-    raw = custom.get(field)
-    out: list[str] = []
-    seen: set[str] = set()
-
-    def add(name: str) -> None:
-        s = str(name).strip()
-        if not s:
-            return
-        key = s.lower()
-        if key in seen:
-            return
-        seen.add(key)
-        out.append(s)
-
-    if isinstance(raw, list):
-        for x in raw:
-            if x is not None:
-                add(str(x))
-    return out
+    spec = (
+        mapping.get("sourceEmployeeSheet")
+        if isinstance(mapping.get("sourceEmployeeSheet"), dict)
+        else {}
+    )
+    raw = spec.get("parentHeaderRow")
+    if raw is not None:
+        try:
+            return int(raw)
+        except (TypeError, ValueError):
+            pass
+    return header_row - 1 if header_row > 1 else None
 
 
-def _header_map_single(ws: Worksheet, header_row: int) -> dict[str, int]:
-    out: dict[str, int] = {}
-    for col in range(1, (ws.max_column or 1) + 1):
-        h = _norm(ws.cell(header_row, col).value)
-        if h and h not in out:
-            out[h] = col
-    return out
+def _column_rename_map() -> dict[str, str]:
+    """仅 mapping.columnRename（引擎默认已写入 ENGINE_DEFAULTS，前端可见）。"""
+    raw = _active_mapping().get("columnRename") or {}
+    if not isinstance(raw, dict):
+        return {}
+    return {norm(str(k)): str(v).strip() for k, v in raw.items() if k and str(v).strip()}
 
 
-def _header_map_dual(ws: Worksheet, header_row: int, sub_header_row: int | None) -> dict[str, int]:
-    """双行表头：子行优先，空则用父行。"""
-    out: dict[str, int] = {}
-    max_col = ws.max_column or 1
-    for col in range(1, max_col + 1):
-        h = ""
-        if sub_header_row:
-            h = _norm(ws.cell(sub_header_row, col).value)
-        if not h:
-            h = _norm(ws.cell(header_row, col).value)
-        if h and h not in out:
-            out[h] = col
-    return out
+def _skip_source_headers() -> set[str]:
+    raw = _active_mapping().get("skipSourceHeaders") or []
+    if not isinstance(raw, list):
+        return set()
+    return {norm(x) for x in raw if x}
 
 
-def _find_col(headers: dict[str, int], names: list[str]) -> int | None:
-    lower = {k.lower(): v for k, v in headers.items()}
-    for name in names:
-        n = _norm(name)
-        if not n:
-            continue
-        if n in headers:
-            return headers[n]
-        hit = lower.get(n.lower())
-        if hit is not None:
-            return hit
-        # 宽松：去多余空格
-        compact = re.sub(r"\s+", " ", n).lower()
-        for k, col in headers.items():
-            if re.sub(r"\s+", " ", k).lower() == compact:
-                return col
+def _target_header_keys() -> set[str]:
+    return {norm(x) for x in _TARGET_L_HEADERS if x}
+
+
+def map_source_header(source_header: str) -> str | None:
+    """
+    源资格化 key → Indonesia-L 表头。
+    1) columnRename 显式对照（须在默认/前端映射里，禁止静默别名）
+    2) 同名：资格化 key 与目标表头完全一致（禁止只比子列名）
+    """
+    h = norm(source_header)
+    if not h or h in _skip_source_headers():
+        return None
+    rename = _column_rename_map()
+    if h in rename:
+        return rename[h]
+    if h in _target_header_keys():
+        for t in _TARGET_L_HEADERS:
+            if norm(t) == h:
+                return t
     return None
 
 
@@ -351,40 +333,101 @@ def _indonesia_l_formula_cols(ws: Worksheet, data_start: int) -> dict[int, str]:
 
 
 def looks_like_indonesia_l(ws: Worksheet) -> bool:
-    headers = _header_map_single(ws, INDONESIA_L_HEADER_ROW)
-    return bool(_find_col(headers, ["Name of Employee", "Base Salary"]))
+    qualified = list_qualified_header_cells(ws, INDONESIA_L_HEADER_ROW)
+    keys = {norm(str(h.get("key") or "")) for h in qualified}
+    return "name of employee" in keys and "base salary" in keys
 
 
-def parse_link_compliance_employees(ws: Worksheet, warnings: list[str] | None = None) -> list[dict[str, Any]]:
-    mapping = _active_mapping()
-    src = (
-        mapping.get("sourceEmployeeSheet")
-        if isinstance(mapping.get("sourceEmployeeSheet"), dict)
-        else {}
-    )
-    header_row = int(src.get("headerRow") or 6)
-    sub_row = src.get("subHeaderRow")
-    sub_header_row = int(sub_row) if sub_row is not None else header_row + 1
-    data_start = int(src.get("dataStartRow") or 8)
-    headers = _header_map_dual(ws, header_row, sub_header_row)
+def _unwrap_header_key(value: Any) -> str:
+    """表头格可能是 =UPPER(\"Employee Name\")；资格化前先还原。"""
+    return _norm(value)
 
-    name_col = _find_col(headers, _field_header_names("name") or ["EMPLOYEE NAME", "Employee Name"])
+
+def _qualified_source_headers(
+    ws: Worksheet, header_row: int, parent_row: int | None
+) -> dict[str, int]:
+    """资格化表头 → 列号；并解开 UPPER() 公式表头。"""
+    # 临时把 UPPER 公式写成明文再资格化，避免 key 带公式
+    touched: list[tuple[int, int, Any]] = []
+    rows = [header_row]
+    if parent_row:
+        rows.append(parent_row)
+    for r in rows:
+        for c in range(1, (ws.max_column or 1) + 1):
+            cell = ws.cell(r, c)
+            raw = cell.value
+            if isinstance(raw, str) and raw.startswith("=") and "UPPER" in raw.upper():
+                plain = _unwrap_header_key(raw)
+                if plain and plain != raw:
+                    touched.append((r, c, raw))
+                    cell.value = plain
+    try:
+        qualified = list_qualified_header_cells(ws, header_row, parent_row=parent_row)
+        return {str(h["key"]): int(h["col"]) for h in qualified if h.get("key") and h.get("col")}
+    finally:
+        for r, c, raw in touched:
+            ws.cell(r, c).value = raw
+
+
+def _parse_employees_from_sheet(
+    ws: Worksheet,
+    *,
+    header_row: int,
+    parent_row: int | None,
+    data_start: int,
+    warnings: list[str] | None = None,
+    include_period_meta: bool = True,
+) -> list[dict[str, Any]]:
+    """资格化表头 + columnRename / 严格同名 → 员工行。"""
+    source_headers = _qualified_source_headers(ws, header_row, parent_row)
+    rename = _column_rename_map()
+    if rename:
+        check_column_rename_hits(rename, source_headers, strict_if_configured=False)
+
+    name_col: int | None = None
+    for src_key, col in source_headers.items():
+        tgt = map_source_header(src_key)
+        if tgt and norm(tgt) == norm("Name of Employee"):
+            name_col = col
+            break
     if name_col is None:
-        raise ValueError(f"未找到员工姓名列，表头={list(headers.keys())[:20]}")
+        src_spec = (
+            _active_mapping().get("sourceEmployeeSheet")
+            if isinstance(_active_mapping().get("sourceEmployeeSheet"), dict)
+            else {}
+        )
+        for nh in src_spec.get("nameHeaders") or []:
+            key = norm(nh)
+            for sk, col in source_headers.items():
+                if norm(sk) == key:
+                    name_col = col
+                    break
+            if name_col is not None:
+                break
+    if name_col is None:
+        raise ValueError(
+            f"未找到员工姓名列（请在 columnRename 配置 EMPLOYEE NAME→Name of Employee）。"
+            f"表头={list(source_headers.keys())[:12]}"
+        )
 
-    field_cols: dict[str, int] = {}
-    for field in _SOURCE_TO_TARGET_KEYS:
-        col = _find_col(headers, _field_header_names(field))
-        if col is not None:
-            field_cols[field] = col
-        elif warnings is not None and field not in _OPTIONAL_SOURCE_FIELDS:
-            warnings.append(f"源表未匹配字段「{field}」，将跳过")
-
-    period_label = _read_vendor_period_label(ws)
-    bounds = period_bounds_from_label(period_label) if period_label else None
-    period_from = bounds[0] if bounds else None
-    period_to = bounds[1] if bounds else None
-    fx_rate = _read_vendor_fx(ws)
+    period_from = period_to = None
+    period_label = None
+    fx_rate = None
+    if include_period_meta:
+        period_label = _read_vendor_period_label(ws)
+        bounds = period_bounds_from_label(period_label) if period_label else None
+        period_from = bounds[0] if bounds else None
+        period_to = bounds[1] if bounds else None
+        fx_rate = _read_vendor_fx(ws)
+        (pf_r, pf_c) = _meta_cell("periodFrom", 2, 3)
+        (pt_r, pt_c) = _meta_cell("periodTo", 2, 5)
+        (fx_r, fx_c) = _meta_cell("fxRate", 4, 3)
+        if ws.cell(pf_r, pf_c).value is not None:
+            period_from = period_from or ws.cell(pf_r, pf_c).value
+        if ws.cell(pt_r, pt_c).value is not None:
+            period_to = period_to or ws.cell(pt_r, pt_c).value
+        if fx_rate is None:
+            fx_rate = _as_float(ws.cell(fx_r, fx_c).value)
 
     employees: list[dict[str, Any]] = []
     max_row = max(ws.max_row or data_start, data_start)
@@ -392,7 +435,6 @@ def parse_link_compliance_employees(ws: Worksheet, warnings: list[str] | None = 
         name = _norm(ws.cell(row, name_col).value)
         if not name or name.upper() == "TOTAL":
             continue
-        # 跳过公式姓名
         if _cell_formula_text(ws.cell(row, name_col).value):
             continue
         emp: dict[str, Any] = {
@@ -405,63 +447,47 @@ def parse_link_compliance_employees(ws: Worksheet, warnings: list[str] | None = 
             "From": period_from,
             "To": period_to,
         }
-        for field, col in field_cols.items():
-            val = ws.cell(row, col).value
-            if _cell_formula_text(val):
-                # 尝试用 data_only 不可得；若是简单引用则仍可读缓存——此处跳过公式格
-                # openpyxl 无 data_only=False 时公式单元格无数值缓存时 .value 仍是公式字符串
+        for src_key, col in source_headers.items():
+            target = map_source_header(src_key)
+            if not target or norm(target) in {norm(x) for x in _SKIP_WRITE_TARGETS}:
                 continue
-            num = _as_float(val)
-            key = _SOURCE_TO_TARGET_KEYS[field]
-            emp[key] = num if num is not None else val
-        for zkey in _ZERO_FILL_KEYS:
-            emp.setdefault(zkey, 0)
-        employees.append(emp)
-    return employees
-
-
-def parse_indonesia_l_employees(ws: Worksheet, warnings: list[str] | None = None) -> list[dict[str, Any]]:
-    header_row, data_start = _indonesia_l_layout(target=True)
-    headers = _header_map_single(ws, header_row)
-    name_col = _find_col(headers, _field_header_names("name") or ["Name of Employee"]) or COL_NAME
-    (pf_r, pf_c) = _meta_cell("periodFrom", 2, 3)
-    (pt_r, pt_c) = _meta_cell("periodTo", 2, 5)
-    (fx_r, fx_c) = _meta_cell("fxRate", 4, 3)
-    period_from = ws.cell(pf_r, pf_c).value
-    period_to = ws.cell(pt_r, pt_c).value
-    fx_rate = _as_float(ws.cell(fx_r, fx_c).value)
-
-    employees: list[dict[str, Any]] = []
-    max_row = max(ws.max_row or data_start, data_start)
-    for row in range(data_start, max_row + 1):
-        name = _norm(ws.cell(row, name_col).value)
-        if not name:
-            continue
-        emp: dict[str, Any] = {
-            "Employee Name": name,
-            "Name of Employee": name,
-            "_period_from": period_from,
-            "_period_to": period_to,
-            "_fx_rate": fx_rate,
-            "From": period_from,
-            "To": period_to,
-        }
-        # 注意：不读取 A 列供应商/旧 EE Code 作为权威工号
-        for field, target_key in _SOURCE_TO_TARGET_KEYS.items():
-            names = _field_header_names(field) or [target_key]
-            col = _find_col(headers, names) or _TARGET_FIELD_COLS.get(field)
-            if col is None:
+            if norm(target) == norm("Name of Employee"):
                 continue
             val = ws.cell(row, col).value
             if _cell_formula_text(val) or val is None or val == "":
                 continue
-            emp[target_key] = val
+            num = _as_float(val)
+            emp[target] = num if num is not None else val
         for zkey in _ZERO_FILL_KEYS:
             emp.setdefault(zkey, 0)
         employees.append(emp)
     if not employees and warnings is not None:
-        warnings.append("Indonesia-L 未解析到员工行")
+        warnings.append("未解析到员工行")
     return employees
+
+
+def parse_link_compliance_employees(ws: Worksheet, warnings: list[str] | None = None) -> list[dict[str, Any]]:
+    header_row, data_start = _indonesia_l_layout(target=False)
+    return _parse_employees_from_sheet(
+        ws,
+        header_row=header_row,
+        parent_row=_source_parent_row(header_row),
+        data_start=data_start,
+        warnings=warnings,
+        include_period_meta=True,
+    )
+
+
+def parse_indonesia_l_employees(ws: Worksheet, warnings: list[str] | None = None) -> list[dict[str, Any]]:
+    header_row, data_start = _indonesia_l_layout(target=True)
+    return _parse_employees_from_sheet(
+        ws,
+        header_row=header_row,
+        parent_row=None,
+        data_start=data_start,
+        warnings=warnings,
+        include_period_meta=True,
+    )
 
 
 def _enrich_employees_from_data_only(
@@ -480,25 +506,20 @@ def _enrich_employees_from_data_only(
         if sheet_name not in wb_val.sheetnames:
             return employees
         ws = wb_val[sheet_name]
-        mapping = _active_mapping()
-        src_spec = (
-            mapping.get("sourceEmployeeSheet")
-            if isinstance(mapping.get("sourceEmployeeSheet"), dict)
-            else {}
-        )
-        header_row = int(src_spec.get("headerRow") or 6)
-        sub_row = src_spec.get("subHeaderRow")
-        sub_header_row = int(sub_row) if sub_row is not None else header_row + 1
-        data_start = int(src_spec.get("dataStartRow") or 8)
-        headers = _header_map_dual(ws, header_row, sub_header_row)
-        name_col = _find_col(headers, _field_header_names("name") or ["EMPLOYEE NAME", "Employee Name"])
+        header_row, data_start = _indonesia_l_layout(target=False)
+        parent_row = _source_parent_row(header_row)
+        source_headers = _qualified_source_headers(ws, header_row, parent_row)
+        name_col = None
+        for src_key, col in source_headers.items():
+            tgt = map_source_header(src_key)
+            if tgt and norm(tgt) == norm("Name of Employee"):
+                name_col = col
+                break
+            if norm(src_key) in ("employee name", "name of employee"):
+                name_col = col
+                break
         if name_col is None:
             return employees
-        field_cols: dict[str, int] = {}
-        for field in _SOURCE_TO_TARGET_KEYS:
-            col = _find_col(headers, _field_header_names(field))
-            if col is not None:
-                field_cols[field] = col
         fx_rate = _read_vendor_fx(ws)
         idx = 0
         max_row = max(ws.max_row or data_start, data_start)
@@ -511,14 +532,15 @@ def _enrich_employees_from_data_only(
             emp = employees[idx]
             if fx_rate is not None:
                 emp["_fx_rate"] = fx_rate
-            for field, col in field_cols.items():
-                key = _SOURCE_TO_TARGET_KEYS[field]
-                existing = _as_float(emp.get(key))
-                if existing is not None:
+            for src_key, col in source_headers.items():
+                target = map_source_header(src_key)
+                if not target or norm(target) in {norm(x) for x in _SKIP_WRITE_TARGETS}:
+                    continue
+                if _as_float(emp.get(target)) is not None:
                     continue
                 num = _as_float(ws.cell(row, col).value)
                 if num is not None:
-                    emp[key] = num
+                    emp[target] = num
             idx += 1
         return employees
     finally:
@@ -635,15 +657,16 @@ def write_indonesia_l(ws: Worksheet, employees: list[dict[str, Any]]) -> None:
                 target_l_sheet=INDONESIA_L_SHEET,
             )
 
-    headers = _header_map_single(ws, header_row)
-    name_col = _find_col(headers, _field_header_names("name") or ["Name of Employee"]) or COL_NAME
-
-    target_cols: dict[str, int] = {}
-    for field, target_key in _SOURCE_TO_TARGET_KEYS.items():
-        names = _field_header_names(field) or [target_key]
-        col = _find_col(headers, names) or _TARGET_FIELD_COLS.get(field)
-        if col is not None:
-            target_cols[target_key] = col
+    headers = {
+        str(h["key"]): int(h["col"])
+        for h in list_qualified_header_cells(ws, header_row)
+        if h.get("key") and h.get("col")
+    }
+    # 兼容目标表头带尾空格（Other  vs Other）
+    headers_norm = {norm(k): (k, col) for k, col in headers.items()}
+    name_col = COL_NAME
+    if norm("Name of Employee") in headers_norm:
+        name_col = headers_norm[norm("Name of Employee")][1]
 
     for idx, emp in enumerate(employees):
         row = data_start + idx
@@ -651,13 +674,18 @@ def write_indonesia_l(ws: Worksheet, employees: list[dict[str, Any]]) -> None:
         if name:
             ws.cell(row, name_col).value = name
         written: set[int] = set()
-        for key, col in target_cols.items():
+        for key, val in emp.items():
+            if val is None or str(key).startswith("_"):
+                continue
+            if norm(key) in {norm(x) for x in _SKIP_WRITE_TARGETS} or norm(key) == norm(
+                "Name of Employee"
+            ):
+                continue
+            hit = headers_norm.get(norm(key))
+            if not hit:
+                continue
+            _canon, col = hit
             if col in formula_by_col or col in written:
-                continue
-            if key not in emp:
-                continue
-            val = emp[key]
-            if val is None:
                 continue
             _set_cell_value(ws.cell(row, col), val)
             written.add(col)
@@ -833,6 +861,68 @@ def fit_indonesia_pn_employees(wb, employee_count: int) -> dict[str, Any]:
     return {"fx_row": fx_row or 28, "employee_count": employee_count}
 
 
+def _resolve_pdf_profile_id(mapping: dict[str, Any] | None) -> str | None:
+    if not isinstance(mapping, dict):
+        return None
+    for key in ("pdfProfileId", "_pdfProfileId"):
+        val = mapping.get(key)
+        if val is not None and str(val).strip():
+            return str(val).strip()
+    from bill_convert.fact_store import get_batch_facts
+
+    batch = get_batch_facts(mapping)
+    if any(str(k).startswith("link_compliance.") for k in batch):
+        return "link_compliance_id"
+    return None
+
+
+def _ingest_cash_advance_pdfs(mapping: dict[str, Any] | None, pdf_paths: list[Path]) -> dict[str, Any]:
+    """把 Tax Invoice PDF 解析为 artifactBatch，供插件写入 PN Cash Advance。"""
+    from bill_convert.fact_store import set_batch_facts
+    from bill_convert.vendor_plugins.link_compliance_cash_advance import (
+        LinkComplianceCashAdvancePlugin,
+    )
+
+    out = dict(mapping) if isinstance(mapping, dict) else {}
+    paths = [Path(p) for p in pdf_paths if p and Path(p).is_file()]
+    if not paths:
+        return out
+    plugin = LinkComplianceCashAdvancePlugin()
+    facts = plugin.parse_artifacts(paths) or {}
+    warnings = facts.pop("_warnings", None) or []
+    for w in warnings:
+        print(f"[link-compliance] {w}")
+    out = set_batch_facts(out, facts)
+    out.setdefault("pdfProfileId", "link_compliance_id")
+    return out
+
+
+def _apply_vendor_plugins(
+    wb, warnings: list[str], *, employee_count: int = 1
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    from bill_convert.fact_store import get_batch_facts
+    from bill_convert.vendor_plugins.runtime import apply_vendor_plugins
+
+    mapping = _active_mapping()
+    pdf_profile_id = _resolve_pdf_profile_id(mapping)
+    if not pdf_profile_id:
+        return {}, []
+    raw = (
+        apply_vendor_plugins(
+            wb,
+            pdf_profile_id=pdf_profile_id,
+            mapping=mapping,
+            batch_facts=get_batch_facts(mapping),
+            warnings=warnings,
+            employee_count=employee_count,
+        )
+        or {}
+    )
+    cell_writes = raw.pop("_cell_writes", None)
+    writes = cell_writes if isinstance(cell_writes, list) else []
+    return raw, [x for x in writes if isinstance(x, dict)]
+
+
 def apply_fx(
     wb,
     employees: list[dict[str, Any]],
@@ -887,6 +977,7 @@ def convert(
     registry_dir: Path | None = None,
     convert_mapping: dict[str, Any] | None = None,
     fill_fx: bool = True,
+    cash_advance_pdf: Path | None = None,
 ) -> dict[str, Any]:
     global _ACTIVE_MAPPING
     _ACTIVE_MAPPING = resolve_convert_mapping("indonesia_payroll_calc", convert_mapping)
@@ -898,6 +989,25 @@ def convert(
             raise FileNotFoundError(f"源文件不存在: {source_path}")
         if not template_path.is_file():
             raise FileNotFoundError(f"母版不存在: {template_path}")
+
+        # 可选：本批附带 Tax Invoice PDF → 注入 Cash Advance 事实
+        if cash_advance_pdf is not None:
+            _ACTIVE_MAPPING = _ingest_cash_advance_pdfs(_ACTIVE_MAPPING, [cash_advance_pdf])
+        else:
+            side_paths = []
+            if isinstance(_ACTIVE_MAPPING, dict):
+                raw_paths = _ACTIVE_MAPPING.get("_artifactPdfPaths") or _ACTIVE_MAPPING.get(
+                    "artifactPdfPaths"
+                )
+                if isinstance(raw_paths, list):
+                    side_paths = [Path(p) for p in raw_paths if p]
+                single = _ACTIVE_MAPPING.get("_cashAdvancePdf") or _ACTIVE_MAPPING.get(
+                    "cashAdvancePdf"
+                )
+                if single:
+                    side_paths.append(Path(str(single)))
+            if side_paths:
+                _ACTIVE_MAPPING = _ingest_cash_advance_pdfs(_ACTIVE_MAPPING, side_paths)
 
         parse_warnings: list[str] = []
         employees = parse_source_workbook(source_path, parse_warnings)
@@ -912,6 +1022,8 @@ def convert(
         fx = None
         fx_source = None
         applied_pn = None
+        plugin_cell_writes: list[dict[str, Any]] = []
+        fact_store_updates: dict[str, Any] = {}
         try:
             if INDONESIA_L_SHEET not in wb.sheetnames:
                 raise ValueError(f"母版缺少 {INDONESIA_L_SHEET}")
@@ -945,6 +1057,10 @@ def convert(
                 )
             )
 
+            fact_store_updates, plugin_cell_writes = _apply_vendor_plugins(
+                wb, warnings, employee_count=len(employees)
+            )
+
             apply_luckysheet_compat(wb, pn_sheet=PN_SHEET)
             wb.save(output_path)
         finally:
@@ -969,6 +1085,8 @@ def convert(
             "warnings": warnings,
             "pn_meta": applied_pn.to_dict() if applied_pn else None,
             "pn_layout": pn_layout,
+            "fact_store_updates": fact_store_updates,
+            "cell_writes": plugin_cell_writes,
         }
     finally:
         _ACTIVE_MAPPING = None
@@ -980,11 +1098,23 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("-o", "--output", type=Path, default=None)
     parser.add_argument("-t", "--template", type=Path, default=None)
     parser.add_argument("--no-fx", action="store_true")
+    parser.add_argument(
+        "--cash-advance-pdf",
+        type=Path,
+        default=None,
+        help="Link Compliance Tax Invoice PDF（仅抽取 Cash Advance 写入 PN）",
+    )
     args = parser.parse_args(argv)
     source = args.source.resolve()
     output = (args.output or source.with_name(f"PN_Indonesia_{source.stem}.xlsx")).resolve()
     template = (args.template or DEFAULT_TEMPLATE).resolve()
-    result = convert(source, output, template, fill_fx=not args.no_fx)
+    result = convert(
+        source,
+        output,
+        template,
+        fill_fx=not args.no_fx,
+        cash_advance_pdf=args.cash_advance_pdf.resolve() if args.cash_advance_pdf else None,
+    )
     print(result)
     return 0 if result.get("ok") else 1
 

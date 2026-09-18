@@ -94,6 +94,8 @@ def inspect_source_headers(
         return _inspect_italy_source(source_path, mapping)
     if engine_id == "cyprus_payroll_calc":
         return _inspect_fixed_header_source(source_path, mapping, default_sheet="Cyprus-L", default_row=7)
+    if engine_id == "indonesia_payroll_calc":
+        return _inspect_fixed_header_source(source_path, mapping, default_sheet="Sheet1", default_row=7)
 
     return {"ok": False, "message": f"引擎「{engine_id}」暂不支持表头识别"}
 
@@ -416,6 +418,7 @@ def inspect_pn_headers(
             "Italy-L",
             "India-L",
             "Cyprus-L",
+            "Indonesia-L",
             "TW-L",
         ]
 
