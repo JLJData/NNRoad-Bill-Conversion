@@ -511,6 +511,42 @@ ENGINE_DEFAULTS: dict[str, dict[str, Any]] = {
             "defaultCurrency": "IDR",
         },
     },
+    # Kyrgyzstan：Atlas 竖表标签源；税列由母版公式从 Base Salary 推导，默认无 columnRename。
+    "kyrgyzstan_payroll_calc": {
+        "schemaVersion": 1,
+        "metaCells": {
+            "periodFrom": "C2",
+            "periodTo": "E2",
+        },
+        "sourceEmployeeSheet": {
+            "sheet": "Iskakov",
+            "candidates": ["Iskakov", "Kyrgyzstan-L", "Sheet1"],
+            "headerRow": 7,
+            "dataStartRow": 8,
+            "nameHeaders": ["Name of Employee", "Employee Name"],
+            "layout": "atlas_cost_calculation",
+        },
+        "targetL": {
+            "sheet": "Kyrgyzstan-L",
+            "candidates": ["Kyrgyzstan-L"],
+            "headerRow": 7,
+            "dataStartRow": 8,
+        },
+        "columnRename": {},
+        "formulaTemplates": {
+            "applyDefaultToAllEmployees": True,
+            "Kyrgyzstan": {"defaultExampleRow": 9},
+            "Kyrgyzstan EE": {"defaultExampleRow": 10, "dataStartOffset": 0},
+        },
+        "employeeFormulaStyles": [],
+        "skipSourceHeaders": [],
+        "pnSheets": {"main": "Kyrgyzstan", "ee": "Kyrgyzstan EE", "l": "Kyrgyzstan-L"},
+        "fxPolicy": {
+            "mode": "vendor_bill",
+            "fallback": "api",
+            "defaultCurrency": "KGS",
+        },
+    },
 }
 
 # 列名对照不再内置默认：须在 Office「转换映射」中配置并保存。

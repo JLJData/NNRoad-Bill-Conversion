@@ -80,6 +80,12 @@ ENGINES: dict[str, ConvertEngine] = {
         module="profiles.indonesia_payroll_calc.convert",
         description="源账单 Link Compliance 工资明细 Excel（或 Indonesia-L）→ Indonesia PN；Tax Invoice PDF 旁路写 Cash Advance",
     ),
+    "kyrgyzstan_payroll_calc": ConvertEngine(
+        engine_id="kyrgyzstan_payroll_calc",
+        label="Kyrgyzstan Payroll Calculation",
+        module="profiles.kyrgyzstan_payroll_calc.convert",
+        description="源账单 Atlas Employment 成本测算 Excel（或 Kyrgyzstan-L）→ Kyrgyzstan PN",
+    ),
 }
 
 # 旧引擎 id 兼容

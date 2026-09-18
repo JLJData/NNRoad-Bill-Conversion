@@ -96,6 +96,8 @@ def inspect_source_headers(
         return _inspect_fixed_header_source(source_path, mapping, default_sheet="Cyprus-L", default_row=7)
     if engine_id == "indonesia_payroll_calc":
         return _inspect_fixed_header_source(source_path, mapping, default_sheet="Sheet1", default_row=7)
+    if engine_id == "kyrgyzstan_payroll_calc":
+        return _inspect_kyrgyzstan_source(source_path, mapping)
 
     return {"ok": False, "message": f"引擎「{engine_id}」暂不支持表头识别"}
 
@@ -143,6 +145,64 @@ def _inspect_tw_source(source_path: Path, mapping: dict[str, Any]) -> dict[str, 
         return {"ok": False, "message": str(exc)}
     finally:
         tw_mod._ACTIVE_MAPPING = None
+
+
+def _inspect_kyrgyzstan_source(source_path: Path, mapping: dict[str, Any]) -> dict[str, Any]:
+    """Atlas 成本测算为竖表标签，无横列表头；若已是 Kyrgyzstan-L 则按固定表头识别。"""
+    from profiles.kyrgyzstan_payroll_calc import convert as kg_mod
+
+    kg_mod._ACTIVE_MAPPING = mapping
+    try:
+        wb = load_workbook(source_path, data_only=False)
+        sheet_names = list(wb.sheetnames)
+        if "Kyrgyzstan-L" in sheet_names and kg_mod.looks_like_kyrgyzstan_l(wb["Kyrgyzstan-L"]):
+            wb.close()
+            return _inspect_fixed_header_source(
+                source_path, mapping, default_sheet="Kyrgyzstan-L", default_row=7
+            )
+
+        employees: list[dict[str, str]] = []
+        used_sheet = None
+        for name in sheet_names:
+            ws = wb[name]
+            if not kg_mod.looks_like_atlas_cost_sheet(ws):
+                continue
+            emp = kg_mod.parse_atlas_cost_sheet(ws, source_path=source_path)
+            if not emp:
+                continue
+            used_sheet = name
+            employees.append(
+                {
+                    "cnName": "",
+                    "enName": str(emp.get("Name of Employee") or emp.get("Employee Name") or "").strip(),
+                }
+            )
+        wb.close()
+        if not used_sheet:
+            return {
+                "ok": False,
+                "message": "未识别 Atlas 成本测算表或 Kyrgyzstan-L",
+                "sheetNames": sheet_names,
+            }
+        # 竖表：给出目标 L 侧常见字段供列名对照下拉
+        headers = [
+            {"key": "Name of Employee", "label": "Name of Employee"},
+            {"key": "Base Salary", "label": "Base Salary"},
+            {"key": "Bonus", "label": "Bonus"},
+            {"key": "Expense Reimbursment", "label": "Expense Reimbursment"},
+        ]
+        return {
+            "ok": True,
+            "sheetName": used_sheet,
+            "headerRow": 0,
+            "headers": headers,
+            "employees": employees,
+            "layout": "atlas_cost_calculation",
+        }
+    except Exception as exc:
+        return {"ok": False, "message": str(exc)}
+    finally:
+        kg_mod._ACTIVE_MAPPING = None
 
 
 def _inspect_fixed_header_source(
