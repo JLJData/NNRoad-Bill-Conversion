@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""按地区复用的 PN 母版路径（China / Hong Kong / Taiwan / UK / UAE / Pakistan / Italy / India / Cyprus）。"""
+"""按地区复用的 PN 母版路径（China / Hong Kong / Taiwan / UK / UAE / Pakistan / Italy / India / Cyprus / Indonesia）。"""
 from __future__ import annotations
 
 from pathlib import Path
@@ -18,6 +18,7 @@ REGION_DIRS: dict[str, str] = {
     "Italy": "italy",
     "India": "india",
     "Cyprus": "cyprus",
+    "Indonesia": "indonesia",
 }
 
 REGION_TEMPLATE_FILENAME = "template.xlsx"

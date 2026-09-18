@@ -461,6 +461,65 @@ ENGINE_DEFAULTS: dict[str, dict[str, Any]] = {
         ],
         "fxPolicy": {"mode": "none"},
     },
+    # Indonesia 中性默认；Link Compliance 工资明细 Excel → Indonesia-L
+    "indonesia_payroll_calc": {
+        "schemaVersion": 1,
+        "metaCells": {
+            "periodFrom": "C2",
+            "periodTo": "E2",
+            "fxRate": "C4",
+        },
+        "sourceEmployeeSheet": {
+            "sheet": "Sheet1",
+            "candidates": ["Sheet1", "Indonesia-L"],
+            "headerRow": 6,
+            "subHeaderRow": 7,
+            "dataStartRow": 8,
+            "nameHeaders": ["EMPLOYEE NAME", "Employee Name", "Name of Employee"],
+            "layout": "link_compliance_payroll",
+        },
+        "targetL": {
+            "sheet": "Indonesia-L",
+            "candidates": ["Indonesia-L"],
+            "headerRow": 7,
+            "dataStartRow": 8,
+        },
+        "columnRename": {},
+        "fieldHeaders": {
+            "name": ["Name of Employee", "Employee Name", "EMPLOYEE NAME"],
+            "base": ["Base Salary", "BASIC PAY (IDR)", "BASIC PAY"],
+            "ot": ["OT"],
+            "salary_adj": ["Salary Adjusment", "Salary Adjustment"],
+            "bonus": ["Bonus"],
+            "other": ["Other ", "Other"],
+            "expense": ["Expense Reimbursment", "Expense Reimbursement"],
+            "pph21": ["INCOME TAX (PPH21)", "INCOME TAX", "PPH21"],
+            "jht_ee": ["JHT 2%"],
+            "jp_ee": ["JP 1%"],
+            "bpjs_ee": ["BPJS KESEHATAN 1%"],
+            "jkk": ["JKK 0.24%"],
+            "jht_er": ["JHT 3.7%"],
+            "jp_er": ["JP 2%"],
+            "jkm": ["JKM  0.3%", "JKM 0.3%"],
+            "bpjs_er": [
+                "HEALTH INSURANCE (BPJS KESEHATAN) 4%",
+                "BPJS KESEHATAN 4%",
+            ],
+        },
+        "formulaTemplates": {
+            "applyDefaultToAllEmployees": True,
+            "Indonesia": {"defaultExampleRow": 9},
+            "Indonesia EE": {"defaultExampleRow": 10, "dataStartOffset": 0},
+        },
+        "employeeFormulaStyles": [],
+        "skipSourceHeaders": [],
+        "pnSheets": {"main": "Indonesia", "ee": "Indonesia EE", "l": "Indonesia-L"},
+        "fxPolicy": {
+            "mode": "vendor_bill",
+            "fallback": "api",
+            "defaultCurrency": "IDR",
+        },
+    },
 }
 
 # 列名对照不再内置默认：须在 Office「转换映射」中配置并保存。
