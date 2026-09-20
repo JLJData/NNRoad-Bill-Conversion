@@ -5,7 +5,7 @@ HROne HK Payment Notice → China-L / China-L (2)
 
 只按 mapping.lSheetCopies 填两张 L（默认 S-Payslip → China-L，
 S-Payroll Report → China-L (2)）。不改 PN / China / China EE 公式；
-汇率从供应商 S-Payment Notice!C51（可扫「汇率」标签）写入 PN 的 FX 格。
+汇率一律由 Office 注入 NNRoad 当月1号×0.97（mapping.nnroadExchangeRate），不读供应商账单。
 EE Code：按姓名（含拼音）匹配客户员工库，直接写入 China EE 的 EE Code 列（与 TW/UK 相同）。
 
 用法:
@@ -31,7 +31,7 @@ from fx_policy import fx_policy, make_pn_fx_provenance
 from pn_meta import PnMeta, apply_pn_meta
 from profiles.tw_payroll_calc.convert import match_ee_code
 from region_templates import get_region_template
-from xlsx_convert_utils import clean_value, norm
+from xlsx_convert_utils import norm
 from xlsx_luckysheet_compat import apply_luckysheet_compat
 from xlsx_postprocess import postprocess_converted_xlsx
 from xlsx_unlock import collect_unlock_passwords, unlock_xlsx
@@ -45,18 +45,6 @@ CHINA_DATA_START_ROW = 9
 CHINA_EE_DATA_START_ROW = 10
 CHINA_CODE_COL = 3  # China!C
 CHINA_NAME_COL = 2
-PAYMENT_NOTICE_NAMES = ("S-Payment Notice", "Payment Notice", "付款通知")
-_FX_LABEL_KEYS = (
-    "汇率",
-    "兑换率",
-    "exchange rate",
-    "fx rate",
-    "usd/cny",
-    "usd to cny",
-    "美元汇率",
-)
-_SIMPLE_CELL_REF_RE = re.compile(r"^\$?([A-Za-z]+)\$?(\d+)$")
-_CNY_USD_MIN, _CNY_USD_MAX = 4.0, 12.0
 
 _ACTIVE_MAPPING: dict[str, Any] | None = None
 
@@ -67,144 +55,6 @@ def _active_mapping() -> dict[str, Any]:
         if isinstance(_ACTIVE_MAPPING, dict)
         else resolve_convert_mapping(ENGINE_ID, None)
     )
-
-
-def _find_sheet(wb, candidates: tuple[str, ...]) -> str | None:
-    names = {n: n for n in wb.sheetnames}
-    for c in candidates:
-        if c in names:
-            return c
-    lower = {n.lower(): n for n in wb.sheetnames}
-    for c in candidates:
-        if c.lower() in lower:
-            return lower[c.lower()]
-    for n in wb.sheetnames:
-        for c in candidates:
-            if c in n:
-                return n
-    return None
-
-
-def _payment_sheet_hints(mapping: dict[str, Any]) -> tuple[str, ...]:
-    policy = fx_policy(mapping)
-    hints = policy.get("sourceSheetHints") if isinstance(policy.get("sourceSheetHints"), list) else []
-    names = [str(x).strip() for x in hints if str(x).strip()]
-    return tuple(names) if names else PAYMENT_NOTICE_NAMES
-
-
-def _payment_fx_cell(mapping: dict[str, Any]) -> str:
-    policy = fx_policy(mapping)
-    cell = str(policy.get("sourceCell") or "").strip().upper()
-    return cell or "C51"
-
-
-def _plausible_cny_per_usd(value: float) -> bool:
-    return _CNY_USD_MIN <= float(value) <= _CNY_USD_MAX
-
-
-def _coerce_fx_rate(value: Any) -> float | None:
-    cleaned = clean_value(value)
-    if isinstance(cleaned, (int, float)) and not isinstance(cleaned, bool):
-        n = float(cleaned)
-        return n if n > 0 else None
-    text = norm(value)
-    if not text:
-        return None
-    if text.startswith("="):
-        body = text[1:].replace(" ", "").replace(",", "")
-        try:
-            n = float(body)
-            return n if n > 0 else None
-        except ValueError:
-            pass
-        if "*" in body and all(ch not in body for ch in "/()"):
-            parts = body.split("*")
-            if len(parts) == 2:
-                try:
-                    n = float(parts[0]) * float(parts[1])
-                    return n if n > 0 else None
-                except ValueError:
-                    return None
-        return None
-    return None
-
-
-def _fx_from_cell(ws: Worksheet, addr: str) -> float | None:
-    try:
-        raw = ws[addr].value
-    except Exception:
-        return None
-    fx = _coerce_fx_rate(raw)
-    if fx is not None:
-        return fx
-    text = norm(raw)
-    if text.startswith("="):
-        body = text[1:].replace("$", "").replace(" ", "")
-        m = _SIMPLE_CELL_REF_RE.fullmatch(body)
-        if m:
-            try:
-                return _coerce_fx_rate(ws[f"{m.group(1)}{m.group(2)}"].value)
-            except Exception:
-                return None
-    return None
-
-
-def _scan_fx_by_label(ws: Worksheet) -> tuple[float | None, str | None]:
-    max_r = min(ws.max_row or 0, 80)
-    max_c = min(ws.max_column or 0, 12)
-    for row in range(1, max_r + 1):
-        for col in range(1, max_c + 1):
-            label = norm(ws.cell(row, col).value).lower()
-            if not label or not any(k in label for k in _FX_LABEL_KEYS):
-                continue
-            for dc in (1, 2, 3):
-                fx = _coerce_fx_rate(ws.cell(row, col + dc).value)
-                if fx is not None and _plausible_cny_per_usd(fx):
-                    return fx, f"label:{ws.cell(row, col).value}"
-    return None, None
-
-
-def _read_vendor_fx(
-    src_wb,
-    unlocked_path: Path,
-    mapping: dict[str, Any],
-) -> tuple[float | None, str | None]:
-    """供应商账单汇率：先读映射格（默认 S-Payment Notice!C51），再扫「汇率」标签。"""
-    hints = _payment_sheet_hints(mapping)
-    cell = _payment_fx_cell(mapping)
-    name = _find_sheet(src_wb, hints)
-    fx = None
-    source = None
-    if name:
-        fx = _fx_from_cell(src_wb[name], cell)
-        if fx is not None:
-            source = f"vendor:{name}!{cell}"
-        if fx is None:
-            fx, lab = _scan_fx_by_label(src_wb[name])
-            if fx is not None:
-                source = f"vendor:{name}!{lab}"
-
-    if fx is None:
-        try:
-            wb = load_workbook(unlocked_path, data_only=False)
-            try:
-                name = _find_sheet(wb, hints)
-                if name:
-                    fx = _fx_from_cell(wb[name], cell)
-                    if fx is not None:
-                        source = f"vendor:{name}!{cell}(formula)"
-                    if fx is None:
-                        fx, lab = _scan_fx_by_label(wb[name])
-                        if fx is not None:
-                            source = f"vendor:{name}!{lab}"
-            finally:
-                wb.close()
-        except Exception:
-            pass
-
-    if fx is not None and not _plausible_cny_per_usd(fx):
-        return None, None
-    return fx, source
 
 
 def _find_pn_fx_row(ws: Worksheet) -> int | None:
@@ -221,10 +71,88 @@ def _find_pn_fx_row(ws: Worksheet) -> int | None:
     return None
 
 
-def _apply_vendor_fx(dst_wb, src_wb, unlocked_path: Path, mapping: dict[str, Any]) -> dict[str, Any]:
+def _as_float(value: Any) -> float | None:
+    if value is None or isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        n = float(value)
+        return n if n > 0 else None
+    text = str(value).strip().replace(",", "")
+    if not text:
+        return None
+    try:
+        n = float(text)
+        return n if n > 0 else None
+    except ValueError:
+        return None
+
+
+def _read_nnroad_fx(mapping: dict[str, Any]) -> tuple[float | None, str | None, str | None]:
+    """Office 注入的 NNRoad 当月1号×0.97。返回 (rate, source, error_detail)。
+
+    本引擎不读供应商账单汇率；缺注入或未命中时 error_detail 非空。
+    """
+    block = mapping.get("nnroadExchangeRate") if isinstance(mapping, dict) else None
+    if not isinstance(block, dict) or not block:
+        return None, None, None
+    status = str(block.get("status") or "").strip().upper()
+    rate = _as_float(block.get("rate"))
+    if rate is None:
+        rate = _as_float(block.get("monthFirst097"))
+    month = str(block.get("requestMonth") or "").strip()
+    if status == "FOUND" and rate is not None:
+        src = str(block.get("source") or "nnroad.exchangeRate.monthFirst097").strip()
+        if month:
+            src = f"{src}:{month}"
+        return rate, src, None
+    detail = str(block.get("message") or status or "not_found").strip()
+    if month:
+        detail = f"{detail}（{month}）"
+    return None, None, detail or "not_found"
+
+
+def _write_pn_fx(
+    dst_wb,
+    rate: float,
+    mapping: dict[str, Any],
+    fx_source: str,
+    *,
+    write_source: str,
+) -> dict[str, Any]:
+    out: dict[str, Any] = {
+        "fx_rate": float(rate),
+        "fx_source": fx_source,
+        "fx_row": None,
+        "pn_fx_write": None,
+        "warnings": [],
+    }
+    if PN_SHEET not in dst_wb.sheetnames:
+        out["warnings"].append("母版没有 PN 表，汇率已读到但未写入")
+        return out
+    fx_row = _find_pn_fx_row(dst_wb[PN_SHEET])
+    if fx_row is None:
+        out["warnings"].append("母版 PN 未找到 FX rate 行，汇率已读到但未写入")
+        return out
+    cell = dst_wb[PN_SHEET].cell(fx_row, 2)
+    cell.value = float(rate)
+    cell.number_format = "0.00"
+    out["fx_row"] = fx_row
+    out["pn_fx_write"] = make_pn_fx_provenance(
+        PN_SHEET,
+        fx_row,
+        2,
+        mapping,
+        float(rate),
+        write_source=write_source,
+        fx_source=fx_source,
+    )
+    return out
+
+
+def _apply_fx(dst_wb, mapping: dict[str, Any]) -> dict[str, Any]:
     policy = fx_policy(mapping)
     mode = str(policy.get("mode") or "none").strip().lower()
-    out: dict[str, Any] = {
+    empty: dict[str, Any] = {
         "fx_rate": None,
         "fx_source": "none",
         "fx_row": None,
@@ -232,39 +160,22 @@ def _apply_vendor_fx(dst_wb, src_wb, unlocked_path: Path, mapping: dict[str, Any
         "warnings": [],
     }
     if mode == "none":
-        return out
+        return empty
 
-    vendor_fx, vendor_src = _read_vendor_fx(src_wb, unlocked_path, mapping)
-    if vendor_fx is None:
-        cell = _payment_fx_cell(mapping)
-        out["warnings"].append(
-            f"供应商账单未读到汇率（S-Payment Notice!{cell} 或「汇率」标签），PN FX 格未改"
+    nnroad_rate, nnroad_src, nnroad_err = _read_nnroad_fx(mapping)
+    if nnroad_rate is not None:
+        return _write_pn_fx(
+            dst_wb,
+            nnroad_rate,
+            mapping,
+            nnroad_src or "nnroad.exchangeRate.monthFirst097",
+            write_source="api",
         )
-        return out
-
-    out["fx_rate"] = vendor_fx
-    out["fx_source"] = vendor_src or "vendor_bill"
-    if PN_SHEET not in dst_wb.sheetnames:
-        out["warnings"].append("母版没有 PN 表，汇率已读到但未写入")
-        return out
-
-    fx_row = _find_pn_fx_row(dst_wb[PN_SHEET])
-    if fx_row is None:
-        out["warnings"].append("母版 PN 未找到 FX rate 行，汇率已读到但未写入")
-        return out
-
-    dst_wb[PN_SHEET].cell(fx_row, 2).value = vendor_fx
-    out["fx_row"] = fx_row
-    out["pn_fx_write"] = make_pn_fx_provenance(
-        PN_SHEET,
-        fx_row,
-        2,
-        mapping,
-        float(vendor_fx),
-        write_source="vendor",
-        fx_source=out["fx_source"],
+    detail = nnroad_err or "未注入 nnroadExchangeRate"
+    empty["warnings"].append(
+        f"汇率应按当月1号×0.97 取自 NNRoad，但未取到（{detail}），PN FX 格未改（不用供应商账单汇率）"
     )
-    return out
+    return empty
 
 
 def names_from_copies(copies: list[dict[str, Any]] | None) -> list[str]:
@@ -479,7 +390,7 @@ def _convert_impl(
                     registry_dir=registry_dir or output_path.parent,
                     reserve_invoice_number=True,
                 )
-            fx_info = _apply_vendor_fx(dst_wb, src_wb, unlocked, mapping)
+            fx_info = _apply_fx(dst_wb, mapping)
             ee_warnings = _apply_china_ee_from_directory(
                 dst_wb,
                 names_from_copies(copies),

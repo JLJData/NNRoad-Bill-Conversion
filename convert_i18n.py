@@ -307,6 +307,7 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "china.formula_no_fields": "映射有员工公式样式，但未找到 chinaExampleRow/mainExampleRow 字段（可能未保存成功）",
         # --- china_hrone ---
         "china_hrone.fx_not_read": "供应商账单未读到汇率（S-Payment Notice!{cell} 或「汇率」标签），PN FX 格未改",
+        "china_hrone.fx_nnroad_fail": "汇率应按当月1号×0.97 取自 NNRoad，但未取到（{detail}），PN FX 格未改（不用供应商账单汇率）",
         "china_hrone.no_pn_sheet": "母版没有 PN 表，汇率已读到但未写入",
         "china_hrone.no_fx_row": "母版 PN 未找到 FX rate 行，汇率已读到但未写入",
         "china_hrone.no_names": "未从源表读到员工姓名，无法匹配 EE Code",
@@ -616,6 +617,7 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "china.formula_no_fields": "Employee formula styles configured but chinaExampleRow/mainExampleRow missing (save may have failed)",
         # --- china_hrone ---
         "china_hrone.fx_not_read": "FX not read from vendor bill (S-Payment Notice!{cell} or 汇率 label); PN FX cell unchanged",
+        "china_hrone.fx_nnroad_fail": "FX should be NNRoad month-1 * 0.97, but it was not fetched ({detail}); PN FX unchanged (vendor bill FX not used)",
         "china_hrone.no_pn_sheet": "Template has no PN sheet; FX read but not written",
         "china_hrone.no_fx_row": "PN FX rate row not found; FX read but not written",
         "china_hrone.no_names": "No employee names read from source; cannot match EE Code",

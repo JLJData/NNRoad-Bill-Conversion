@@ -8,6 +8,7 @@
 - mode=fixed：固定值/母版公式，不调 API 覆盖
 - mode=shared_fact：读 factStore / artifactBatch 中的共享汇率
 - mode=none：不写汇率
+china_hrone_payment_notice：只认 mapping.nnroadExchangeRate（中行当月1号×0.97），不读供应商账单。
 """
 from __future__ import annotations
 
@@ -282,7 +283,7 @@ def make_pn_fx_provenance(
     source_type = "mapping"
     source = fx_source or f"mapping.fxPolicy:{mode or 'fixed'}"
     fx_s = str(fx_source or "")
-    if write_source in ("api_as_base", "api") or fx_s.startswith("api:"):
+    if write_source in ("api_as_base", "api") or fx_s.startswith("api:") or fx_s.startswith("nnroad"):
         source_type = "api"
     elif fx_s.startswith("source:") or fx_s.startswith("vendor:") or fx_s.startswith("summary:"):
         # 供应商账单/源表推算，不是在线 API

@@ -130,11 +130,10 @@ ENGINE_DEFAULTS: dict[str, dict[str, Any]] = {
         "employeeFormulaStyles": [],
         "skipSourceHeaders": [],
         "fxPolicy": {
-            "mode": "vendor_bill",
-            "sourceSheetHints": ["S-Payment Notice", "Payment Notice", "付款通知"],
-            "sourceCell": "C51",
+            "mode": "nnroad",
             "fallback": "none",
             "defaultCurrency": "CNY",
+            "adjustment": 0.97,
         },
     },
     "hk_payroll_calc": {
