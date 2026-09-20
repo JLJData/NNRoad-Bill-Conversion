@@ -313,6 +313,11 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "china_hrone.no_names": "未从源表读到员工姓名，无法匹配 EE Code",
         "china_hrone.no_ee_sheet": "母版没有 China EE 表，EE Code 未写入",
         "china_hrone.no_directory": "未提供客户员工目录，无法匹配 EE Code",
+        "unlock.empty": "源表为空，不是有效 Excel: {name}",
+        "unlock.source_is_pdf": "源表实际是 PDF，不是 Excel: {name}",
+        "unlock.not_xlsx_header": "源表不是有效 xlsx（文件头 {header}）: {name}",
+        "unlock.after_decrypt": "源表解密后仍无法打开（{name}）: {detail}",
+        "unlock.template_not_xlsx": "母版不是有效 xlsx（{name}）: {detail}",
         # --- tw ---
         "tw.fx_fallback": "Summary 未找到有效 Exchange rate，已回退 API TWD 汇率",
         # --- uk ---
@@ -623,6 +628,11 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "china_hrone.no_names": "No employee names read from source; cannot match EE Code",
         "china_hrone.no_ee_sheet": "Template has no China EE sheet; EE Code not written",
         "china_hrone.no_directory": "No client employee directory; cannot match EE Code",
+        "unlock.empty": "Source file is empty, not a valid Excel: {name}",
+        "unlock.source_is_pdf": "Source file is actually a PDF, not Excel: {name}",
+        "unlock.not_xlsx_header": "Source is not a valid xlsx (header {header}): {name}",
+        "unlock.after_decrypt": "Source still cannot be opened after decrypt ({name}): {detail}",
+        "unlock.template_not_xlsx": "Template is not a valid xlsx ({name}): {detail}",
         # --- tw ---
         "tw.fx_fallback": "Summary has no valid Exchange rate; fell back to API TWD FX",
         # --- uk ---

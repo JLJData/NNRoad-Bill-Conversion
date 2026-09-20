@@ -9,6 +9,9 @@ from typing import Iterable
 
 _YYYYMM_RE = re.compile(r"(20\d{2})(0[1-9]|1[0-2])")
 _DURATION_MONTH_RE = re.compile(r"^(20\d{2})-?(0[1-9]|1[0-2])$")
+_OLE_MAGIC = b"\xd0\xcf\x11\xe0"
+_ZIP_MAGIC = b"PK"
+_PDF_MAGIC = b"%PDF"
 
 
 def yyyymm_passwords_from_text(text: object) -> list[str]:
@@ -76,35 +79,56 @@ def collect_unlock_passwords(
     return out
 
 
+def _file_head(path: Path, n: int = 8) -> bytes:
+    with Path(path).open("rb") as fh:
+        return fh.read(n)
+
+
+def is_zip_xlsx(path: Path) -> bool:
+    return _file_head(path).startswith(_ZIP_MAGIC)
+
+
+def is_ole_compound(path: Path) -> bool:
+    return _file_head(path).startswith(_OLE_MAGIC)
+
+
 def unlock_xlsx(path: Path, dest_dir: Path, passwords: Iterable[str] | None = None) -> Path:
     """
-    未加密则返回原路径；加密则解密到 dest_dir 并返回新路径。
-    解不开时抛 ValueError。
+    未加密 xlsx 返回原路径；加密 OLE 则解密到 dest_dir 并返回新路径。
+    解不开时抛 ValueError。OLE 文件不得当作未加密 xlsx 原样返回。
     """
     path = Path(path)
     dest_dir = Path(dest_dir)
     dest_dir.mkdir(parents=True, exist_ok=True)
 
+    head = _file_head(path)
+    if not head:
+        raise ValueError(f"源表为空，不是有效 Excel: {path.name}")
+    if head.startswith(_PDF_MAGIC):
+        raise ValueError(f"源表实际是 PDF，不是 Excel: {path.name}")
+    if head.startswith(_ZIP_MAGIC):
+        return path
+
+    ole = head.startswith(_OLE_MAGIC)
     try:
         import msoffcrypto
     except ImportError:
-        # 未加密文件不需要该库；加密时再报错
         msoffcrypto = None  # type: ignore
 
-    with path.open("rb") as fh:
-        if msoffcrypto is None:
-            office = None
-            encrypted = False
-        else:
-            try:
+    encrypted = ole
+    if msoffcrypto is not None:
+        try:
+            with path.open("rb") as fh:
                 office = msoffcrypto.OfficeFile(fh)
-                encrypted = bool(office.is_encrypted())
-            except Exception:
-                encrypted = False
-                office = None
+                encrypted = bool(office.is_encrypted()) or ole
+        except Exception:
+            # 探测失败时：OLE 仍按加密表解密，禁止原样交给 openpyxl
+            encrypted = ole
 
     if not encrypted:
-        return path
+        raise ValueError(
+            f"源表不是有效 xlsx（文件头 {head[:8].hex(' ')}）: {path.name}"
+        )
 
     if msoffcrypto is None:
         raise ValueError("源表已加密，请 pip install msoffcrypto-tool 后再转换")
@@ -113,7 +137,7 @@ def unlock_xlsx(path: Path, dest_dir: Path, passwords: Iterable[str] | None = No
     tried = [p for p in (passwords or []) if str(p).strip()]
     if not tried:
         raise ValueError(
-            f"源表已加密，但未提供密码（可在 mapping.sourcePassword 设置，"
+            "NEED_SOURCE_PASSWORD: 源表已加密，但未提供密码（可在 mapping.sourcePassword 设置，"
             f"或按文件名服务月使用 nnroadYYYYMM）：{path.name}"
         )
 
@@ -129,8 +153,13 @@ def unlock_xlsx(path: Path, dest_dir: Path, passwords: Iterable[str] | None = No
                 office.load_key(password=str(pwd))
                 with out_path.open("wb") as out_fh:
                     office.decrypt(out_fh)
+            if not is_zip_xlsx(out_path):
+                last_err = ValueError("解密结果仍不是 xlsx")
+                continue
             return out_path
         except Exception as exc:
             last_err = exc
             continue
-    raise ValueError(f"源表解密失败（已试 {len(tried)} 个密码）: {path.name}: {last_err}")
+    raise ValueError(
+        f"NEED_SOURCE_PASSWORD: 源表解密失败（已试 {len(tried)} 个密码）: {path.name}: {last_err}"
+    )

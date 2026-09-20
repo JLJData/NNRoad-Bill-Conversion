@@ -14,7 +14,7 @@
   GET  /pdf-profiles
   GET  /mapping/defaults?engineId=&pdfProfileId=  引擎默认映射（含 fixedValueWrites）
   POST /unlock-xlsx  multipart: file, original_filename/duration/convert_mapping(可选)  加密源表解密
-  POST /convert  multipart: file, engine_id, region, template(可选), pn_meta(json可选), employee_directory(json数组可选)
+  POST /convert  multipart: file, engine_id, region, template(可选), pn_meta(json可选), employee_directory(json数组可选), password(可选)
   POST /pdf-to-source  multipart: file, profile_id(可选自动识别), pn_meta(json可选), template(可选)
   POST /pdf-to-source-batch  multipart: files[], profile_id, …
   POST /vendor-plugins/ingest-file  旁路识别（如 Admin Fee）
@@ -719,6 +719,7 @@ async def convert(
     output_prefix: str | None = Form(None),
     original_filename: str | None = Form(None),
     duration: str | None = Form(None),
+    password: str | None = Form(None),
 ):
     _assert_safe_upload(file)
     _assert_safe_upload(template)
@@ -743,6 +744,9 @@ async def convert(
         filename=original_filename or file.filename,
         duration=duration,
     )
+    user_pwd = (password or "").strip()
+    if user_pwd:
+        mapping["sourcePassword"] = user_pwd
 
     tmp_dir = Path(tempfile.mkdtemp(prefix="bill_convert_"))
     source_path = tmp_dir / f"source{suffix}"

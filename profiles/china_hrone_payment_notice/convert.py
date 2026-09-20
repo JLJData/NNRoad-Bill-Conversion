@@ -378,8 +378,14 @@ def _convert_impl(
             Path(tmp),
             passwords=collect_unlock_passwords(source_path, mapping=mapping),
         )
-        src_wb = load_workbook(unlocked, data_only=True)
-        dst_wb = load_workbook(output_path, rich_text=True)
+        try:
+            src_wb = load_workbook(unlocked, data_only=True)
+        except Exception as exc:
+            raise ValueError(f"源表解密后仍无法打开（{unlocked.name}）: {exc}") from exc
+        try:
+            dst_wb = load_workbook(output_path, rich_text=True)
+        except Exception as exc:
+            raise ValueError(f"母版不是有效 xlsx（{output_path.name}）: {exc}") from exc
         try:
             copies = apply_l_sheet_copies(src_wb, dst_wb, mapping)
             applied_pn: PnMeta | None = None
