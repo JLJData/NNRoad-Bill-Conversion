@@ -161,13 +161,24 @@ def _write_pn_date_cell(ws, coord: str, value: date) -> None:
     cell.number_format = PN_DATE_NUMBER_FORMAT
 
 
-def _write_pn_text_cell(ws, coord: str, value: str, *, max_lines: int = 3) -> None:
+def _write_pn_text_cell(
+    ws,
+    coord: str,
+    value: str,
+    *,
+    max_lines: int = 3,
+    multiline_in_cell: bool = False,
+) -> None:
     """只写 PN 元数据值；行高/列宽/对齐/换行以母版为准。
 
-    若 value 含换行（配置里按母版手动断行），按同列连续行写入（如 B10/B11 地址两行）。
+    - B8 客户名称：换行保留在同一格（与母版 ``\\n`` 一致，不能拆到 B9）
+    - B10 地址等：含换行时按同列连续行写入（如 B10/B11 两行）
     """
     text = str(value or "")
     normalized = text.replace("\r\n", "\n").replace("\r", "\n")
+    if multiline_in_cell:
+        ws[coord].value = normalized.strip("\n") if normalized else text
+        return
     if "\n" not in normalized:
         ws[coord].value = text
         return
@@ -211,7 +222,9 @@ def apply_pn_meta(
         )
 
     ws = wb[PN_SHEET]
-    _write_pn_text_cell(ws, PN_CELLS["customer_name"], pn.customer_name)
+    _write_pn_text_cell(
+        ws, PN_CELLS["customer_name"], pn.customer_name, multiline_in_cell=True
+    )
     ws[PN_CELLS["customer_id"]] = pn.customer_id
     _write_pn_text_cell(ws, PN_CELLS["billing_address"], pn.billing_address)
     ws[PN_CELLS["invoice_number"]] = invoice_number
