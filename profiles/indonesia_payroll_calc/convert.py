@@ -749,31 +749,17 @@ def _retarget_ee_refs(formula: str, ee_from: int, ee_to: int) -> str:
     )
 
 
-def _scan_indonesia_ee_layout(ws: Worksheet) -> tuple[int, int, int]:
-    """返回 (data_start_row, ee_code_col, ee_name_col)。按表头定位，兼容母版列变动。"""
-    code_col, name_col, header_row = 4, 5, None
+def _indonesia_ee_layout(ws: Worksheet) -> tuple[int, int, int]:
+    """返回 (data_start_row, ee_code_col, ee_name_col)。列按表头；数据行用映射/默认行号。"""
+    code_col, name_col = 4, 5
     for r in range(1, 12):
         for c in range(1, 16):
             h = re.sub(r"\s+", " ", _norm(ws.cell(r, c).value)).lower()
             if h == "ee code":
                 code_col = c
-                header_row = r if header_row is None else min(header_row, r)
             elif h == "ee name":
                 name_col = c
-                header_row = r if header_row is None else min(header_row, r)
-    start_from = (header_row or 3) + 1
-    for r in range(start_from, 22):
-        a = _norm(ws.cell(r, 1).value)
-        if a and "eor" in a.lower():
-            continue
-        name_v = ws.cell(r, name_col).value
-        code_v = ws.cell(r, code_col).value
-        b_v = ws.cell(r, 2).value
-        if _cell_formula_text(name_v) or _cell_formula_text(code_v) or _cell_formula_text(b_v):
-            return r, code_col, name_col
-        if _norm(name_v) or _norm(code_v):
-            return r, code_col, name_col
-    mapped = INDONESIA_EE_DATA_START
+    data_start = INDONESIA_EE_DATA_START
     ft = _active_mapping().get("formulaTemplates")
     block = (
         ft.get(INDONESIA_EE_SHEET)
@@ -781,8 +767,50 @@ def _scan_indonesia_ee_layout(ws: Worksheet) -> tuple[int, int, int]:
         else {}
     )
     if block.get("defaultExampleRow"):
-        mapped = int(block["defaultExampleRow"])
-    return mapped, code_col, name_col
+        data_start = int(block["defaultExampleRow"])
+    return data_start, code_col, name_col
+
+
+def _indonesia_ee_match_names(
+    wb,
+    emp: dict[str, Any],
+    *,
+    l_header_row: int,
+    l_data_start: int,
+    index: int,
+    ee_ws: Worksheet | None,
+    ee_row: int,
+    ee_name_col: int,
+) -> list[str]:
+    """匹配 EE Code 用的姓名：源表 + Indonesia-L + EE Name 列（与 Italy/UAE 一致）。"""
+    out: list[str] = []
+    seen: set[str] = set()
+
+    def add(raw: Any) -> None:
+        if _cell_formula_text(raw):
+            return
+        text = _norm(raw)
+        if not text or text.startswith("="):
+            return
+        key = text.casefold()
+        if key in seen:
+            return
+        seen.add(key)
+        out.append(text)
+
+    for key in ("Employee Name", "Name of Employee", "EE Name"):
+        add(emp.get(key))
+    if INDONESIA_L_SHEET in wb.sheetnames:
+        l_ws = wb[INDONESIA_L_SHEET]
+        want = {norm("Name of Employee"), norm("Employee Name")}
+        for h in list_qualified_header_cells(l_ws, l_header_row):
+            k = norm(str(h.get("key") or ""))
+            col = h.get("col")
+            if k in want and col:
+                add(l_ws.cell(l_data_start + index, int(col)).value)
+    if ee_ws is not None:
+        add(ee_ws.cell(ee_row, ee_name_col).value)
+    return out
 
 
 def expand_indonesia_employee_rows(wb, employee_count: int) -> None:
@@ -856,34 +884,47 @@ def apply_indonesia_ee_codes(
     client_code = _pn_customer_id(pn_meta)
 
     ee_ws = wb[INDONESIA_EE_SHEET] if INDONESIA_EE_SHEET in wb.sheetnames else None
-    ee_data_start, ee_code_col = INDONESIA_EE_DATA_START, 4
+    ee_data_start, ee_code_col, ee_name_col = INDONESIA_EE_DATA_START, 4, 5
+    l_header_row, _ = _indonesia_l_layout(target=True)
     if ee_ws is not None:
-        ee_data_start, ee_code_col, _ = _scan_indonesia_ee_layout(ee_ws)
+        ee_data_start, ee_code_col, ee_name_col = _indonesia_ee_layout(ee_ws)
 
     for i, emp in enumerate(employees):
         # 清除可能误带的供应商工号键
         emp.pop("No. of EE", None)
         emp.pop("_ee_code", None)
 
-        name = _norm(emp.get("Employee Name") or emp.get("Name of Employee"))
-        code, warn = match_ee_code([name] if name else [], directory)
+        row = ee_data_start + i
+        excel_names = _indonesia_ee_match_names(
+            wb,
+            emp,
+            l_header_row=l_header_row,
+            l_data_start=l_data_start,
+            index=i,
+            ee_ws=ee_ws,
+            ee_row=row,
+            ee_name_col=ee_name_col,
+        )
+        code, warn = match_ee_code(excel_names, directory)
         if code:
             emp["No. of EE"] = code
             emp["_ee_code"] = code
             if INDONESIA_L_SHEET in wb.sheetnames:
                 wb[INDONESIA_L_SHEET].cell(l_data_start + i, COL_EE_CODE).value = code
+        elif INDONESIA_L_SHEET in wb.sheetnames:
+            l_cell = wb[INDONESIA_L_SHEET].cell(l_data_start + i, COL_EE_CODE)
+            if not _cell_formula_text(l_cell.value):
+                l_cell.value = None
         if warn:
             warnings.append(f"Indonesia EE 第{i + 1}人：{warn}")
 
         if ee_ws is None:
             continue
-        row = ee_data_start + i
         # Client Code：仅当母版该格不是公式时才写
         if client_code and not _cell_formula_text(ee_ws.cell(row, 2).value):
             ee_ws.cell(row, 2).value = client_code
-        # 直接写 EE Code 列；母版公式格不覆盖；匹配不到显式清空
-        if not _cell_formula_text(ee_ws.cell(row, ee_code_col).value):
-            ee_ws.cell(row, ee_code_col).value = code
+        # EE Code：员工库工号直接覆盖母版公式（含旧 =L!A 引用）
+        ee_ws.cell(row, ee_code_col).value = code
     return warnings
 
 
