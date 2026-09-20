@@ -3,14 +3,13 @@
 from __future__ import annotations
 
 import json
-from copy import copy
+import re
 from dataclasses import asdict, dataclass
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
 from openpyxl import Workbook
-from openpyxl.styles import Alignment
 
 PN_SHEET = "PN"
 
@@ -162,34 +161,24 @@ def _write_pn_date_cell(ws, coord: str, value: date) -> None:
     cell.number_format = PN_DATE_NUMBER_FORMAT
 
 
-def _pn_text_line_count(text: Any) -> int:
-    normalized = str(text or "").replace("\r\n", "\n").replace("\r", "\n")
-    if not normalized.strip():
-        return 1
-    return normalized.count("\n") + 1
+def _write_pn_text_cell(ws, coord: str, value: str, *, max_lines: int = 3) -> None:
+    """只写 PN 元数据值；行高/列宽/对齐/换行以母版为准。
 
-
-def _write_pn_text_cell(ws, coord: str, value: str) -> None:
-    """Bill-to 等多行文本：保留母版行高，至少撑满换行数；开启 wrap 供 PDF 导出。"""
-    cell = ws[coord]
-    cell.value = value
-    base = cell.alignment
-    if base is not None:
-        alignment = copy(base)
-        alignment.wrap_text = True
-        if alignment.vertical is None:
-            alignment.vertical = "top"
-    else:
-        alignment = Alignment(wrap_text=True, vertical="top")
-    cell.alignment = alignment
-
-    row = cell.row
-    needed = 15.0 * _pn_text_line_count(value)
-    current = ws.row_dimensions[row].height
-    if current is None:
-        ws.row_dimensions[row].height = needed
-    else:
-        ws.row_dimensions[row].height = max(float(current), needed)
+    若 value 含换行（配置里按母版手动断行），按同列连续行写入（如 B10/B11 地址两行）。
+    """
+    text = str(value or "")
+    normalized = text.replace("\r\n", "\n").replace("\r", "\n")
+    if "\n" not in normalized:
+        ws[coord].value = text
+        return
+    m = re.fullmatch(r"([A-Za-z]+)(\d+)", coord.strip())
+    if not m:
+        ws[coord].value = text
+        return
+    col, start_row = m.group(1), int(m.group(2))
+    lines = [ln.strip() for ln in normalized.split("\n") if ln.strip()]
+    for i, line in enumerate(lines[:max_lines]):
+        ws[f"{col}{start_row + i}"].value = line
 
 
 def apply_pn_meta(
