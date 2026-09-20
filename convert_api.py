@@ -49,7 +49,7 @@ from pdf_ingest.registry import list_pdf_profiles
 from pdf_ingest.runner import run_pdf_to_source, run_pdf_to_source_batch, run_vendor_to_source_batch
 from region_templates import list_regions, get_region_template
 from xlsx_unlock import collect_unlock_passwords, unlock_xlsx
-from convert_i18n import parse_accept_language, reset_locale, set_locale, get_locale, translate_outbound
+from convert_i18n import parse_accept_language, reset_locale, set_locale, get_locale, translate_outbound, translate_outbound_tree
 
 CONVERT_API_KEY = os.environ.get("CONVERT_API_KEY", "").strip()
 _DISABLE_DOCS = os.environ.get("CONVERT_DISABLE_DOCS", "").strip() in ("1", "true", "True", "yes")
@@ -814,7 +814,7 @@ async def convert(
         # 特殊格来源账本（非母版公式/常规映射）：如 Outstanding API 注入格
         cell_provenance = _build_cell_provenance(result)
         if cell_provenance:
-            headers["X-Convert-Cell-Provenance"] = _b64_json_header(cell_provenance)
+            headers["X-Convert-Cell-Provenance"] = _b64_json_header(translate_outbound_tree(cell_provenance))
         # 结果摘要用自定义头传一小段 JSON（可选）；主体仍是文件
         return FileResponse(
             path=str(output_path),

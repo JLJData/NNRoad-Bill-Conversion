@@ -87,6 +87,23 @@ def _as_float(value: Any) -> float | None:
         return None
 
 
+def _yyyymm_parts(month: str | None) -> tuple[str, int] | None:
+    text = str(month or "").strip().replace("-", "").replace("/", "")
+    m = re.fullmatch(r"(20\d{2})(0[1-9]|1[0-2])", text)
+    if not m:
+        return None
+    return m.group(1), int(m.group(2))
+
+
+def _nnroad_fx_source_label(month: str | None) -> str:
+    """核对页「来源」文案：由转换服务写出，前端原样展示。"""
+    parts = _yyyymm_parts(month)
+    if parts:
+        year, mon = parts
+        return f"{year}年{mon}月1号的最低汇率 × 0.97"
+    return "账期月1号的最低汇率 × 0.97"
+
+
 def _read_nnroad_fx(mapping: dict[str, Any]) -> tuple[float | None, str | None, str | None]:
     """Office 注入的 NNRoad 当月1号×0.97。返回 (rate, source, error_detail)。
 
@@ -101,10 +118,7 @@ def _read_nnroad_fx(mapping: dict[str, Any]) -> tuple[float | None, str | None, 
         rate = _as_float(block.get("monthFirst097"))
     month = str(block.get("requestMonth") or "").strip()
     if status == "FOUND" and rate is not None:
-        src = str(block.get("source") or "nnroad.exchangeRate.monthFirst097").strip()
-        if month:
-            src = f"{src}:{month}"
-        return rate, src, None
+        return rate, _nnroad_fx_source_label(month), None
     detail = str(block.get("message") or status or "not_found").strip()
     if month:
         detail = f"{detail}（{month}）"

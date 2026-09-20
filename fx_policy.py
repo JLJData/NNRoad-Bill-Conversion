@@ -307,6 +307,11 @@ def make_pn_fx_provenance(
         detail["roundDigitsKey"] = round_key
     if fx_source:
         detail["fxSource"] = fx_source
+    nnroad = mapping.get("nnroadExchangeRate") if isinstance(mapping, dict) else None
+    if isinstance(nnroad, dict):
+        month = str(nnroad.get("requestMonth") or "").strip()
+        if month:
+            detail["requestMonth"] = month
     return {
         "kind": "pnFxWrite",
         "sheet": str(sheet),
