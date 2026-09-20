@@ -626,6 +626,42 @@ def _retarget_ee_refs(formula: str, ee_from: int, ee_to: int) -> str:
     )
 
 
+def _scan_kyrgyzstan_ee_layout(ws: Worksheet) -> tuple[int, int, int]:
+    """返回 (data_start_row, ee_code_col, ee_name_col)。按表头定位，兼容母版列变动。"""
+    code_col, name_col, header_row = 4, 5, None
+    for r in range(1, 12):
+        for c in range(1, 16):
+            h = re.sub(r"\s+", " ", _norm(ws.cell(r, c).value)).lower()
+            if h == "ee code":
+                code_col = c
+                header_row = r if header_row is None else min(header_row, r)
+            elif h == "ee name":
+                name_col = c
+                header_row = r if header_row is None else min(header_row, r)
+    start_from = (header_row or 3) + 1
+    for r in range(start_from, 22):
+        a = _norm(ws.cell(r, 1).value)
+        if a and "eor" in a.lower():
+            continue
+        name_v = ws.cell(r, name_col).value
+        code_v = ws.cell(r, code_col).value
+        b_v = ws.cell(r, 2).value
+        if _cell_formula_text(name_v) or _cell_formula_text(code_v) or _cell_formula_text(b_v):
+            return r, code_col, name_col
+        if _norm(name_v) or _norm(code_v):
+            return r, code_col, name_col
+    mapped = KYRGYZSTAN_EE_DATA_START
+    ft = _active_mapping().get("formulaTemplates")
+    block = (
+        ft.get(KYRGYZSTAN_EE_SHEET)
+        if isinstance(ft, dict) and isinstance(ft.get(KYRGYZSTAN_EE_SHEET), dict)
+        else {}
+    )
+    if block.get("defaultExampleRow"):
+        mapped = int(block["defaultExampleRow"])
+    return mapped, code_col, name_col
+
+
 def expand_kyrgyzstan_employee_rows(wb, employee_count: int) -> None:
     n = max(int(employee_count), 1)
     _, l_data_start = _kyrgyzstan_l_layout(target=True)
@@ -687,10 +723,16 @@ def apply_kyrgyzstan_ee_codes(
     employee_directory: list[dict[str, Any]] | None = None,
     pn_meta: PnMeta | dict[str, Any] | None = None,
 ) -> list[str]:
+    """员工库匹配 EE Code → 直接写 Kyrgyzstan EE 表 EE Code 列；同步写 Kyrgyzstan-L!A。"""
     warnings: list[str] = []
     directory = list(employee_directory or [])
     _, l_data_start = _kyrgyzstan_l_layout(target=True)
     client_code = _pn_customer_id(pn_meta)
+
+    ee_ws = wb[KYRGYZSTAN_EE_SHEET] if KYRGYZSTAN_EE_SHEET in wb.sheetnames else None
+    ee_data_start, ee_code_col = KYRGYZSTAN_EE_DATA_START, 4
+    if ee_ws is not None:
+        ee_data_start, ee_code_col, _ = _scan_kyrgyzstan_ee_layout(ee_ws)
 
     for i, emp in enumerate(employees):
         emp.pop("No. of EE", None)
@@ -706,14 +748,14 @@ def apply_kyrgyzstan_ee_codes(
         if warn:
             warnings.append(f"Kyrgyzstan EE 第{i + 1}人：{warn}")
 
-        if KYRGYZSTAN_EE_SHEET not in wb.sheetnames:
+        if ee_ws is None:
             continue
-        ee = wb[KYRGYZSTAN_EE_SHEET]
-        row = KYRGYZSTAN_EE_DATA_START + i
-        if client_code and not _cell_formula_text(ee.cell(row, 2).value):
-            ee.cell(row, 2).value = client_code
-        if code and not _cell_formula_text(ee.cell(row, 4).value):
-            ee.cell(row, 4).value = code
+        row = ee_data_start + i
+        if client_code and not _cell_formula_text(ee_ws.cell(row, 2).value):
+            ee_ws.cell(row, 2).value = client_code
+        # 直接写 EE Code 列；母版公式格不覆盖；匹配不到显式清空
+        if not _cell_formula_text(ee_ws.cell(row, ee_code_col).value):
+            ee_ws.cell(row, ee_code_col).value = code
     return warnings
 
 
