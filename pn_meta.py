@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import json
+from copy import copy
 from dataclasses import asdict, dataclass
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
 from openpyxl import Workbook
+from openpyxl.styles import Alignment
 
 PN_SHEET = "PN"
 
@@ -160,6 +162,36 @@ def _write_pn_date_cell(ws, coord: str, value: date) -> None:
     cell.number_format = PN_DATE_NUMBER_FORMAT
 
 
+def _pn_text_line_count(text: Any) -> int:
+    normalized = str(text or "").replace("\r\n", "\n").replace("\r", "\n")
+    if not normalized.strip():
+        return 1
+    return normalized.count("\n") + 1
+
+
+def _write_pn_text_cell(ws, coord: str, value: str) -> None:
+    """Bill-to 等多行文本：保留母版行高，至少撑满换行数；开启 wrap 供 PDF 导出。"""
+    cell = ws[coord]
+    cell.value = value
+    base = cell.alignment
+    if base is not None:
+        alignment = copy(base)
+        alignment.wrap_text = True
+        if alignment.vertical is None:
+            alignment.vertical = "top"
+    else:
+        alignment = Alignment(wrap_text=True, vertical="top")
+    cell.alignment = alignment
+
+    row = cell.row
+    needed = 15.0 * _pn_text_line_count(value)
+    current = ws.row_dimensions[row].height
+    if current is None:
+        ws.row_dimensions[row].height = needed
+    else:
+        ws.row_dimensions[row].height = max(float(current), needed)
+
+
 def apply_pn_meta(
     wb: Workbook,
     meta: PnMeta | dict[str, Any],
@@ -190,9 +222,9 @@ def apply_pn_meta(
         )
 
     ws = wb[PN_SHEET]
-    ws[PN_CELLS["customer_name"]] = pn.customer_name
+    _write_pn_text_cell(ws, PN_CELLS["customer_name"], pn.customer_name)
     ws[PN_CELLS["customer_id"]] = pn.customer_id
-    ws[PN_CELLS["billing_address"]] = pn.billing_address
+    _write_pn_text_cell(ws, PN_CELLS["billing_address"], pn.billing_address)
     ws[PN_CELLS["invoice_number"]] = invoice_number
     _write_pn_date_cell(ws, PN_CELLS["invoice_date"], invoice_date)
     if pn.due_date is not None:
