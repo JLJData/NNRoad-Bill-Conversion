@@ -9,7 +9,8 @@ Kyrgyzstan：Atlas Employment「Payroll cost calculation」Excel（或已是 Kyr
 - PN / Kyrgyzstan / Kyrgyzstan EE 以母版公式为准；只写 Kyrgyzstan-L 数据与 PN 汇率。
 - 税/净薪/总成本列保留母版公式（由 Base Salary 推导）。
 - EE Code 必须来自员工库匹配，禁止沿用供应商账单工号。
-- Atlas Invoice PDF（差旅垫付等）一期不自动写入；样例 PN 的 Expense 为 0。
+- 工资 PN 不写差旅垫付（Expense 保持 0）。有「Advance for business travel expenses」且金额≠0 时，
+  每人另出一份 Expense 发票，只把 KGS 原值写入 PN!E16（F16 跟母版公式）。
 """
 from __future__ import annotations
 
@@ -386,22 +387,194 @@ def parse_atlas_cost_sheet(
     if bonus is not None and abs(bonus) > 1e-9:
         emp["Bonus"] = float(bonus)
 
-    # 一期不写差旅垫付（样例 PN Expense=0）；若 mapping 显式要求可再开
-    mapping = _active_mapping()
-    if mapping.get("writeAtlasExpense"):
-        adv_row = _find_label_row(ws, "advance for business", "business travel", "expense")
-        if adv_row:
-            adv_usd = _as_float(ws.cell(adv_row, 9).value)
-            if adv_usd is None:
-                adv_kgs = _as_float(ws.cell(adv_row, 8).value)
-            elif usd_kgs:
-                adv_kgs = adv_usd * usd_kgs
-            else:
-                adv_kgs = None
-            if adv_kgs is not None:
-                emp["Expense Reimbursment"] = float(adv_kgs)
+    # 差旅垫付不进工资 PN；金额≠0 时另出 Expense 发票
+    adv_kgs = _read_travel_advance_kgs(ws, usd_kgs)
+    if adv_kgs is not None:
+        emp["_travel_advance_kgs"] = adv_kgs
 
     return emp
+
+
+def _read_travel_advance_kgs(ws: Worksheet, usd_kgs: float | None) -> float | None:
+    adv_row = _find_label_row(ws, "advance for business travel expenses")
+    if adv_row is None:
+        adv_row = _find_label_row(ws, "advance for business travel")
+    if adv_row is None:
+        return None
+    adv_kgs = _as_float(ws.cell(adv_row, 8).value)
+    if adv_kgs is None:
+        adv_usd = _as_float(ws.cell(adv_row, 9).value)
+        if adv_usd is not None and usd_kgs:
+            adv_kgs = adv_usd * float(usd_kgs)
+    if adv_kgs is None or abs(float(adv_kgs)) < 1e-9:
+        return None
+    return float(adv_kgs)
+
+
+def _expense_period_tag(emp: dict[str, Any]) -> str:
+    parsed = parse_pay_period_label(emp.get("_period_label"))
+    if not parsed:
+        return ""
+    year, month = parsed
+    return f"{month}-{year}"
+
+
+def _safe_filename_part(name: str, *, fallback: str = "Employee") -> str:
+    text = re.sub(r'[\\/:*?"<>|]+', "_", (name or "").strip())
+    text = re.sub(r"\s+", " ", text).strip(" ._")
+    return text[:80] or fallback
+
+
+def _pn_meta_for_expense(
+    pn_meta: PnMeta | dict[str, Any] | None,
+    *,
+    invoice_number: str | None = None,
+) -> PnMeta | dict[str, Any] | None:
+    """Expense 是另一张发票，不能复用工资 PN 的发票号。"""
+    if pn_meta is None:
+        return None
+    if isinstance(pn_meta, PnMeta):
+        return PnMeta(
+            customer_name=pn_meta.customer_name,
+            customer_id=pn_meta.customer_id,
+            billing_address=pn_meta.billing_address,
+            invoice_date=pn_meta.invoice_date,
+            due_date=pn_meta.due_date,
+            invoice_number=invoice_number,
+        )
+    data = dict(pn_meta)
+    data.pop("invoice_number", None)
+    data.pop("invoiceNumber", None)
+    data.pop("expense_invoice_numbers", None)
+    data.pop("expenseInvoiceNumbers", None)
+    if invoice_number:
+        data["invoice_number"] = invoice_number
+    return data
+
+
+def _invoice_number_offset(base: str | None, offset: int) -> str | None:
+    """在工资 PN 发票号基础上 +offset（只动末尾序号，不动 MMddyyyy）。
+
+    规则与 Office 一致：PN-{客户ID}-{MMddyyyy}{序号}
+    """
+    text = (base or "").strip()
+    if not text or offset <= 0:
+        return None
+    m = re.fullmatch(r"(PN-.+-\d{8})(\d+)", text, flags=re.I)
+    if m:
+        return f"{m.group(1)}{int(m.group(2)) + offset}"
+    # 兜底：整串末尾数字 +offset（可能吃掉前导 0）
+    m2 = re.fullmatch(r"(.*?)(\d+)", text)
+    if not m2:
+        return None
+    return f"{m2.group(1)}{int(m2.group(2)) + offset}"
+
+
+def write_expense_claim_pn(
+    *,
+    template_path: Path,
+    output_path: Path,
+    employee: dict[str, Any],
+    amount_kgs: float,
+    pn_meta: PnMeta | dict[str, Any] | None = None,
+    invoice_number: str | None = None,
+    registry_dir: Path | None = None,
+) -> dict[str, Any]:
+    output_path = Path(output_path).resolve()
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(template_path, output_path)
+    name = str(employee.get("Name of Employee") or employee.get("Employee Name") or "Employee").strip()
+    period = _expense_period_tag(employee)
+    desc = f"Expense claim for {name}" + (f" - {period}" if period else "")
+    applied_pn = None
+    wb = load_workbook(output_path)
+    try:
+        if PN_SHEET not in wb.sheetnames:
+            raise ValueError(f"Expense 母版缺少 sheet「{PN_SHEET}」")
+        ws = wb[PN_SHEET]
+        ws["E16"].value = float(amount_kgs)  # KGS 原值，不取整
+        ws["A16"].value = desc
+        usd_kgs = employee.get("_fx_usd_kgs")
+        if usd_kgs:
+            ws["B24"].value = float(usd_kgs)
+        eur_kgs = employee.get("_fx_eur_kgs")
+        if eur_kgs:
+            ws["B25"].value = float(eur_kgs)
+        # F16 保留母版公式（如 =E16/$B$24）
+        if pn_meta is not None:
+            applied_pn = apply_pn_meta(
+                wb,
+                _pn_meta_for_expense(pn_meta, invoice_number=invoice_number),
+                registry_dir=registry_dir or output_path.parent,
+                # 有预分配号则不占本地 registry；无号才 reserve
+                reserve_invoice_number=not bool(invoice_number),
+            )
+        apply_luckysheet_compat(wb, pn_sheet=PN_SHEET)
+        wb.save(output_path)
+    finally:
+        wb.close()
+    postprocess_converted_xlsx(output_path)
+    return {
+        "role": "expense_pn",
+        "label": "Expense",
+        "filename": output_path.name,
+        "path": str(output_path),
+        "employeeName": name,
+        "amount": float(amount_kgs),
+        "currency": "KGS",
+        "description": desc,
+        "invoiceNumber": applied_pn.invoice_number if applied_pn else invoice_number,
+    }
+
+
+def emit_expense_pns(
+    employees: list[dict[str, Any]],
+    *,
+    template_path: Path,
+    output_dir: Path,
+    output_prefix: str,
+    pn_meta: PnMeta | dict[str, Any] | None = None,
+    payroll_invoice_number: str | None = None,
+    registry_dir: Path | None = None,
+) -> tuple[list[dict[str, Any]], list[str]]:
+    extras: list[dict[str, Any]] = []
+    warnings: list[str] = []
+    used_names: dict[str, int] = {}
+    expense_index = 0
+    for emp in employees:
+        amount = emp.get("_travel_advance_kgs")
+        if amount is None:
+            continue
+        try:
+            amount_f = float(amount)
+        except (TypeError, ValueError):
+            continue
+        if abs(amount_f) < 1e-9:
+            continue
+        expense_index += 1
+        name = str(emp.get("Name of Employee") or emp.get("Employee Name") or "Employee").strip()
+        stem = _safe_filename_part(name)
+        n = used_names.get(stem, 0) + 1
+        used_names[stem] = n
+        suffix = "" if n == 1 else f"_{n}"
+        filename = f"{output_prefix}_Expense_{stem}{suffix}.xlsx"
+        out_path = Path(output_dir) / filename
+        inv_no = _invoice_number_offset(payroll_invoice_number, expense_index)
+        try:
+            extras.append(
+                write_expense_claim_pn(
+                    template_path=template_path,
+                    output_path=out_path,
+                    employee=emp,
+                    amount_kgs=amount_f,
+                    pn_meta=pn_meta,
+                    invoice_number=inv_no,
+                    registry_dir=registry_dir,
+                )
+            )
+        except Exception as exc:
+            warnings.append(f"Expense 发票（{name}）生成失败: {exc}")
+    return extras, warnings
 
 
 def parse_kyrgyzstan_l_employees(
@@ -905,6 +1078,7 @@ def convert(
     employee_directory: list[dict[str, Any]] | None = None,
     registry_dir: Path | None = None,
     convert_mapping: dict[str, Any] | None = None,
+    extra_template_path: Path | None = None,
     fill_fx: bool = True,
 ) -> dict[str, Any]:
     global _ACTIVE_MAPPING
@@ -963,6 +1137,25 @@ def convert(
 
         postprocess_converted_xlsx(output_path)
         warnings = merge_warnings(parse_warnings, ee_warnings)
+        extra_outputs: list[dict[str, Any]] = []
+        # 附加母版仅接受显式传入（Office 配置挂载）；不全局回落
+        extra_tpl = Path(extra_template_path).resolve() if extra_template_path else None
+        if any(e.get("_travel_advance_kgs") for e in employees):
+            if extra_tpl is None or not extra_tpl.is_file():
+                warnings.append("有差旅垫付但未配置附加母版（Expense），已跳过 Expense 发票")
+            else:
+                payroll_inv = applied_pn.invoice_number if applied_pn else None
+                extras, extra_warns = emit_expense_pns(
+                    employees,
+                    template_path=extra_tpl,
+                    output_dir=output_path.parent,
+                    output_prefix=output_path.stem,
+                    pn_meta=pn_meta,
+                    payroll_invoice_number=payroll_inv,
+                    registry_dir=registry_dir or output_path.parent,
+                )
+                extra_outputs.extend(extras)
+                warnings = merge_warnings(warnings, extra_warns)
         result = {
             "engine_id": "kyrgyzstan_payroll_calc",
             "region": "Kyrgyzstan",
@@ -972,6 +1165,7 @@ def convert(
                     "name": e.get("Name of Employee") or e.get("Employee Name"),
                     "ee_code": e.get("_ee_code") or e.get("No. of EE"),
                     "base_salary": e.get("Base Salary"),
+                    "travel_advance_kgs": e.get("_travel_advance_kgs"),
                 }
                 for e in employees
             ],
@@ -982,6 +1176,8 @@ def convert(
             "pn_meta": applied_pn.to_dict() if applied_pn else None,
             "warnings": warnings,
             "output": str(output_path),
+            "extra_outputs": extra_outputs,
+            "invoice_slot_count": 1 + len(extra_outputs),
         }
         extra = sanity_check_convert_result(result)
         if extra:
@@ -996,6 +1192,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("source", type=Path)
     parser.add_argument("-o", "--output", type=Path, default=None)
     parser.add_argument("-t", "--template", type=Path, default=DEFAULT_TEMPLATE)
+    parser.add_argument("--extra-template", type=Path, default=None, help="附加母版（如 Expense）")
     parser.add_argument("--no-fx", action="store_true")
     args = parser.parse_args(argv)
     out = args.output or Path(f"out_kyrgyzstan_{datetime.now():%Y%m%d_%H%M%S}.xlsx")
@@ -1004,6 +1201,7 @@ def main(argv: list[str] | None = None) -> int:
         out,
         args.template,
         fill_fx=not args.no_fx,
+        extra_template_path=args.extra_template,
     )
     print(result)
     for w in result.get("warnings") or []:

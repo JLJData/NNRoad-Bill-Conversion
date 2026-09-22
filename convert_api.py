@@ -14,7 +14,7 @@
   GET  /pdf-profiles
   GET  /mapping/defaults?engineId=&pdfProfileId=  引擎默认映射（含 fixedValueWrites）
   POST /unlock-xlsx  multipart: file, original_filename/duration/convert_mapping(可选)  加密源表解密
-  POST /convert  multipart: file, engine_id, region, template(可选), pn_meta(json可选), employee_directory(json数组可选), password(可选)
+  POST /convert  multipart: file, engine_id, region, template(可选), extra_template(可选), pn_meta(json可选), employee_directory(json数组可选), password(可选)
   POST /pdf-to-source  multipart: file, profile_id(可选自动识别), pn_meta(json可选), template(可选)
   POST /pdf-to-source-batch  multipart: files[], profile_id, …
   POST /vendor-plugins/ingest-file  旁路识别（如 Admin Fee）
@@ -32,6 +32,7 @@ import os
 import re
 import tempfile
 import traceback
+import zipfile
 from pathlib import Path
 
 from fastapi import FastAPI, File, Form, HTTPException, Query, Request, UploadFile
@@ -713,6 +714,7 @@ async def convert(
     engine_id: str = Form(...),
     region: str = Form(...),
     template: UploadFile | None = File(None),
+    extra_template: UploadFile | None = File(None),
     pn_meta: str | None = Form(None),
     employee_directory: str | None = Form(None),
     convert_mapping: str | None = Form(None),
@@ -769,6 +771,16 @@ async def convert(
                 template_path = tmp_dir / f"template{tpl_suffix}"
                 template_path.write_bytes(tpl_bytes)
 
+        extra_template_path = None
+        if extra_template is not None and extra_template.filename:
+            exp_suffix = Path(extra_template.filename).suffix.lower() or ".xlsx"
+            if exp_suffix not in (".xlsx", ".xlsm"):
+                raise HTTPException(status_code=400, detail=f"附加母版仅支持 .xlsx/.xlsm，当前: {exp_suffix}")
+            exp_bytes = await extra_template.read()
+            if exp_bytes:
+                extra_template_path = tmp_dir / f"extra_template{exp_suffix}"
+                extra_template_path.write_bytes(exp_bytes)
+
         result = run_convert(
             engine_id=engine_id.strip(),
             source_path=source_path,
@@ -779,6 +791,7 @@ async def convert(
             employee_directory=emp_dir,
             convert_mapping=mapping,
             registry_dir=BASE_DIR,
+            extra_template_path=extra_template_path,
         )
         if not output_path.is_file():
             raise RuntimeError("转换完成但未生成输出文件")
@@ -815,6 +828,50 @@ async def convert(
         cell_provenance = _build_cell_provenance(result)
         if cell_provenance:
             headers["X-Convert-Cell-Provenance"] = _b64_json_header(translate_outbound_tree(cell_provenance))
+        extra_outputs = result.get("extra_outputs") if isinstance(result.get("extra_outputs"), list) else []
+        extra_files: list[tuple[str, Path]] = []
+        extra_meta: list[dict] = []
+        for item in extra_outputs:
+            if not isinstance(item, dict):
+                continue
+            extra_path = Path(str(item.get("path") or ""))
+            extra_name = str(item.get("filename") or extra_path.name).strip()
+            if not extra_path.is_file() or not extra_name:
+                continue
+            extra_files.append((extra_name, extra_path))
+            extra_meta.append(
+                {
+                    "role": item.get("role") or "extra_pn",
+                    "label": item.get("label"),
+                    "filename": extra_name,
+                    "employeeName": item.get("employeeName"),
+                    "amount": item.get("amount") if item.get("amount") is not None else item.get("amountKgs"),
+                    "currency": item.get("currency"),
+                    "description": item.get("description"),
+                    "invoiceNumber": item.get("invoiceNumber"),
+                }
+            )
+        if extra_files:
+            headers["X-Convert-Package"] = "zip"
+            headers["X-Convert-Primary"] = output_path.name
+            headers["X-Convert-Extra-Outputs"] = _b64_json_header(translate_outbound_tree(extra_meta))
+            slot_count = result.get("invoice_slot_count")
+            if slot_count is not None:
+                headers["X-Convert-Invoice-Slot-Count"] = str(int(slot_count))
+            else:
+                headers["X-Convert-Invoice-Slot-Count"] = str(1 + len(extra_files))
+            zip_path = tmp_dir / f"{prefix}_bundle.zip"
+            with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+                zf.write(output_path, arcname=output_path.name)
+                for extra_name, extra_path in extra_files:
+                    zf.write(extra_path, arcname=extra_name)
+            return FileResponse(
+                path=str(zip_path),
+                filename=zip_path.name,
+                media_type="application/zip",
+                headers=headers,
+                background=BackgroundTask(_cleanup_dir, tmp_dir),
+            )
         # 结果摘要用自定义头传一小段 JSON（可选）；主体仍是文件
         return FileResponse(
             path=str(output_path),

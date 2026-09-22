@@ -26,6 +26,7 @@ def run_convert(
     registry_dir: Path | None = None,
     employee_directory: list[dict[str, Any]] | None = None,
     convert_mapping: dict[str, Any] | None = None,
+    extra_template_path: Path | None = None,
 ) -> dict[str, Any]:
     engine = get_engine(engine_id)
     from xlsx_keep_images import assert_template_images_kept, require_pillow
@@ -64,6 +65,13 @@ def run_convert(
     # 即使 mapping 为空也传入，让引擎显式走「无映射」分支并打诊断
     if "convert_mapping" in sig.parameters:
         convert_kwargs["convert_mapping"] = convert_mapping
+    # 附加母版必须由调用方显式传入（Office 配置挂载）；不全局回落地区默认
+    if extra_template_path is not None:
+        extra_resolved = Path(extra_template_path).resolve()
+        if "extra_template_path" in sig.parameters:
+            convert_kwargs["extra_template_path"] = extra_resolved
+        elif "expense_template_path" in sig.parameters:
+            convert_kwargs["expense_template_path"] = extra_resolved
 
     result = module.convert(
         source_path,
@@ -114,6 +122,18 @@ def run_convert(
 
     if output_path.is_file():
         assert_template_images_kept(template_path, output_path)
+    extra_outputs = result.get("extra_outputs")
+    if isinstance(extra_outputs, list) and extra_template_path is not None:
+        exp_tpl = Path(extra_template_path).resolve()
+        for item in extra_outputs:
+            if not isinstance(item, dict):
+                continue
+            extra_file = Path(str(item.get("path") or ""))
+            if extra_file.is_file() and exp_tpl.is_file():
+                try:
+                    assert_template_images_kept(exp_tpl, extra_file)
+                except Exception as img_exc:
+                    print(f"[convert-images] extra skipped: {img_exc}")
 
     return result
 

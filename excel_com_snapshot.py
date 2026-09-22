@@ -40,10 +40,24 @@ def _to_a1(row_1based: int, col_1based: int) -> str:
     return f"{_col_to_a1(col_1based)}{row_1based}"
 
 
+# Excel COM 把单元格错误收成 0x800A0000 + xlErr*。#DIV/0! = -2146826281，不能当金额。
+_EXCEL_CVERR = {
+    -2146826288,  # #NULL!
+    -2146826281,  # #DIV/0!
+    -2146826273,  # #VALUE!
+    -2146826265,  # #REF!
+    -2146826259,  # #NAME?
+    -2146826252,  # #NUM!
+    -2146826246,  # #N/A
+}
+
+
 def _coerce_number(v: Any) -> float | None:
     if v is None:
         return None
     if isinstance(v, bool):
+        return None
+    if isinstance(v, int) and int(v) in _EXCEL_CVERR:
         return None
     if isinstance(v, (int, float)):
         f = float(v)

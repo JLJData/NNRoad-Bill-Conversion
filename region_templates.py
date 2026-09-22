@@ -23,6 +23,7 @@ REGION_DIRS: dict[str, str] = {
 }
 
 REGION_TEMPLATE_FILENAME = "template.xlsx"
+REGION_EXPENSE_TEMPLATE_FILENAME = "expense.xlsx"
 
 
 def get_region_template(region: str) -> Path:
@@ -32,6 +33,15 @@ def get_region_template(region: str) -> Path:
         known = ", ".join(sorted(REGION_DIRS))
         raise KeyError(f"未知地区「{region}」，已知: {known}")
     return TEMPLATES_DIR / slug / REGION_TEMPLATE_FILENAME
+
+
+def get_region_expense_template(region: str) -> Path | None:
+    """地区默认附加母版样例路径（仅本地/样例用；runner 禁止自动回落）。无文件则 None。"""
+    slug = REGION_DIRS.get(region)
+    if slug is None:
+        return None
+    path = TEMPLATES_DIR / slug / REGION_EXPENSE_TEMPLATE_FILENAME
+    return path if path.is_file() else None
 
 
 def list_regions() -> list[str]:
