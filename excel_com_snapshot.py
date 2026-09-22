@@ -72,6 +72,28 @@ def _coerce_number(v: Any) -> float | None:
         return None
 
 
+def _open_workbook(excel: Any, abs_path: str) -> Any:
+    """POI 填过的母版常被 Excel 当成需修复文件。DisplayAlerts=False 时普通 Open 会直接失败。"""
+    try:
+        return excel.Workbooks.Open(
+            abs_path,
+            UpdateLinks=0,
+            ReadOnly=True,
+            IgnoreReadOnlyRecommended=True,
+        )
+    except Exception as first:
+        try:
+            # 1 = xlRepairFile
+            return excel.Workbooks.Open(
+                abs_path,
+                UpdateLinks=0,
+                ReadOnly=True,
+                CorruptLoad=1,
+            )
+        except Exception as second:
+            raise RuntimeError(f"{first}; 修复打开也失败: {second}") from second
+
+
 def snapshot_workbook(path: Path, sheet_filter: str | None, max_cells: int) -> dict[str, Any]:
     try:
         import win32com.client  # type: ignore
@@ -112,12 +134,7 @@ def snapshot_workbook(path: Path, sheet_filter: str | None, max_cells: int) -> d
             pass
 
         abs_path = str(path.resolve())
-        wb = excel.Workbooks.Open(
-            abs_path,
-            UpdateLinks=0,
-            ReadOnly=True,
-            IgnoreReadOnlyRecommended=True,
-        )
+        wb = _open_workbook(excel, abs_path)
         try:
             excel.CalculateFullRebuild()
         except Exception:
