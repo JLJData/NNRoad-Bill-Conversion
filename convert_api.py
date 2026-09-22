@@ -48,7 +48,7 @@ from hf_com_snapshot import snapshot_workbook_hf
 from engines import list_engines
 from pdf_ingest.registry import list_pdf_profiles
 from pdf_ingest.runner import run_pdf_to_source, run_pdf_to_source_batch, run_vendor_to_source_batch
-from region_templates import list_regions, get_region_template
+from region_templates import list_regions, get_region_expense_template, get_region_template
 from xlsx_unlock import collect_unlock_passwords, unlock_xlsx
 from convert_i18n import parse_accept_language, reset_locale, set_locale, get_locale, translate_outbound, translate_outbound_tree
 
@@ -636,9 +636,17 @@ async def vendor_to_source_batch(
 
 
 @app.get("/region-template")
-def region_template(region: str = Query(..., min_length=1)):
+def region_template(region: str = Query(..., min_length=1), kind: str = Query("pn")):
+    kind_norm = (kind or "pn").strip().lower()
     try:
-        path = get_region_template(region.strip())
+        if kind_norm == "expense":
+            path = get_region_expense_template(region.strip())
+            if path is None:
+                raise HTTPException(status_code=404, detail=f"地区附加母版不存在: {region.strip()}")
+        else:
+            path = get_region_template(region.strip())
+    except HTTPException:
+        raise
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     if not path.is_file():
