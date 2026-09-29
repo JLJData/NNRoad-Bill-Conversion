@@ -36,7 +36,7 @@ def decimal_text(value: Any) -> str:
 
 def schema_fields(schema: dict) -> dict[str, dict]:
     require(isinstance(schema, dict), "Schema must be an object")
-    require(schema.get("formatVersion") == 0, "Unsupported schema formatVersion")
+    require(schema.get("formatVersion") in {0, 1}, "Unsupported schema formatVersion")
     require(nonempty(schema.get("schemaId")) and nonempty(schema.get("schemaVersion")),
             "Schema identity and version are required")
     require(schema.get("decimalEncoding") == "string" and schema.get("blankIsZero") is False,

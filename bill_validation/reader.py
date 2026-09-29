@@ -78,7 +78,7 @@ def read_code_collection(workbook_path: str | Path, schema: dict, binding: dict,
     """
     fields = schema_fields(schema)
     require(isinstance(binding, dict) and isinstance(manifest, dict), "Binding and manifest must be objects")
-    require(binding.get("formatVersion") == 0, "Unsupported binding formatVersion")
+    require(binding.get("formatVersion") in {0, 1}, "Unsupported binding formatVersion")
     for key in ("schemaId", "schemaVersion"):
         require(binding.get(key) == schema[key], "Binding " + key + " mismatch")
     for config in (schema, binding):

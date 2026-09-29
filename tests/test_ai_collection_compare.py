@@ -1,9 +1,15 @@
 import copy
+import hashlib
+import json
+import tempfile
 import unittest
+from pathlib import Path
+from unittest import mock
 
 from ai_collection import (
     AIProviderError,
     MockAIProvider,
+    OpenAIResponsesProvider,
     ProviderRegistry,
     build_collection_request,
     run_collection,
@@ -82,6 +88,57 @@ class AICollectionCompareTests(unittest.TestCase):
         self.assertEqual(response["records"][0]["fields"][0]["value"], "200.00")
         self.assertEqual(len(provider.calls), 1)
         self.assertEqual(provider.calls[0], request)
+
+    def test_openai_provider_sends_only_verified_original_file_and_structured_schema(self):
+        with tempfile.TemporaryDirectory() as folder:
+            source = Path(folder) / "supplier.xlsx"
+            source.write_bytes(b"original supplier workbook")
+            self.documents[0].update(
+                sha256=hashlib.sha256(source.read_bytes()).hexdigest(),
+                mediaType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
+            request = self.request()
+            expected = copy.deepcopy(self.ai)
+            expected.update(provider="openai", model="gpt-5.6-luna")
+            captured = {}
+
+            def post(url, headers, payload, timeout):
+                captured.update(url=url, headers=headers, payload=payload, timeout=timeout)
+                return {"status": "completed", "output": [{
+                    "type": "message",
+                    "content": [{"type": "output_text", "text": json.dumps(expected)}],
+                }]}
+
+            provider = OpenAIResponsesProvider(
+                document_resolver=lambda document: source,
+                api_key="test-key-not-real",
+                http_post=post,
+            )
+            result = run_collection(provider, request, self.schema)
+            self.assertEqual(result["model"], "gpt-5.6-luna")
+            self.assertEqual(captured["url"], "https://api.openai.com/v1/responses")
+            self.assertEqual(captured["headers"]["Authorization"], "Bearer test-key-not-real")
+            self.assertFalse(captured["payload"]["store"])
+            self.assertEqual(captured["payload"]["text"]["format"]["type"], "json_schema")
+            content = captured["payload"]["input"][0]["content"]
+            self.assertEqual(content[0]["type"], "input_file")
+            prompt = json.loads(content[-1]["text"])
+            self.assertNotIn("sourceRef", prompt["request"]["documents"][0])
+            self.assertNotIn("codeResult", prompt["request"])
+
+    def test_openai_provider_requires_key_and_rejects_changed_original(self):
+        with tempfile.TemporaryDirectory() as folder:
+            source = Path(folder) / "supplier.xlsx"
+            source.write_bytes(b"changed")
+            provider = OpenAIResponsesProvider(document_resolver=lambda document: source, api_key="key",
+                                                http_post=lambda *args: {})
+            with self.assertRaisesRegex(AIProviderError, "hash mismatch"):
+                run_collection(provider, self.request(), self.schema)
+            provider = OpenAIResponsesProvider(document_resolver=lambda document: source, api_key="",
+                                                http_post=lambda *args: {})
+            with mock.patch.dict("os.environ", {}, clear=True):
+                with self.assertRaisesRegex(AIProviderError, "OPENAI_API_KEY"):
+                    provider.collect(self.request())
 
     def test_provider_failure_is_not_a_business_mismatch(self):
         def fail(_):

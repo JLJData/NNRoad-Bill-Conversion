@@ -10,11 +10,11 @@
 
 ## 三份配置
 
-- schema.v0.json：13 个员工级金额字段及比较语义，是业务字段定义草案，不是完整的 JSON Schema 输出校验器。
-- source-hints.v0.json：仅包含原始账单的字段标签、定位提示、币种和账期依据，可供未来独立采集流程使用。
+- schema.v0.json：旧版 13 个员工级金额字段草案，仅保留给未来确定性的字段级差异比较，不参与当前 AI 母版填充。
+- source-hints.v0.json：旧版账单定位研究资料，不发送给当前动态 AI 母版填充链路；运行时不依赖其中的表名、行号、列号或字段清单。
 - code-result-binding.v0.json：读取最终工作簿 TW 采集明细的绑定和母版哈希，仅供代码侧使用，禁止传给 AI。
 
-`schema.v0.json` 与 `code-result-binding.v0.json` 现可供 `bill_validation` 离线读取器使用，须显式允许草案并提供可信员工任务清单。`source-hints.v0.json` 尚无 AI 运行时消费者。所有金额容差为零的设置仅用于后续离线精确差异诊断，当前读取器不执行比较，生产容差尚未定；自动通过均关闭。
+`schema.v0.json` 与 `code-result-binding.v0.json` 只供 `bill_validation` 离线研究使用，须显式允许草案并提供可信员工任务清单。当前正式 AI 对比结果以当前母版最后一个 `-L` 页为动态契约。所有金额容差为零的设置仅用于后续离线精确差异诊断；自动通过均关闭。
 
 ## 字段范围
 

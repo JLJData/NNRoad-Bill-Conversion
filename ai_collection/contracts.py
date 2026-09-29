@@ -104,7 +104,7 @@ def validate_collection_request(request: dict) -> None:
 def _validate_source(source: Any, documents: dict[str, dict]) -> None:
     require(isinstance(source, dict) and source.get("fileId") in documents, "AI source fileId is invalid")
     require(nonempty(source.get("location")), "AI source location is required")
-    if "page" in source:
+    if source.get("page") is not None:
         require(type(source["page"]) is int and source["page"] >= 1, "AI source page is invalid")
     if "rawText" in source:
         require(isinstance(source["rawText"], str), "AI rawText must be a string")

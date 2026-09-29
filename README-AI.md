@@ -336,11 +336,34 @@ Do NOT tightly couple bill conversion logic to one model provider.
 
 ---
 
-# 12. Collection Schema
+# 12. Dynamic Template Contract
 
-AI must NOT freely decide the target structure.
+For the AI comparison workbook, the current Master Template's last worksheet
+ending in `-L` is the target structure. The model must inspect that worksheet
+and the original supplier bill together. It must not depend on a fixed list of
+payroll fields, sheet names, header rows, data rows, or column coordinates.
 
-The system provides a Collection Schema.
+Supplier × Customer configuration may add durable business rules such as
+currency, values supplied outside the bill, and explicit exclusions. Field
+aliases may be stored as optional vocabulary, but they are not a closed list
+and cannot prevent a changed template from being interpreted.
+
+The active conversion profile's reviewed `columnRename` entries are supplied
+to AI as optional supplier-label -> target-label hints for the same supplier
+and customer. They take priority when the source label and current target both
+exist. The current template remains authoritative when a saved target is stale.
+For each extracted fact, the service resolves a uniquely known target column
+from this mapping or the current template labels and replaces the model's
+provisional column coordinate. The model remains responsible for source
+extraction and employee-row interpretation.
+
+When an XLSX source location identifies an exact cell, the service reads that
+cell and its source header directly from the original workbook. This trusted
+header replaces the model-reported source label before target-column resolution.
+
+A canonical Collection Schema remains useful for a future deterministic
+field-by-field Code-vs-AI comparison. It is a separate comparison contract and
+does not constrain the current template-driven AI workbook.
 
 Example concept:
 
@@ -356,7 +379,7 @@ Example concept:
   ]
 }
 
-The schema may include:
+An optional comparison schema may include:
 
 - canonical field name
 - display label
@@ -371,9 +394,8 @@ The schema may include:
 - importance
 - source hints
 
-The AI's responsibility is semantic extraction and mapping.
-
-The schema defines the contract.
+The AI's responsibility is semantic extraction and mapping against the current
+template. The template hash identifies the contract used for each run.
 
 ---
 
@@ -609,7 +631,11 @@ Manage shared runtime settings centrally:
 - Structured Output mechanism
 - Shared, versioned extraction instructions
 
-Exact setting values and retry/fallback policies remain open until implementation and testing.
+The Taiwan Coral Sea pilot uses OpenAI with configurable model id `gpt-5.6-luna`.
+The dynamic fill plan is checked against column labels discovered from the
+current template. A plan rejected for semantic column mismatch is regenerated
+once with the validation feedback; a second invalid plan produces no workbook.
+Transport fallback and broader retry policy remain open until further real-bill testing.
 
 ## 19.2 Supplier × Customer AI Validation Configuration
 
@@ -684,9 +710,9 @@ The business logic should depend on an AI interface, not a specific model SDK.
 
 # 21. Current AI Model Strategy
 
-Current model discussions are exploratory and are NOT permanent architecture decisions.
+The first Taiwan Coral Sea pilot is configured to use GPT-5.6 Luna. This is a pilot runtime choice, not a permanent architecture decision.
 
-Models being considered include multimodal low-cost models such as:
+Future benchmark candidates may include multimodal low-cost models such as:
 
 - GPT-5.6 Luna
 - GPT-4o mini
@@ -920,9 +946,9 @@ These rules are considered confirmed unless explicitly changed:
 
 5. AI output must be structured.
 
-6. AI must use the Collection Schema.
+6. The AI comparison workbook must use the current last `-L` worksheet as its dynamic field contract; a fixed Collection Schema is optional and reserved for deterministic field comparison.
 
-7. AI should primarily validate the final Collection/PN Sheet.
+7. AI fills only a copy of the current last `-L` worksheet for review.
 
 8. Special/API-controlled values do not automatically require AI validation.
 

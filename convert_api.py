@@ -20,6 +20,8 @@
   POST /vendor-plugins/ingest-file  旁路识别（如 Admin Fee）
   POST /file-role/classify          轻量角色探测（Excel inspect / PDF 关键字+旁路）
   POST /mapping/inspect-source     样例源表头
+  GET  /ai-validation/profiles     AI 对比试点配置（不调用模型）
+  POST /ai-validation/run          原账单 + 当前母版 → AI 对比工作簿（最后一个 -L）
   GET  /region-template?region=Taiwan  地区默认 PN 母版
   POST /excel-snapshot  multipart: file, sheet(可选默认PN), max_cells(可选默认300)
   POST /hf-snapshot     multipart: file, sheet(可选默认PN), max_cells(可选默认300)  # Node HyperFormula
@@ -50,11 +52,15 @@ from pdf_ingest.runner import run_pdf_to_source, run_pdf_to_source_batch, run_ve
 from region_templates import list_regions, get_region_template
 from xlsx_unlock import collect_unlock_passwords, unlock_xlsx
 from convert_i18n import parse_accept_language, reset_locale, set_locale, get_locale, translate_outbound
+from ai_collection import list_ai_validation_profiles, run_ai_comparison_workbook
 
 CONVERT_API_KEY = os.environ.get("CONVERT_API_KEY", "").strip()
 _DISABLE_DOCS = os.environ.get("CONVERT_DISABLE_DOCS", "").strip() in ("1", "true", "True", "yes")
 _DOCS_OFF = _DISABLE_DOCS or bool(CONVERT_API_KEY)
 _BLOCKED_UPLOAD_SUFFIXES = {".html", ".htm", ".shtml", ".xhtml", ".svg"}
+_AI_VALIDATION_ENABLED = os.environ.get("AI_VALIDATION_ENABLED", "").strip().lower() in ("1", "true", "yes")
+_AI_VALIDATION_MODEL = os.environ.get("AI_VALIDATION_MODEL", "gpt-5.6-luna").strip() or "gpt-5.6-luna"
+_AI_VALIDATION_REASONING = os.environ.get("AI_VALIDATION_REASONING_EFFORT", "medium").strip() or "medium"
 
 app = FastAPI(
     title="HROne Bill Convert Service",
@@ -235,7 +241,20 @@ async def require_api_key(request: Request, call_next) -> Response:
 
 @app.get("/health")
 def health():
-    return {"ok": True, "service": "bill-convert", "auth": bool(CONVERT_API_KEY)}
+    return {"ok": True, "service": "bill-convert", "auth": bool(CONVERT_API_KEY),
+            "aiValidationEnabled": _AI_VALIDATION_ENABLED}
+
+
+@app.get("/ai-validation/profiles")
+def ai_validation_profiles():
+    """Read-only discovery. This never reads a bill or calls an AI provider."""
+    return {
+        "enabled": _AI_VALIDATION_ENABLED,
+        "provider": "openai",
+        "defaultModel": _AI_VALIDATION_MODEL,
+        "profiles": list_ai_validation_profiles(),
+        "formalResult": False,
+    }
 
 
 @app.get("/engines")
@@ -838,6 +857,96 @@ def _cleanup_dir(path: Path) -> None:
         shutil.rmtree(path, ignore_errors=True)
     except Exception:
         pass
+
+
+@app.post("/ai-validation/run")
+async def ai_validation_run(
+    files: list[UploadFile] = File(...),
+    template: UploadFile = File(...),
+    run_id: str = Form(...),
+    period: str = Form(...),
+    currency: str = Form(...),
+    profile_id: str = Form("taiwan-coral-sea"),
+    source_hints_json: str | None = Form(None),
+    provider: str = Form("openai"),
+    model: str | None = Form(None),
+    reasoning_effort: str | None = Form(None),
+    base_url: str | None = Form(None),
+    timeout_seconds: float | None = Form(None),
+):
+    """Build a separate, non-formal AI comparison workbook from original bills."""
+    if not _AI_VALIDATION_ENABLED:
+        raise HTTPException(status_code=503, detail="AI validation is disabled")
+    if str(provider or "").strip().lower() != "openai":
+        raise HTTPException(status_code=400, detail="Only the openai AI validation provider is supported")
+    if not files:
+        raise HTTPException(status_code=400, detail="至少需要一个原始供应商账单")
+    for item in files:
+        _assert_safe_upload(item)
+    _assert_safe_upload(template)
+    template_suffix = Path(template.filename or "template.xlsx").suffix.lower()
+    if template_suffix not in (".xlsx", ".xlsm"):
+        raise HTTPException(status_code=400, detail="AI 对比母版仅支持 .xlsx/.xlsm")
+
+    tmp_dir = Path(tempfile.mkdtemp(prefix="ai_validation_"))
+    try:
+        original_paths: list[Path] = []
+        for index, upload in enumerate(files):
+            path = _kept_upload_path(tmp_dir, upload.filename, index, "original")
+            content = await upload.read()
+            if not content:
+                raise HTTPException(status_code=400, detail="原始供应商账单为空")
+            path.write_bytes(content)
+            original_paths.append(path)
+        template_path = tmp_dir / ("current-template" + template_suffix)
+        template_bytes = await template.read()
+        if not template_bytes:
+            raise HTTPException(status_code=400, detail="当前母版为空")
+        template_path.write_bytes(template_bytes)
+        output_path = tmp_dir / "AI_comparison.xlsx"
+        source_hints = json.loads(source_hints_json) if source_hints_json and source_hints_json.strip() else None
+        metadata = run_ai_comparison_workbook(
+            original_paths=original_paths,
+            template_path=template_path,
+            output_path=output_path,
+            run_id=str(run_id).strip(),
+            period=str(period).strip(),
+            currency=str(currency).strip(),
+            profile_id=str(profile_id).strip(),
+            source_hints=source_hints,
+            provider_options={
+                "model": str(model or _AI_VALIDATION_MODEL).strip(),
+                "reasoning_effort": str(reasoning_effort or _AI_VALIDATION_REASONING).strip(),
+                **({"base_url": str(base_url).strip()} if base_url and str(base_url).strip() else {}),
+                **({"timeout_seconds": float(timeout_seconds)} if timeout_seconds is not None else {}),
+            },
+        )
+        headers = {
+            "X-AI-Validation-Run": str(metadata["runId"])[:160],
+            "X-AI-Validation-Model": str(metadata["model"])[:100],
+            "X-AI-Validation-Sheet": base64.b64encode(
+                str(metadata["sheetName"]).encode("utf-8")
+            ).decode("ascii"),
+            "X-AI-Validation-Metadata": _b64_json_header(metadata),
+            "X-AI-Formal-Result": "false",
+        }
+        return FileResponse(
+            path=str(output_path),
+            filename="AI_comparison.xlsx",
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers=headers,
+            background=BackgroundTask(_cleanup_dir, tmp_dir),
+        )
+    except HTTPException:
+        _cleanup_dir(tmp_dir)
+        raise
+    except (ValueError, KeyError) as exc:
+        _cleanup_dir(tmp_dir)
+        raise HTTPException(status_code=400, detail=f"AI 对比参数无效: {exc}") from exc
+    except Exception as exc:
+        _cleanup_dir(tmp_dir)
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"AI 对比生成失败: {exc}") from exc
 
 
 @app.post("/excel-snapshot")
