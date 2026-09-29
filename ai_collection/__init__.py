@@ -10,7 +10,9 @@ from .provider import (
     run_collection,
 )
 from .template_fill import (
+    filter_inconsistent_employee_source_writes,
     inspect_last_l_sheet,
+    inspect_source_employee_layout,
     resolve_dynamic_template_fill_targets,
     validate_dynamic_template_fill_plan,
     validate_template_fill_plan,
@@ -28,6 +30,8 @@ __all__ = [
     "build_collection_request",
     "run_collection",
     "inspect_last_l_sheet",
+    "inspect_source_employee_layout",
+    "filter_inconsistent_employee_source_writes",
     "resolve_dynamic_template_fill_targets",
     "validate_template_fill_plan",
     "write_ai_template_copy",

@@ -22,6 +22,7 @@ Provider 返回的每个写入值须包含原始文件 ID、位置和原文；�
 - `plan_dynamic_template_fill`：让模型同时读取原始账单和当前母版结构，生成带来源标签和原文证据的动态写入计划；不包含 Code Result，也不使用固定字段清单。Office 当前供应商×客户转换配置中的 `columnRename` 会作为供应商列→母版列提示随本次请求传入。
 - `resolve_dynamic_template_fill_targets`：目标列由程序控制。优先按 `columnRename`，其次按当前母版列标题的唯一匹配，直接替换模型给出的临时列坐标；员工行仍来自账单和母版的动态识别。无法唯一确定的列才保留模型候选并进入严格校验。
 - 对 Excel 原始账单，如果 AI 证据给出了精确来源格（如 `Payroll calculation!AR4`），程序会直接读取该格上方的真实源表头和值，覆盖 AI 自报的 `sourceLabel/rawText`，再解析目标列。中英混合标题会单独提取完整英文业务码，保留 `2G/EE/ER/1T` 等限定词。
+- `inspect_source_employee_layout` + `filter_inconsistent_employee_source_writes`：程序侧识别源表姓名列，丢弃无名汇总/合计行写入；同一目标行不得混用不同源员工行；同一员工不得占多行；有金额无姓名的目标行在已识别到其他员工后会被丢弃。
 - 动态计划首次校验不合格时会把原因交给模型完整重做一次，第二次仍不合格则不生成错误工作簿。
 - `write_dynamic_ai_template_copy`：程序校验值、来源和目标后，只写母版副本中的空白目标格，拒绝覆盖公式、非空格、过期母版和已有输出文件。
 

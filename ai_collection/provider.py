@@ -375,11 +375,18 @@ class OpenAIResponsesProvider(AIProvider):
                         raise AIProviderError("OpenAI returned invalid structured JSON") from exc
         raise AIProviderError("OpenAI response contains no structured output")
 
-    def _trust_xlsx_source_evidence(self, plan: dict, documents: list[dict]) -> dict:
+    def _trust_xlsx_source_evidence(self, plan: dict, documents: list[dict],
+                                    template_manifest: dict | None = None) -> dict:
         """Replace model-reported XLSX labels/evidence with cells from the original file."""
+        from .template_fill import (
+            filter_inconsistent_employee_source_writes,
+            inspect_source_employee_layout,
+        )
+
         trusted = copy.deepcopy(plan)
         by_id = {item["fileId"]: item for item in documents}
         workbooks = {}
+        source_layouts: dict[str, dict[str, dict]] = {}
         try:
             for item in trusted.get("writes") or []:
                 source = item.get("source") if isinstance(item, dict) else None
@@ -409,6 +416,9 @@ class OpenAIResponsesProvider(AIProvider):
                     continue
                 formula_ws = formula_wb[sheet_name]
                 value_ws = value_wb[sheet_name]
+                layouts = source_layouts.setdefault(document["fileId"], {})
+                if sheet_name not in layouts:
+                    layouts[sheet_name] = inspect_source_employee_layout(formula_ws)
                 cell = formula_ws[coordinate]
                 actual = value_ws[coordinate].value
                 label = ""
@@ -439,7 +449,11 @@ class OpenAIResponsesProvider(AIProvider):
                     item["value"] = actual_text
                 item["sourceLabel"] = label
                 source["rawText"] = f"{label}: {actual_text}"
-            return trusted
+            return filter_inconsistent_employee_source_writes(
+                trusted,
+                source_layouts=source_layouts,
+                template_manifest=template_manifest,
+            )
         finally:
             for formula_wb, value_wb in workbooks.values():
                 formula_wb.close()
@@ -516,6 +530,10 @@ class OpenAIResponsesProvider(AIProvider):
                 "Do not write company/BU values into CN Name, employee Chinese names into EN Name, or English names into Position.",
                 "Source and template column orders often differ (extra Monthly/Allowance columns). Always match by field label meaning, never by column letter or left-to-right position.",
                 "Never copy the source total/summary row into an employee row.",
+                "A source row is an employee only when CN Name or EN Name (or equivalent person-name column) is non-empty. Rows with amounts but blank names are totals/padding — never map them.",
+                "One employee maps to exactly one target -L row. Never duplicate the same person across multiple target rows.",
+                "All values written to one target row must come from that same source employee row. Do not mix a person's identity with another row's hours/salary/fees.",
+                "Prefer contiguous blank data rows under the -L header; fill every available unambiguous field for each employee, including zeros that appear on the source employee row.",
                 "semanticLabel must copy the selected target column's template.columnContexts primaryLabel exactly.",
                 "sourceLabel must copy the original source field label exactly; rawText must contain that label and value.",
                 "Compare the source label with every target column using parent+child pathLabel when present; identical leaf labels under different parents are different fields.",
@@ -550,7 +568,9 @@ class OpenAIResponsesProvider(AIProvider):
         }
         from .template_fill import resolve_dynamic_template_fill_targets, validate_dynamic_template_fill_plan
         first_plan = resolve_dynamic_template_fill_targets(
-            self._trust_xlsx_source_evidence(self._call_structured(payload), documents),
+            self._trust_xlsx_source_evidence(
+                self._call_structured(payload), documents, template_manifest=template_manifest,
+            ),
             template_manifest, column_mappings=column_mappings,
         )
         try:
@@ -566,6 +586,7 @@ class OpenAIResponsesProvider(AIProvider):
                     "Re-check every write, not only the first rejected write.",
                     "For every sourceLabel, compare all template.columnContexts pathLabel/primaryLabel values again.",
                     "Preserve source values and evidence; correct targetCell and semanticLabel when necessary.",
+                    "Never use nameless summary/total source rows; keep one employee on one target row from one source row.",
                     "If no target is unambiguous, omit that write and add a structured issue.",
                 ],
                 "rejectedPlan": first_plan,
@@ -576,7 +597,10 @@ class OpenAIResponsesProvider(AIProvider):
                 "text": json.dumps(correction, ensure_ascii=False),
             })
             corrected_plan = resolve_dynamic_template_fill_targets(
-                self._trust_xlsx_source_evidence(self._call_structured(retry_payload), documents),
+                self._trust_xlsx_source_evidence(
+                    self._call_structured(retry_payload), documents,
+                    template_manifest=template_manifest,
+                ),
                 template_manifest,
                 column_mappings=column_mappings,
             )

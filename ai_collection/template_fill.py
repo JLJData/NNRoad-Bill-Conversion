@@ -194,6 +194,341 @@ def _is_identity_label(label: Any) -> bool:
     )
 
 
+def _is_person_name_label(label: Any) -> bool:
+    """Person identity only — not company/client/BU/position/date fields."""
+    text = " ".join(str(label or "").casefold().split())
+    if not text:
+        return False
+    blocked = ("company", "client", "employer", "vendor", "bank", "file", "bu", "position")
+    if any(token in text for token in blocked):
+        return False
+    if text in {"cn name", "en name", "name", "ee name", "employee name"}:
+        return True
+    if "cn name" in text or "en name" in text:
+        return True
+    if "姓名" in text or "中文名" in text or "英文名" in text:
+        return True
+    return ("employee" in text and "name" in text) or text.endswith(" name")
+
+
+def _clean_cell_text(value: Any) -> str:
+    if value is None or isinstance(value, bool):
+        return ""
+    if isinstance(value, (int, float, date)):
+        return ""
+    return " ".join(str(value).split()).strip()
+
+
+def _parse_sheet_coordinate(location: Any) -> tuple[str, str] | None:
+    text = str(location or "").strip()
+    if "!" not in text:
+        return None
+    sheet_name, coordinate = text.rsplit("!", 1)
+    sheet_name = sheet_name.strip().strip("'").replace("''", "'")
+    coordinate = coordinate.strip().replace("$", "")
+    if not sheet_name or not re.fullmatch(r"[A-Za-z]{1,3}[1-9][0-9]*", coordinate):
+        return None
+    return sheet_name, coordinate
+
+
+def inspect_source_employee_layout(ws) -> dict[str, Any]:
+    """Find person-name columns and which data rows look like real employees.
+
+    Nameless numeric rows (common supplier subtotal/summary rows) are not employees.
+    """
+    header_row, contexts = _column_contexts(ws)
+    name_columns = [
+        int(item["column"]) for item in contexts
+        if _is_person_name_label(item.get("primaryLabel")) or _is_person_name_label(item.get("pathLabel"))
+    ]
+    # Prefer exact CN/EN name columns when present; avoid solitary vague "Name".
+    precise = [
+        int(item["column"]) for item in contexts
+        if _normalized_semantic(item.get("primaryLabel")) in {
+            "cnname", "enname", "姓名", "中文名", "英文名", "employeename", "eename",
+        }
+        or "cn name" in " ".join(str(item.get("primaryLabel") or "").casefold().split())
+        or "en name" in " ".join(str(item.get("primaryLabel") or "").casefold().split())
+    ]
+    if precise:
+        name_columns = precise
+    rows: dict[int, dict[str, Any]] = {}
+    max_row = min(max(1, ws.max_row or 1), header_row + 500)
+    for row in range(header_row + 1, max_row + 1):
+        names = []
+        for column in name_columns:
+            text = _clean_cell_text(ws.cell(row, column).value)
+            if text:
+                names.append(text)
+        rows[row] = {
+            "hasName": bool(names),
+            "names": names,
+            "nameKey": " / ".join(_normalized_semantic(item) for item in names if _normalized_semantic(item)),
+        }
+    return {
+        "headerRow": header_row,
+        "nameColumns": name_columns,
+        "rows": rows,
+    }
+
+
+def filter_inconsistent_employee_source_writes(
+    plan: dict,
+    *,
+    source_layouts: dict[str, dict[str, dict[str, Any]]],
+    template_manifest: dict | None = None,
+) -> dict:
+    """Drop summary-row facts and cross-employee contamination before -L writes.
+
+    source_layouts: fileId -> sheetName -> inspect_source_employee_layout(...)
+    """
+    resolved = copy.deepcopy(plan)
+    writes = resolved.get("writes")
+    if not isinstance(writes, list):
+        return resolved
+    issues = resolved.setdefault("issues", [])
+    if not isinstance(issues, list):
+        issues = []
+        resolved["issues"] = issues
+
+    name_columns: set[int] = set()
+    if isinstance(template_manifest, dict):
+        for item in template_manifest.get("columnContexts") or []:
+            if isinstance(item, dict) and isinstance(item.get("column"), int) and (
+                _is_person_name_label(item.get("primaryLabel"))
+                or _is_person_name_label(item.get("pathLabel"))
+            ):
+                name_columns.add(int(item["column"]))
+
+    def _layout_for(item: dict) -> tuple[str | None, int | None, dict | None]:
+        source = item.get("source") if isinstance(item, dict) else None
+        if not isinstance(source, dict):
+            return None, None, None
+        parsed = _parse_sheet_coordinate(source.get("location"))
+        if not parsed:
+            return None, None, None
+        sheet_name, coordinate = parsed
+        try:
+            row, _column = coordinate_to_tuple(coordinate)
+        except (TypeError, ValueError):
+            return sheet_name, None, None
+        layout = (source_layouts.get(str(source.get("fileId"))) or {}).get(sheet_name)
+        return sheet_name, row, layout
+
+    kept: list[dict] = []
+    # Pass 1: drop facts taken from nameless source rows when the sheet has name columns.
+    for item in writes:
+        if not isinstance(item, dict):
+            continue
+        sheet_name, source_row, layout = _layout_for(item)
+        if layout and source_row is not None and layout.get("nameColumns"):
+            row_info = (layout.get("rows") or {}).get(source_row) or {}
+            if not row_info.get("hasName"):
+                issues.append({
+                    "code": "SUMMARY_SOURCE_ROW_SKIPPED",
+                    "message": (
+                        f"Skipped source {item.get('source', {}).get('location')}: "
+                        "row has no employee name (summary/total/padding row)"
+                    ),
+                    "sourceLabel": item.get("sourceLabel"),
+                    "targetCell": item.get("targetCell"),
+                    "sourceLocation": (item.get("source") or {}).get("location"),
+                })
+                continue
+        kept.append(item)
+
+    # Pass 2: each target row may bind to at most one named source employee row.
+    # Prefer the source row used by person-name identity writes on that target row.
+    row_anchor: dict[int, tuple[str, str, int, str]] = {}
+    for item in kept:
+        try:
+            target_row, target_column = coordinate_to_tuple(str(item.get("targetCell")))
+        except (TypeError, ValueError):
+            continue
+        if name_columns and target_column not in name_columns:
+            continue
+        if not name_columns and not _is_person_name_label(item.get("semanticLabel")) \
+                and not _is_person_name_label(item.get("sourceLabel")):
+            continue
+        sheet_name, source_row, layout = _layout_for(item)
+        if not layout or source_row is None or not sheet_name:
+            continue
+        row_info = (layout.get("rows") or {}).get(source_row) or {}
+        if not row_info.get("hasName"):
+            continue
+        file_id = str((item.get("source") or {}).get("fileId") or "")
+        name_key = str(row_info.get("nameKey") or "")
+        row_anchor[target_row] = (file_id, sheet_name, source_row, name_key)
+
+    # If no identity write anchored the row, use the majority named source row on that target.
+    if not row_anchor:
+        votes: dict[int, dict[tuple[str, str, int, str], int]] = {}
+        for item in kept:
+            try:
+                target_row, _target_column = coordinate_to_tuple(str(item.get("targetCell")))
+            except (TypeError, ValueError):
+                continue
+            sheet_name, source_row, layout = _layout_for(item)
+            if not layout or source_row is None or not sheet_name:
+                continue
+            row_info = (layout.get("rows") or {}).get(source_row) or {}
+            if not row_info.get("hasName"):
+                continue
+            file_id = str((item.get("source") or {}).get("fileId") or "")
+            key = (file_id, sheet_name, source_row, str(row_info.get("nameKey") or ""))
+            bucket = votes.setdefault(target_row, {})
+            bucket[key] = bucket.get(key, 0) + 1
+        for target_row, bucket in votes.items():
+            winner = max(bucket.items(), key=lambda pair: (pair[1], -pair[0][2]))[0]
+            row_anchor[target_row] = winner
+
+    # Pass 3: drop writes that conflict with the anchored employee source row.
+    consistent: list[dict] = []
+    for item in kept:
+        try:
+            target_row, _target_column = coordinate_to_tuple(str(item.get("targetCell")))
+        except (TypeError, ValueError):
+            consistent.append(item)
+            continue
+        anchor = row_anchor.get(target_row)
+        sheet_name, source_row, layout = _layout_for(item)
+        if not anchor or not layout or source_row is None or not sheet_name:
+            consistent.append(item)
+            continue
+        file_id = str((item.get("source") or {}).get("fileId") or "")
+        anchor_file, anchor_sheet, anchor_row, _anchor_name = anchor
+        if file_id == anchor_file and sheet_name == anchor_sheet and source_row != anchor_row:
+            issues.append({
+                "code": "SOURCE_ROW_MISMATCH_SKIPPED",
+                "message": (
+                    f"Skipped {item.get('source', {}).get('location')}: target row {target_row} "
+                    f"is anchored to {anchor_sheet}!{anchor_row}, not mixed source rows"
+                ),
+                "sourceLabel": item.get("sourceLabel"),
+                "targetCell": item.get("targetCell"),
+                "sourceLocation": (item.get("source") or {}).get("location"),
+            })
+            continue
+        consistent.append(item)
+
+    # Pass 4: one employee identity -> one target row (keep the lowest row number).
+    claimed_names: dict[str, int] = {}
+    deduped: list[dict] = []
+    blocked_rows: set[int] = set()
+    for target_row, (_file_id, _sheet, _source_row, name_key) in sorted(row_anchor.items()):
+        if not name_key:
+            continue
+        if name_key in claimed_names:
+            blocked_rows.add(target_row)
+            issues.append({
+                "code": "DUPLICATE_EMPLOYEE_ROW_SKIPPED",
+                "message": (
+                    f"Skipped target row {target_row}: employee {name_key!r} already mapped "
+                    f"to row {claimed_names[name_key]}"
+                ),
+                "targetCell": f"A{target_row}",
+                "sourceLabel": "employee",
+            })
+        else:
+            claimed_names[name_key] = target_row
+
+    for item in consistent:
+        try:
+            target_row, _target_column = coordinate_to_tuple(str(item.get("targetCell")))
+        except (TypeError, ValueError):
+            deduped.append(item)
+            continue
+        if target_row in blocked_rows:
+            continue
+        deduped.append(item)
+
+    # Pass 5: drop amount-only target rows that never received a person name.
+    rows_with_name: set[int] = set()
+    rows_with_writes: set[int] = set()
+    for item in deduped:
+        try:
+            target_row, target_column = coordinate_to_tuple(str(item.get("targetCell")))
+        except (TypeError, ValueError):
+            continue
+        rows_with_writes.add(target_row)
+        if (name_columns and target_column in name_columns) or _is_person_name_label(
+            item.get("semanticLabel")
+        ) or _is_person_name_label(item.get("sourceLabel")):
+            rows_with_name.add(target_row)
+    # Only prune unnamed amount rows when the plan already identified at least one
+    # named employee. Otherwise single-field / PDF probes would be wiped out.
+    orphan_rows = (rows_with_writes - rows_with_name) if rows_with_name else set()
+    final_writes: list[dict] = []
+    for item in deduped:
+        try:
+            target_row, _target_column = coordinate_to_tuple(str(item.get("targetCell")))
+        except (TypeError, ValueError):
+            final_writes.append(item)
+            continue
+        if target_row in orphan_rows:
+            issues.append({
+                "code": "ORPHAN_EMPLOYEE_ROW_SKIPPED",
+                "message": (
+                    f"Skipped target row {target_row}: pay fields without an employee name"
+                ),
+                "sourceLabel": item.get("sourceLabel"),
+                "targetCell": item.get("targetCell"),
+            })
+            continue
+        final_writes.append(item)
+
+    # De-dupe repeated orphan/duplicate issue messages per target row.
+    compact_issues: list[dict] = []
+    seen_issue_keys: set[tuple[Any, ...]] = set()
+    for item in issues:
+        if not isinstance(item, dict):
+            continue
+        key = (item.get("code"), item.get("targetCell"), item.get("sourceLocation"), item.get("message"))
+        if key in seen_issue_keys:
+            continue
+        seen_issue_keys.add(key)
+        compact_issues.append(item)
+    resolved["writes"] = final_writes
+    resolved["issues"] = compact_issues
+
+    # Soft coverage signal: named source employees that never appeared on any kept target row.
+    covered_names: set[str] = set()
+    for item in final_writes:
+        sheet_name, source_row, layout = _layout_for(item)
+        if not layout or source_row is None:
+            continue
+        row_info = (layout.get("rows") or {}).get(source_row) or {}
+        name_key = str(row_info.get("nameKey") or "")
+        if name_key:
+            covered_names.add(name_key)
+    missing: list[str] = []
+    for _file_id, sheets in source_layouts.items():
+        if not isinstance(sheets, dict):
+            continue
+        for _sheet, layout in sheets.items():
+            if not isinstance(layout, dict) or not layout.get("nameColumns"):
+                continue
+            for row_info in (layout.get("rows") or {}).values():
+                if not isinstance(row_info, dict) or not row_info.get("hasName"):
+                    continue
+                name_key = str(row_info.get("nameKey") or "")
+                display = " / ".join(row_info.get("names") or []) or name_key
+                if name_key and name_key not in covered_names and display not in missing:
+                    missing.append(display)
+    if missing:
+        resolved["issues"].append({
+            "code": "MISSING_SOURCE_EMPLOYEES",
+            "message": (
+                "Source employees were not mapped to any kept -L row: "
+                + ", ".join(missing[:20])
+                + ("…" if len(missing) > 20 else "")
+            ),
+            "sourceLabel": "employee",
+            "targetCell": None,
+        })
+    return resolved
+
+
 def resolve_dynamic_template_fill_targets(plan: dict, template_manifest: dict, *,
                                           column_mappings: dict[str, str] | None = None) -> dict:
     """Resolve target columns in code while retaining the model-selected row.

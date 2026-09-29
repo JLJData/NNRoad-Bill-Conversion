@@ -8,7 +8,9 @@ from openpyxl import Workbook, load_workbook
 
 from ai_collection import (
     OpenAIResponsesProvider,
+    filter_inconsistent_employee_source_writes,
     inspect_last_l_sheet,
+    inspect_source_employee_layout,
     resolve_dynamic_template_fill_targets,
     validate_dynamic_template_fill_plan,
     validate_template_fill_plan,
@@ -440,6 +442,107 @@ class AITemplateFillTests(unittest.TestCase):
         self.assertEqual(resolved["writes"][0]["semanticLabel"], "Hours")
         validate_dynamic_template_fill_plan(resolved, manifest, self.documents)
         self.assertEqual(len(resolved["writes"]), 1)
+
+    def test_filters_summary_row_mixed_employee_and_duplicate_rows(self):
+        source = Path(self.temp.name) / "payroll-source.xlsx"
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Payroll calculation"
+        ws["A1"] = "CN Name"
+        ws["B1"] = "EN Name"
+        ws["C1"] = "Basic Salary"
+        ws["D1"] = "Service Fee"
+        # Row 2: nameless summary totals (the Coral Sea failure mode)
+        ws["C2"] = 72235
+        ws["D2"] = 12701
+        # Real employees
+        ws["A3"] = "王品涵"
+        ws["B3"] = "Pin Han"
+        ws["C3"] = 31135
+        ws["D3"] = 3701
+        ws["A4"] = "洪民翰"
+        ws["B4"] = "Min Han"
+        ws["C4"] = 8240
+        ws["D4"] = 3000
+        wb.save(source)
+        wb.close()
+
+        template = Path(self.temp.name) / "tw-l-template.xlsx"
+        tw = Workbook()
+        sheet = tw.active
+        sheet.title = "TW-L"
+        sheet["A1"] = "CN Name"
+        sheet["B1"] = "EN Name"
+        sheet["C1"] = "Basic Salary"
+        sheet["D1"] = "Service Fee"
+        tw.save(template)
+        tw.close()
+        manifest = inspect_last_l_sheet(template)
+
+        source_wb = load_workbook(source, data_only=True)
+        layout = inspect_source_employee_layout(source_wb["Payroll calculation"])
+        source_wb.close()
+        self.assertFalse(layout["rows"][2]["hasName"])
+        self.assertTrue(layout["rows"][3]["hasName"])
+        self.assertTrue(layout["rows"][4]["hasName"])
+
+        def write(target, label, value, location):
+            return {
+                "targetCell": target, "semanticLabel": label, "sourceLabel": label,
+                "valueType": "text" if isinstance(value, str) else "decimal",
+                "value": str(value), "confidence": 0.9,
+                "source": {
+                    "fileId": "source-1", "location": location, "page": None,
+                    "rawText": f"{label}: {value}",
+                },
+            }
+
+        dirty_plan = {
+            "planVersion": 3, "templateSha256": manifest["templateSha256"],
+            "sheetName": "TW-L", "model": "fixture", "automaticWriteEnabled": False,
+            "writes": [
+                # Target row 2: Min Han identity + summary amounts (must drop summary)
+                write("A2", "CN Name", "洪民翰", "Payroll calculation!A4"),
+                write("B2", "EN Name", "Min Han", "Payroll calculation!B4"),
+                write("C2", "Basic Salary", "72235", "Payroll calculation!C2"),
+                write("D2", "Service Fee", "12701", "Payroll calculation!D2"),
+                # Target row 3: correct Pin Han
+                write("A3", "CN Name", "王品涵", "Payroll calculation!A3"),
+                write("B3", "EN Name", "Pin Han", "Payroll calculation!B3"),
+                write("C3", "Basic Salary", "31135", "Payroll calculation!C3"),
+                write("D3", "Service Fee", "3701", "Payroll calculation!D3"),
+                # Target row 4: duplicate Pin Han (must drop whole row)
+                write("A4", "CN Name", "王品涵", "Payroll calculation!A3"),
+                write("B4", "EN Name", "Pin Han", "Payroll calculation!B3"),
+                write("C4", "Basic Salary", "31135", "Payroll calculation!C3"),
+                # Target row 5: orphan amounts without name (must drop)
+                write("C5", "Basic Salary", "8240", "Payroll calculation!C4"),
+                write("D5", "Service Fee", "3000", "Payroll calculation!D4"),
+            ],
+            "issues": [],
+        }
+        cleaned = filter_inconsistent_employee_source_writes(
+            dirty_plan,
+            source_layouts={"source-1": {"Payroll calculation": layout}},
+            template_manifest=manifest,
+        )
+        codes = {item["code"] for item in cleaned["issues"]}
+        self.assertIn("SUMMARY_SOURCE_ROW_SKIPPED", codes)
+        self.assertIn("DUPLICATE_EMPLOYEE_ROW_SKIPPED", codes)
+        self.assertIn("ORPHAN_EMPLOYEE_ROW_SKIPPED", codes)
+        cells = {item["targetCell"]: item["value"] for item in cleaned["writes"]}
+        self.assertEqual(cells.get("A2"), "洪民翰")
+        self.assertEqual(cells.get("B2"), "Min Han")
+        self.assertNotIn("C2", cells)
+        self.assertNotIn("D2", cells)
+        self.assertEqual(cells.get("A3"), "王品涵")
+        self.assertEqual(cells.get("C3"), "31135")
+        self.assertNotIn("A4", cells)
+        self.assertNotIn("C5", cells)
+
+        # After filter, remaining writes must still validate.
+        validate_dynamic_template_fill_plan(cleaned, manifest, self.documents)
+        self.assertGreaterEqual(len(cleaned["writes"]), 4)
 
 
 if __name__ == "__main__":
