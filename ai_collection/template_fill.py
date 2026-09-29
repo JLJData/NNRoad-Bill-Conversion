@@ -537,6 +537,61 @@ def seed_missing_employee_identity_writes(
     return annotate_missing_source_employees(resolved, source_layouts)
 
 
+def _name_token_set(names: Any) -> set[str]:
+    tokens: set[str] = set()
+    if not isinstance(names, (list, tuple)):
+        return tokens
+    for name in names:
+        norm = _normalized_semantic(name)
+        if norm:
+            tokens.add(norm)
+    return tokens
+
+
+def _prefilled_identity_rows(template_manifest: dict | None) -> dict[int, dict[str, Any]]:
+    """Person names already present on -L data rows (e.g. CODE identity anchoring)."""
+    if not isinstance(template_manifest, dict):
+        return {}
+    header_row = int(template_manifest.get("headerRow") or 1)
+    name_columns: set[int] = set()
+    for item in template_manifest.get("columnContexts") or []:
+        if isinstance(item, dict) and isinstance(item.get("column"), int) and (
+            _is_person_name_label(item.get("primaryLabel"))
+            or _is_person_name_label(item.get("pathLabel"))
+        ):
+            name_columns.add(int(item["column"]))
+    if not name_columns:
+        return {}
+    by_row: dict[int, list[str]] = {}
+    for item in template_manifest.get("nonemptyCells") or []:
+        if not isinstance(item, dict) or item.get("valueKind") == "formula":
+            continue
+        row = item.get("row")
+        column = item.get("column")
+        if not isinstance(row, int) or row <= header_row:
+            continue
+        if column not in name_columns:
+            continue
+        text = _clean_cell_text(item.get("value"))
+        if not text:
+            continue
+        by_row.setdefault(row, []).append(text)
+    result: dict[int, dict[str, Any]] = {}
+    for row, names in by_row.items():
+        tokens = _name_token_set(names)
+        if not tokens:
+            continue
+        result[row] = {
+            "names": names,
+            "tokens": tokens,
+            "nameKey": " / ".join(
+                _normalized_semantic(item) for item in names if _normalized_semantic(item)
+            ),
+            "displayName": " / ".join(names),
+        }
+    return result
+
+
 def filter_inconsistent_employee_source_writes(
     plan: dict,
     *,
@@ -564,6 +619,7 @@ def filter_inconsistent_employee_source_writes(
                 or _is_person_name_label(item.get("pathLabel"))
             ):
                 name_columns.add(int(item["column"]))
+    prefilled = _prefilled_identity_rows(template_manifest)
 
     def _layout_for(item: dict) -> tuple[str | None, int | None, dict | None]:
         source = item.get("source") if isinstance(item, dict) else None
@@ -602,13 +658,95 @@ def filter_inconsistent_employee_source_writes(
                 continue
         kept.append(item)
 
+    # Pass 1b: when -L rows already have CODE/template names, only accept source
+    # facts from the same person (name-token overlap). Prevents 王品涵 amounts on 楊文凱's row.
+    if prefilled:
+        identity_kept: list[dict] = []
+        for item in kept:
+            try:
+                target_row, _target_column = coordinate_to_tuple(str(item.get("targetCell")))
+            except (TypeError, ValueError):
+                identity_kept.append(item)
+                continue
+            pref = prefilled.get(target_row)
+            if not pref:
+                identity_kept.append(item)
+                continue
+            sheet_name, source_row, layout = _layout_for(item)
+            if not layout or source_row is None:
+                identity_kept.append(item)
+                continue
+            row_info = (layout.get("rows") or {}).get(source_row) or {}
+            source_tokens = _name_token_set(row_info.get("names") or [])
+            if not source_tokens:
+                identity_kept.append(item)
+                continue
+            if not (source_tokens & pref["tokens"]):
+                issues.append({
+                    "code": "CODE_IDENTITY_MISMATCH_SKIPPED",
+                    "message": (
+                        f"Skipped {item.get('source', {}).get('location')}: target row "
+                        f"{target_row} is anchored to {pref.get('displayName')!r}, but "
+                        f"source row belongs to "
+                        f"{' / '.join(row_info.get('names') or [])!r}"
+                    ),
+                    "sourceLabel": item.get("sourceLabel"),
+                    "targetCell": item.get("targetCell"),
+                    "sourceLocation": (item.get("source") or {}).get("location"),
+                })
+                continue
+            identity_kept.append(item)
+        kept = identity_kept
+
     # Pass 2: each target row may bind to at most one named source employee row.
-    # Prefer the source row used by person-name identity writes on that target row.
+    # Prefer CODE/template prefilled identity, then person-name writes, then majority vote.
     row_anchor: dict[int, tuple[str, str, int, str]] = {}
+
+    def _best_source_for_tokens(
+        tokens: set[str],
+    ) -> tuple[str, str, int, str] | None:
+        matches: list[tuple[int, str, str, int, str]] = []
+        for file_id, sheets in source_layouts.items():
+            if not isinstance(sheets, dict):
+                continue
+            for sheet_name, layout in sheets.items():
+                if not isinstance(layout, dict):
+                    continue
+                for source_row, row_info in (layout.get("rows") or {}).items():
+                    if not isinstance(row_info, dict) or not row_info.get("hasName"):
+                        continue
+                    source_tokens = _name_token_set(row_info.get("names") or [])
+                    overlap = len(tokens & source_tokens)
+                    if overlap <= 0:
+                        continue
+                    matches.append((
+                        overlap,
+                        str(file_id),
+                        str(sheet_name),
+                        int(source_row),
+                        str(row_info.get("nameKey") or ""),
+                    ))
+        if not matches:
+            return None
+        matches.sort(key=lambda item: (-item[0], item[3]))
+        best = matches[0]
+        if len(matches) > 1 and matches[1][0] == best[0] and (
+            matches[1][1], matches[1][2], matches[1][3]
+        ) != (best[1], best[2], best[3]):
+            return None
+        return best[1], best[2], best[3], best[4]
+
+    for target_row, pref in prefilled.items():
+        matched = _best_source_for_tokens(pref["tokens"])
+        if matched is not None:
+            row_anchor[target_row] = matched
+
     for item in kept:
         try:
             target_row, target_column = coordinate_to_tuple(str(item.get("targetCell")))
         except (TypeError, ValueError):
+            continue
+        if target_row in row_anchor:
             continue
         if name_columns and target_column not in name_columns:
             continue
@@ -626,26 +764,27 @@ def filter_inconsistent_employee_source_writes(
         row_anchor[target_row] = (file_id, sheet_name, source_row, name_key)
 
     # If no identity write anchored the row, use the majority named source row on that target.
-    if not row_anchor:
-        votes: dict[int, dict[tuple[str, str, int, str], int]] = {}
-        for item in kept:
-            try:
-                target_row, _target_column = coordinate_to_tuple(str(item.get("targetCell")))
-            except (TypeError, ValueError):
-                continue
-            sheet_name, source_row, layout = _layout_for(item)
-            if not layout or source_row is None or not sheet_name:
-                continue
-            row_info = (layout.get("rows") or {}).get(source_row) or {}
-            if not row_info.get("hasName"):
-                continue
-            file_id = str((item.get("source") or {}).get("fileId") or "")
-            key = (file_id, sheet_name, source_row, str(row_info.get("nameKey") or ""))
-            bucket = votes.setdefault(target_row, {})
-            bucket[key] = bucket.get(key, 0) + 1
-        for target_row, bucket in votes.items():
-            winner = max(bucket.items(), key=lambda pair: (pair[1], -pair[0][2]))[0]
-            row_anchor[target_row] = winner
+    unanchored_votes: dict[int, dict[tuple[str, str, int, str], int]] = {}
+    for item in kept:
+        try:
+            target_row, _target_column = coordinate_to_tuple(str(item.get("targetCell")))
+        except (TypeError, ValueError):
+            continue
+        if target_row in row_anchor:
+            continue
+        sheet_name, source_row, layout = _layout_for(item)
+        if not layout or source_row is None or not sheet_name:
+            continue
+        row_info = (layout.get("rows") or {}).get(source_row) or {}
+        if not row_info.get("hasName"):
+            continue
+        file_id = str((item.get("source") or {}).get("fileId") or "")
+        key = (file_id, sheet_name, source_row, str(row_info.get("nameKey") or ""))
+        bucket = unanchored_votes.setdefault(target_row, {})
+        bucket[key] = bucket.get(key, 0) + 1
+    for target_row, bucket in unanchored_votes.items():
+        winner = max(bucket.items(), key=lambda pair: (pair[1], -pair[0][2]))[0]
+        row_anchor[target_row] = winner
 
     # Pass 3: drop writes that conflict with the anchored employee source row.
     consistent: list[dict] = []
@@ -708,7 +847,8 @@ def filter_inconsistent_employee_source_writes(
         deduped.append(item)
 
     # Pass 5: drop amount-only target rows that never received a person name.
-    rows_with_name: set[int] = set()
+    # Prefilled CODE/template identities count as named rows.
+    rows_with_name: set[int] = set(prefilled)
     rows_with_writes: set[int] = set()
     for item in deduped:
         try:

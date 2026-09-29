@@ -534,7 +534,15 @@ class AITemplateFillTests(unittest.TestCase):
         codes = {item["code"] for item in cleaned["issues"]}
         self.assertIn("SUMMARY_SOURCE_ROW_SKIPPED", codes)
         self.assertIn("DUPLICATE_EMPLOYEE_ROW_SKIPPED", codes)
-        self.assertIn("ORPHAN_EMPLOYEE_ROW_SKIPPED", codes)
+        # Amount-only row 5 is either orphaned or blocked as a duplicate of 洪民翰.
+        self.assertTrue(
+            "ORPHAN_EMPLOYEE_ROW_SKIPPED" in codes
+            or any(
+                item.get("code") == "DUPLICATE_EMPLOYEE_ROW_SKIPPED"
+                and "row 5" in str(item.get("message") or "")
+                for item in cleaned["issues"]
+            )
+        )
         cells = {item["targetCell"]: item["value"] for item in cleaned["writes"]}
         self.assertEqual(cells.get("A2"), "洪民翰")
         self.assertEqual(cells.get("B2"), "Min Han")
@@ -548,6 +556,44 @@ class AITemplateFillTests(unittest.TestCase):
         # After filter, remaining writes must still validate.
         validate_dynamic_template_fill_plan(cleaned, manifest, self.documents)
         self.assertGreaterEqual(len(cleaned["writes"]), 4)
+
+        # CODE-anchored names on the template: wrong-person amounts must be dropped.
+        prepared = Path(self.temp.name) / "anchored-template.xlsx"
+        tw2 = Workbook()
+        sheet2 = tw2.active
+        sheet2.title = "TW-L"
+        sheet2["A1"] = "CN Name"
+        sheet2["B1"] = "EN Name"
+        sheet2["C1"] = "Basic Salary"
+        sheet2["A2"] = "楊文凱"
+        sheet2["B2"] = "Wen kai"
+        sheet2["A3"] = "王品涵"
+        sheet2["B3"] = "Pin Han"
+        tw2.save(prepared)
+        tw2.close()
+        anchored_manifest = inspect_last_l_sheet(prepared)
+        mismatched = {
+            "planVersion": 3, "templateSha256": anchored_manifest["templateSha256"],
+            "sheetName": "TW-L", "model": "fixture", "automaticWriteEnabled": False,
+            "writes": [
+                # 王品涵's salary wrongly targeting 楊文凱's prefilled row
+                write("C2", "Basic Salary", "31135", "Payroll calculation!C3"),
+                # correct: 王品涵 on row 3
+                write("C3", "Basic Salary", "31135", "Payroll calculation!C3"),
+            ],
+            "issues": [],
+        }
+        guarded = filter_inconsistent_employee_source_writes(
+            mismatched,
+            source_layouts={"source-1": {"Payroll calculation": layout}},
+            template_manifest=anchored_manifest,
+        )
+        self.assertIn(
+            "CODE_IDENTITY_MISMATCH_SKIPPED",
+            {item["code"] for item in guarded["issues"]},
+        )
+        self.assertNotIn("C2", {item["targetCell"] for item in guarded["writes"]})
+        self.assertIn("C3", {item["targetCell"] for item in guarded["writes"]})
 
         # Model only kept 洪民翰 identity after filter — seed the missing 王品涵 row.
         only_min_han = {

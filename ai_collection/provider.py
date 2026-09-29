@@ -494,23 +494,8 @@ class OpenAIResponsesProvider(AIProvider):
 
     @staticmethod
     def _template_has_prefilled_identities(template_manifest: dict) -> bool:
-        from .template_fill import _is_person_name_label
-        name_columns = {
-            int(item["column"])
-            for item in template_manifest.get("columnContexts") or []
-            if isinstance(item, dict) and isinstance(item.get("column"), int) and (
-                _is_person_name_label(item.get("primaryLabel"))
-                or _is_person_name_label(item.get("pathLabel"))
-            )
-        }
-        if not name_columns:
-            return False
-        for item in template_manifest.get("nonemptyCells") or []:
-            if not isinstance(item, dict) or item.get("valueKind") == "formula":
-                continue
-            if item.get("column") in name_columns and item.get("value") not in (None, ""):
-                return True
-        return False
+        from .template_fill import _prefilled_identity_rows
+        return bool(_prefilled_identity_rows(template_manifest))
 
     def _discover_source_employee_roster(self, documents: list[dict]) -> list[dict]:
         """Program-detect named employees from original XLSX bills before prompting."""
@@ -637,6 +622,7 @@ class OpenAIResponsesProvider(AIProvider):
                 "A source row is an employee only when CN Name or EN Name (or equivalent person-name column) is non-empty. Rows with amounts but blank names are totals/padding — never map them.",
                 "When codeAnchoredEmployees is present, person names are ALREADY written on those target rows. Do not rewrite names, do not reorder rows, and do not invent extra people.",
                 "Match each codeAnchoredEmployees targetRow to the same person in the original bill by CN/EN name, then fill the remaining blank non-formula pay fields on that exact row.",
+                "Never put employee A's pay fields on employee B's code-anchored row. The service will drop cross-person writes.",
                 "Bills commonly contain MULTIPLE employees. detectedSourceEmployees/codeAnchoredEmployees is the authoritative roster; fill every listed person.",
                 f"The current roster lists {employee_count} employee(s). Filling only one person when the roster has more is incorrect.",
                 "One employee maps to exactly one target -L row. Never duplicate the same person across multiple target rows.",
