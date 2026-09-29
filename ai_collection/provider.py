@@ -648,6 +648,7 @@ class OpenAIResponsesProvider(AIProvider):
                 "Treat qualifiers as meaningful: employee/employer, normal/adjustment, tier/category and similar suffixes are different fields.",
                 "If a source fact or target is ambiguous, report an issue and leave it unwritten.",
                 "Do not write section/group headers such as Pay Items into employee value cells.",
+                "Never write Service Fee / 服务费 (or any source/template column whose meaning is service fee). Leave those cells blank; they are out of scope for AI filling.",
             ],
             "runId": run_id,
             "period": period,

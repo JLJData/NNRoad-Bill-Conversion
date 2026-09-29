@@ -620,6 +620,41 @@ class AITemplateFillTests(unittest.TestCase):
         finally:
             wb2.close()
 
+    def test_service_fee_writes_are_skipped(self):
+        template = Path(self.temp.name) / "fee-template.xlsx"
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Fee-L"
+        ws["A1"] = "CN Name"
+        ws["B1"] = "Basic Salary"
+        ws["C1"] = "Service Fee"
+        wb.save(template)
+        wb.close()
+        manifest = inspect_last_l_sheet(template)
+        plan = {
+            "planVersion": 3, "templateSha256": manifest["templateSha256"],
+            "sheetName": "Fee-L", "model": "fixture", "automaticWriteEnabled": False,
+            "writes": [
+                {
+                    "targetCell": "B2", "semanticLabel": "Basic Salary", "sourceLabel": "Basic Salary",
+                    "valueType": "decimal", "value": "100", "confidence": 0.9,
+                    "source": {"fileId": "source-1", "location": "S!B2", "page": None,
+                               "rawText": "Basic Salary: 100"},
+                },
+                {
+                    "targetCell": "C2", "semanticLabel": "Service Fee", "sourceLabel": "Service Fee",
+                    "valueType": "decimal", "value": "3000", "confidence": 0.9,
+                    "source": {"fileId": "source-1", "location": "S!C2", "page": None,
+                               "rawText": "Service Fee: 3000"},
+                },
+            ],
+            "issues": [],
+        }
+        validate_dynamic_template_fill_plan(plan, manifest, self.documents)
+        self.assertEqual(len(plan["writes"]), 1)
+        self.assertEqual(plan["writes"][0]["targetCell"], "B2")
+        self.assertEqual(plan["issues"][0]["code"], "SERVICE_FEE_SKIPPED")
+
 
 if __name__ == "__main__":
     unittest.main()

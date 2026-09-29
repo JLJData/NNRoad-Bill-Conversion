@@ -211,6 +211,18 @@ def _is_person_name_label(label: Any) -> bool:
     return ("employee" in text and "name" in text) or text.endswith(" name")
 
 
+def _is_service_fee_label(label: Any) -> bool:
+    """Service Fee / 服务费 — AI must leave these blank; CODE owns them."""
+    text = " ".join(str(label or "").casefold().split())
+    if not text:
+        return False
+    # Avoid matching unrelated "fee" labels such as Expense Fee / Operation Fee alone.
+    if "service fee" in text or "服务费" in text:
+        return True
+    normalized = _normalized_semantic(text)
+    return normalized in {"servicefee", "服务费"} or normalized.endswith("servicefee")
+
+
 def _clean_cell_text(value: Any) -> str:
     if value is None or isinstance(value, bool):
         return ""
@@ -914,6 +926,20 @@ def resolve_dynamic_template_fill_targets(plan: dict, template_manifest: dict, *
             if isinstance(item, dict):
                 kept.append(item)
             continue
+        if (
+            _is_service_fee_label(item.get("sourceLabel"))
+            or _is_service_fee_label(item.get("semanticLabel"))
+        ):
+            issues.append({
+                "code": "SERVICE_FEE_SKIPPED",
+                "message": (
+                    f"Skipped Service Fee field {item.get('sourceLabel')!r}: "
+                    "AI comparison intentionally leaves Service Fee blank"
+                ),
+                "sourceLabel": item.get("sourceLabel"),
+                "targetCell": item.get("targetCell"),
+            })
+            continue
         try:
             row, column = coordinate_to_tuple(str(item.get("targetCell")))
         except (TypeError, ValueError):
@@ -921,6 +947,17 @@ def resolve_dynamic_template_fill_targets(plan: dict, template_manifest: dict, *
             continue
         configured = _configured_target(str(item["sourceLabel"]), column_mappings)
         lookup = configured or str(item["sourceLabel"])
+        if _is_service_fee_label(lookup):
+            issues.append({
+                "code": "SERVICE_FEE_SKIPPED",
+                "message": (
+                    f"Skipped Service Fee field {item.get('sourceLabel')!r}: "
+                    "AI comparison intentionally leaves Service Fee blank"
+                ),
+                "sourceLabel": item.get("sourceLabel"),
+                "targetCell": item.get("targetCell"),
+            })
+            continue
         context = _unambiguous_column(lookup, contexts)
         if context is None and _is_identity_label(lookup):
             # Identity fields need an exact/high-confidence column; never keep a shifted guess.
@@ -1166,6 +1203,22 @@ def validate_dynamic_template_fill_plan(plan: dict, template_manifest: dict, doc
         require(nonempty(semantic_label) and nonempty(source_label),
                 "Dynamic write semantic labels are required")
         path_label = context.get("pathLabel") or context.get("primaryLabel")
+        if (
+            _is_service_fee_label(source_label)
+            or _is_service_fee_label(semantic_label)
+            or _is_service_fee_label(path_label)
+            or _is_service_fee_label(context.get("primaryLabel"))
+        ):
+            issues.append({
+                "code": "SERVICE_FEE_SKIPPED",
+                "message": (
+                    f"Skipped Service Fee field {source_label!r}: "
+                    "AI comparison intentionally leaves Service Fee blank"
+                ),
+                "targetCell": cell,
+                "sourceLabel": source_label,
+            })
+            continue
         require(
             _normalized_semantic(semantic_label) == _normalized_semantic(context.get("primaryLabel"))
             or _normalized_semantic(semantic_label) == _normalized_semantic(path_label),
