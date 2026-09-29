@@ -585,12 +585,15 @@ class AITemplateFillTests(unittest.TestCase):
         ws["A1"] = "CN Name"
         ws["B1"] = "EN Name"
         ws["C1"] = "Basic Salary"
+        ws["D1"] = "Tax"
         ws["A2"] = "王品涵"
         ws["B2"] = "Pin Han"
         ws["C2"] = 31135
+        ws["D2"] = "=C2/2"
         ws["A3"] = "洪民翰"
         ws["B3"] = "Min Han"
         ws["C3"] = 8240
+        ws["D3"] = "=C3/2"
         wb.save(code)
         wb.close()
 
@@ -601,13 +604,16 @@ class AITemplateFillTests(unittest.TestCase):
         sheet["A1"] = "CN Name"
         sheet["B1"] = "EN Name"
         sheet["C1"] = "Basic Salary"
-        sheet["C2"] = "=A2"  # keep formulas untouched
+        sheet["D1"] = "Tax"
+        sheet["C2"] = "=A2"  # template-native formula stays
+        sheet["D2"] = "=B2"  # template-native formula stays
         tw.save(template)
         tw.close()
 
         prepared = Path(self.temp.name) / "prepared.xlsx"
         result = prepare_template_with_code_identities(template, code, prepared)
         self.assertEqual(result["employeeCount"], 2)
+        self.assertNotIn("formulaCopyCount", result)
         identity = extract_last_l_identity_rows(prepared)
         names = [item["displayName"] for item in identity["employees"]]
         self.assertEqual(names, ["王品涵 / Pin Han", "洪民翰 / Min Han"])
@@ -616,7 +622,9 @@ class AITemplateFillTests(unittest.TestCase):
             self.assertEqual(wb2["TW-L"]["A2"].value, "王品涵")
             self.assertEqual(wb2["TW-L"]["B3"].value, "Min Han")
             self.assertEqual(wb2["TW-L"]["C2"].value, "=A2")
+            self.assertEqual(wb2["TW-L"]["D2"].value, "=B2")  # not CODE's =C2/2
             self.assertIsNone(wb2["TW-L"]["C3"].value)
+            self.assertIsNone(wb2["TW-L"]["D3"].value)  # CODE formula not copied
         finally:
             wb2.close()
 
@@ -654,6 +662,52 @@ class AITemplateFillTests(unittest.TestCase):
         self.assertEqual(len(plan["writes"]), 1)
         self.assertEqual(plan["writes"][0]["targetCell"], "B2")
         self.assertEqual(plan["issues"][0]["code"], "SERVICE_FEE_SKIPPED")
+
+    def test_zero_and_formula_writes_are_skipped(self):
+        template = Path(self.temp.name) / "zero-formula-template.xlsx"
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "ZF-L"
+        ws["A1"] = "CN Name"
+        ws["B1"] = "Basic Salary"
+        ws["C1"] = "Tax"
+        ws["C2"] = "=B2/2"
+        wb.save(template)
+        wb.close()
+        manifest = inspect_last_l_sheet(template)
+        plan = {
+            "planVersion": 3, "templateSha256": manifest["templateSha256"],
+            "sheetName": "ZF-L", "model": "fixture", "automaticWriteEnabled": False,
+            "writes": [
+                {
+                    "targetCell": "B2", "semanticLabel": "Basic Salary", "sourceLabel": "Basic Salary",
+                    "valueType": "decimal", "value": "0", "confidence": 0.9,
+                    "source": {"fileId": "source-1", "location": "S!B2", "page": None,
+                               "rawText": "Basic Salary: 0"},
+                },
+                {
+                    "targetCell": "C2", "semanticLabel": "Tax", "sourceLabel": "Tax",
+                    "valueType": "decimal", "value": "50", "confidence": 0.9,
+                    "source": {"fileId": "source-1", "location": "S!C2", "page": None,
+                               "rawText": "Tax: 50"},
+                },
+                {
+                    "targetCell": "B3", "semanticLabel": "Basic Salary", "sourceLabel": "Basic Salary",
+                    "valueType": "decimal", "value": "100", "confidence": 0.9,
+                    "source": {"fileId": "source-1", "location": "S!B3", "page": None,
+                               "rawText": "Basic Salary: 100"},
+                },
+            ],
+            "issues": [],
+        }
+        resolved = resolve_dynamic_template_fill_targets(plan, manifest)
+        self.assertEqual([item["targetCell"] for item in resolved["writes"]], ["B3"])
+        codes = {item["code"] for item in resolved["issues"]}
+        self.assertIn("ZERO_EQUIV_BLANK_SKIPPED", codes)
+        self.assertIn("FORMULA_CELL_SKIPPED", codes)
+        validate_dynamic_template_fill_plan(resolved, manifest, self.documents)
+        self.assertEqual(len(resolved["writes"]), 1)
+        self.assertEqual(resolved["writes"][0]["targetCell"], "B3")
 
 
 if __name__ == "__main__":

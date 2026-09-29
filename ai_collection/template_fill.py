@@ -822,8 +822,8 @@ def prepare_template_with_code_identities(
 ) -> dict[str, Any]:
     """Step 1: copy the template and pre-fill -L person names from the CODE result.
 
-    Amounts are never copied from CODE. The prepared workbook becomes the AI base so
-    name cells are already occupied and the model only fills the remaining blanks.
+    Only identity names come from CODE. Template-native formulas stay as-is; literal
+    amounts are never copied. Blank and zero remain equivalent for later AI filling.
     """
     template = Path(template_path).resolve()
     code_path = Path(code_result_path).resolve()
@@ -902,6 +902,16 @@ def prepare_template_with_code_identities(
     }
 
 
+def _is_zero_like_write(item: dict) -> bool:
+    if item.get("valueType") != "decimal":
+        return False
+    try:
+        number = Decimal(decimal_text(item.get("value")))
+    except (ValidationError, InvalidOperation, ValueError, TypeError):
+        return False
+    return number == 0
+
+
 def resolve_dynamic_template_fill_targets(plan: dict, template_manifest: dict, *,
                                           column_mappings: dict[str, str] | None = None) -> dict:
     """Resolve target columns in code while retaining the model-selected row.
@@ -940,10 +950,37 @@ def resolve_dynamic_template_fill_targets(plan: dict, template_manifest: dict, *
                 "targetCell": item.get("targetCell"),
             })
             continue
+        if _is_zero_like_write(item):
+            issues.append({
+                "code": "ZERO_EQUIV_BLANK_SKIPPED",
+                "message": (
+                    f"Skipped zero value for {item.get('sourceLabel')!r}: "
+                    "blank and 0 are equivalent; leave the cell empty"
+                ),
+                "sourceLabel": item.get("sourceLabel"),
+                "targetCell": item.get("targetCell"),
+            })
+            continue
         try:
             row, column = coordinate_to_tuple(str(item.get("targetCell")))
         except (TypeError, ValueError):
             kept.append(item)
+            continue
+        target_occupied = next(
+            (cell for cell in (template_manifest.get("nonemptyCells") or [])
+             if isinstance(cell, dict) and cell.get("cell") == item.get("targetCell")),
+            None,
+        )
+        if target_occupied and target_occupied.get("valueKind") == "formula":
+            issues.append({
+                "code": "FORMULA_CELL_SKIPPED",
+                "message": (
+                    f"Skipped {item.get('sourceLabel')!r} → {item.get('targetCell')}: "
+                    "formula cells belong to the template and must not be AI-filled"
+                ),
+                "sourceLabel": item.get("sourceLabel"),
+                "targetCell": item.get("targetCell"),
+            })
             continue
         configured = _configured_target(str(item["sourceLabel"]), column_mappings)
         lookup = configured or str(item["sourceLabel"])
@@ -959,6 +996,36 @@ def resolve_dynamic_template_fill_targets(plan: dict, template_manifest: dict, *
             })
             continue
         context = _unambiguous_column(lookup, contexts)
+        if context is not None and _is_service_fee_label(context.get("primaryLabel")):
+            issues.append({
+                "code": "SERVICE_FEE_SKIPPED",
+                "message": (
+                    f"Skipped Service Fee field {item.get('sourceLabel')!r}: "
+                    "AI comparison intentionally leaves Service Fee blank"
+                ),
+                "sourceLabel": item.get("sourceLabel"),
+                "targetCell": item.get("targetCell"),
+            })
+            continue
+        # Never retarget into a template-native formula cell.
+        if context is not None:
+            candidate = get_column_letter(int(context["column"])) + str(row)
+            occupied = next(
+                (cell for cell in (template_manifest.get("nonemptyCells") or [])
+                 if isinstance(cell, dict) and cell.get("cell") == candidate),
+                None,
+            )
+            if occupied and occupied.get("valueKind") == "formula":
+                issues.append({
+                    "code": "FORMULA_CELL_SKIPPED",
+                    "message": (
+                        f"Skipped {item.get('sourceLabel')!r} → {candidate}: "
+                        "formula cells belong to the template and must not be AI-filled"
+                    ),
+                    "sourceLabel": item.get("sourceLabel"),
+                    "targetCell": candidate,
+                })
+                continue
         if context is None and _is_identity_label(lookup):
             # Identity fields need an exact/high-confidence column; never keep a shifted guess.
             scored = sorted(
@@ -1194,7 +1261,20 @@ def validate_dynamic_template_fill_plan(plan: dict, template_manifest: dict, doc
             })
             continue
         seen.add(cell)
-        require(cell not in occupied, "Cannot overwrite a non-empty template cell")
+        existing = occupied.get(cell)
+        if existing is not None:
+            if existing.get("valueKind") == "formula":
+                issues.append({
+                    "code": "FORMULA_CELL_SKIPPED",
+                    "message": (
+                        f"Skipped write to {cell}: formula cells belong to the template "
+                        "and must not be AI-filled"
+                    ),
+                    "targetCell": cell,
+                    "sourceLabel": item.get("sourceLabel"),
+                })
+                continue
+            raise ValidationError("Cannot overwrite a non-empty template cell")
         context = column_contexts.get(column)
         require(context is not None and nonempty(context.get("primaryLabel")),
                 "Dynamic target column has no unambiguous semantic label")
@@ -1214,6 +1294,17 @@ def validate_dynamic_template_fill_plan(plan: dict, template_manifest: dict, doc
                 "message": (
                     f"Skipped Service Fee field {source_label!r}: "
                     "AI comparison intentionally leaves Service Fee blank"
+                ),
+                "targetCell": cell,
+                "sourceLabel": source_label,
+            })
+            continue
+        if _is_zero_like_write(item):
+            issues.append({
+                "code": "ZERO_EQUIV_BLANK_SKIPPED",
+                "message": (
+                    f"Skipped zero value for {source_label!r}: "
+                    "blank and 0 are equivalent; leave the cell empty"
                 ),
                 "targetCell": cell,
                 "sourceLabel": source_label,
