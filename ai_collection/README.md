@@ -25,7 +25,8 @@ Provider 返回的每个写入值须包含原始文件 ID、位置和原文；�
 - `inspect_source_employee_layout` + `filter_inconsistent_employee_source_writes`：程序侧识别源表姓名列，丢弃无名汇总/合计行写入；同一目标行不得混用不同源员工行；同一员工不得占多行；有金额无姓名的目标行在已识别到其他员工后会被丢弃。CODE/母版已预填的人名会与源表同名行硬对齐，错人金额整笔丢弃。
 - `list_named_source_employees` / `seed_missing_employee_identity_writes`：请求前把源表花名册塞进提示；模型漏人时程序按源姓名格自动补 CN/EN 到空闲 `-L` 行，并在仍不完整时强制重试。
 - **两步填表（推荐）**：Office 传入 CODE 正式结果后，`prepare_template_with_code_identities` 只把 CODE `-L` 的人名写入母版副本（不拷贝金额/公式）；母版自带公式保留，模型再按已锚定行去原始账单填写其余空白格。公式格与数值 0（视同空）都不由 AI 写入。
-- Service Fee / 服务费：提示词与校验都会跳过，AI 对比不填该列。
+- Service Fee / 服务费：提示词与校验都会跳过，AI 对比不填该列；也不得把跳过的费用金额挪到相邻费用列。
+- 相近列互串：通用提示要求按完整标签与限定词（EE/ER、调整/基数等）匹配，模糊则留空；不绑定某一供应商字段名。
 - 动态计划首次校验不合格时会把原因交给模型完整重做一次，第二次仍不合格则不生成错误工作簿。
 - `write_dynamic_ai_template_copy`：程序校验值、来源和目标后，只写母版副本中的空白目标格，拒绝覆盖公式、非空格、过期母版和已有输出文件。
 
