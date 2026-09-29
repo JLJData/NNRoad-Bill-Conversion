@@ -8,10 +8,14 @@ from openpyxl import Workbook, load_workbook
 
 from ai_collection import (
     OpenAIResponsesProvider,
+    extract_last_l_identity_rows,
     filter_inconsistent_employee_source_writes,
     inspect_last_l_sheet,
     inspect_source_employee_layout,
+    list_named_source_employees,
+    prepare_template_with_code_identities,
     resolve_dynamic_template_fill_targets,
+    seed_missing_employee_identity_writes,
     validate_dynamic_template_fill_plan,
     validate_template_fill_plan,
     write_ai_template_copy,
@@ -249,6 +253,7 @@ class AITemplateFillTests(unittest.TestCase):
         self.assertNotIn("schema", prompt)
         self.assertIn("no fixed payroll field list", prompt["rules"][0])
         self.assertEqual(prompt["columnMappings"], {"Vendor Basic": "Basic Salary"})
+        self.assertEqual(prompt["detectedSourceEmployees"], [])
 
     def test_openai_dynamic_plan_retries_after_evidence_rejection(self):
         invalid = {
@@ -543,6 +548,77 @@ class AITemplateFillTests(unittest.TestCase):
         # After filter, remaining writes must still validate.
         validate_dynamic_template_fill_plan(cleaned, manifest, self.documents)
         self.assertGreaterEqual(len(cleaned["writes"]), 4)
+
+        # Model only kept 洪民翰 identity after filter — seed the missing 王品涵 row.
+        only_min_han = {
+            "planVersion": 3, "templateSha256": manifest["templateSha256"],
+            "sheetName": "TW-L", "model": "fixture", "automaticWriteEnabled": False,
+            "writes": [
+                write("A2", "CN Name", "洪民翰", "Payroll calculation!A4"),
+                write("B2", "EN Name", "Min Han", "Payroll calculation!B4"),
+                write("C2", "Basic Salary", "8240", "Payroll calculation!C4"),
+            ],
+            "issues": [],
+        }
+        layouts = {"source-1": {"Payroll calculation": layout}}
+        self.assertEqual(len(list_named_source_employees(layouts)), 2)
+        seeded = seed_missing_employee_identity_writes(only_min_han, manifest, layouts)
+        seeded_names = {
+            item["value"] for item in seeded["writes"]
+            if item.get("semanticLabel") in {"CN Name", "EN Name"}
+        }
+        self.assertIn("洪民翰", seeded_names)
+        self.assertIn("王品涵", seeded_names)
+        self.assertIn("Pin Han", seeded_names)
+        self.assertTrue(any(
+            item.get("code") == "EMPLOYEE_IDENTITY_SEEDED" for item in seeded["issues"]
+        ))
+        self.assertFalse(any(
+            item.get("code") == "MISSING_SOURCE_EMPLOYEES" for item in seeded["issues"]
+        ))
+
+    def test_prepare_template_with_code_identities_only_copies_names(self):
+        code = Path(self.temp.name) / "code-result.xlsx"
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "TW-L"
+        ws["A1"] = "CN Name"
+        ws["B1"] = "EN Name"
+        ws["C1"] = "Basic Salary"
+        ws["A2"] = "王品涵"
+        ws["B2"] = "Pin Han"
+        ws["C2"] = 31135
+        ws["A3"] = "洪民翰"
+        ws["B3"] = "Min Han"
+        ws["C3"] = 8240
+        wb.save(code)
+        wb.close()
+
+        template = Path(self.temp.name) / "blank-template.xlsx"
+        tw = Workbook()
+        sheet = tw.active
+        sheet.title = "TW-L"
+        sheet["A1"] = "CN Name"
+        sheet["B1"] = "EN Name"
+        sheet["C1"] = "Basic Salary"
+        sheet["C2"] = "=A2"  # keep formulas untouched
+        tw.save(template)
+        tw.close()
+
+        prepared = Path(self.temp.name) / "prepared.xlsx"
+        result = prepare_template_with_code_identities(template, code, prepared)
+        self.assertEqual(result["employeeCount"], 2)
+        identity = extract_last_l_identity_rows(prepared)
+        names = [item["displayName"] for item in identity["employees"]]
+        self.assertEqual(names, ["王品涵 / Pin Han", "洪民翰 / Min Han"])
+        wb2 = load_workbook(prepared, data_only=False)
+        try:
+            self.assertEqual(wb2["TW-L"]["A2"].value, "王品涵")
+            self.assertEqual(wb2["TW-L"]["B3"].value, "Min Han")
+            self.assertEqual(wb2["TW-L"]["C2"].value, "=A2")
+            self.assertIsNone(wb2["TW-L"]["C3"].value)
+        finally:
+            wb2.close()
 
 
 if __name__ == "__main__":

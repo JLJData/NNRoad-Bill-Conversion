@@ -237,13 +237,14 @@ def inspect_source_employee_layout(ws) -> dict[str, Any]:
     Nameless numeric rows (common supplier subtotal/summary rows) are not employees.
     """
     header_row, contexts = _column_contexts(ws)
-    name_columns = [
-        int(item["column"]) for item in contexts
+    name_contexts = [
+        item for item in contexts
         if _is_person_name_label(item.get("primaryLabel")) or _is_person_name_label(item.get("pathLabel"))
     ]
+    name_columns = [int(item["column"]) for item in name_contexts]
     # Prefer exact CN/EN name columns when present; avoid solitary vague "Name".
     precise = [
-        int(item["column"]) for item in contexts
+        item for item in name_contexts
         if _normalized_semantic(item.get("primaryLabel")) in {
             "cnname", "enname", "姓名", "中文名", "英文名", "employeename", "eename",
         }
@@ -251,25 +252,277 @@ def inspect_source_employee_layout(ws) -> dict[str, Any]:
         or "en name" in " ".join(str(item.get("primaryLabel") or "").casefold().split())
     ]
     if precise:
-        name_columns = precise
+        name_contexts = precise
+        name_columns = [int(item["column"]) for item in name_contexts]
+    label_by_column = {
+        int(item["column"]): str(item.get("primaryLabel") or item.get("pathLabel") or "")
+        for item in name_contexts
+    }
     rows: dict[int, dict[str, Any]] = {}
     max_row = min(max(1, ws.max_row or 1), header_row + 500)
     for row in range(header_row + 1, max_row + 1):
         names = []
+        fields = []
         for column in name_columns:
             text = _clean_cell_text(ws.cell(row, column).value)
-            if text:
-                names.append(text)
+            if not text:
+                continue
+            names.append(text)
+            fields.append({
+                "column": column,
+                "coordinate": get_column_letter(column) + str(row),
+                "label": label_by_column.get(column) or "",
+                "value": text,
+            })
         rows[row] = {
             "hasName": bool(names),
             "names": names,
             "nameKey": " / ".join(_normalized_semantic(item) for item in names if _normalized_semantic(item)),
+            "fields": fields,
         }
     return {
         "headerRow": header_row,
         "nameColumns": name_columns,
         "rows": rows,
     }
+
+
+def list_named_source_employees(source_layouts: dict[str, dict[str, dict[str, Any]]]) -> list[dict[str, Any]]:
+    """Flatten program-detected named employees across original XLSX sheets."""
+    employees: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for file_id, sheets in source_layouts.items():
+        if not isinstance(sheets, dict):
+            continue
+        for sheet_name, layout in sheets.items():
+            if not isinstance(layout, dict) or not layout.get("nameColumns"):
+                continue
+            for source_row, row_info in sorted((layout.get("rows") or {}).items()):
+                if not isinstance(row_info, dict) or not row_info.get("hasName"):
+                    continue
+                name_key = str(row_info.get("nameKey") or "")
+                if not name_key or name_key in seen:
+                    continue
+                seen.add(name_key)
+                employees.append({
+                    "fileId": str(file_id),
+                    "sheetName": str(sheet_name),
+                    "sourceRow": int(source_row),
+                    "names": list(row_info.get("names") or []),
+                    "nameKey": name_key,
+                    "displayName": " / ".join(row_info.get("names") or []) or name_key,
+                    "fields": copy.deepcopy(row_info.get("fields") or []),
+                })
+    return employees
+
+
+def _missing_employee_displays(plan: dict, source_layouts: dict[str, dict[str, dict[str, Any]]]) -> list[str]:
+    covered_names: set[str] = set()
+    for item in plan.get("writes") or []:
+        if not isinstance(item, dict):
+            continue
+        source = item.get("source") if isinstance(item.get("source"), dict) else {}
+        parsed = _parse_sheet_coordinate(source.get("location"))
+        if not parsed:
+            continue
+        sheet_name, coordinate = parsed
+        try:
+            source_row, _column = coordinate_to_tuple(coordinate)
+        except (TypeError, ValueError):
+            continue
+        layout = (source_layouts.get(str(source.get("fileId"))) or {}).get(sheet_name)
+        if not layout:
+            continue
+        row_info = (layout.get("rows") or {}).get(source_row) or {}
+        name_key = str(row_info.get("nameKey") or "")
+        if name_key:
+            covered_names.add(name_key)
+    missing: list[str] = []
+    for employee in list_named_source_employees(source_layouts):
+        if employee["nameKey"] not in covered_names and employee["displayName"] not in missing:
+            missing.append(employee["displayName"])
+    return missing
+
+
+def annotate_missing_source_employees(
+    plan: dict,
+    source_layouts: dict[str, dict[str, dict[str, Any]]],
+) -> dict:
+    """Replace MISSING_SOURCE_EMPLOYEES issues based on current writes vs source roster."""
+    resolved = copy.deepcopy(plan)
+    issues = [
+        item for item in (resolved.get("issues") or [])
+        if isinstance(item, dict) and item.get("code") != "MISSING_SOURCE_EMPLOYEES"
+    ]
+    missing = _missing_employee_displays(resolved, source_layouts)
+    if missing:
+        issues.append({
+            "code": "MISSING_SOURCE_EMPLOYEES",
+            "message": (
+                "Source employees were not mapped to any kept -L row: "
+                + ", ".join(missing[:20])
+                + ("…" if len(missing) > 20 else "")
+            ),
+            "sourceLabel": "employee",
+            "targetCell": None,
+        })
+    resolved["issues"] = issues
+    return resolved
+
+
+def seed_missing_employee_identity_writes(
+    plan: dict,
+    template_manifest: dict,
+    source_layouts: dict[str, dict[str, dict[str, Any]]],
+) -> dict:
+    """Programmatically place CN/EN names for source employees the model omitted.
+
+    Amount fields stay for the model; identity rows must not depend on the model
+    noticing that the bill has multiple people.
+    """
+    resolved = copy.deepcopy(plan)
+    writes = resolved.setdefault("writes", [])
+    if not isinstance(writes, list):
+        resolved["writes"] = []
+        writes = resolved["writes"]
+    issues = resolved.setdefault("issues", [])
+    if not isinstance(issues, list):
+        issues = []
+        resolved["issues"] = issues
+
+    contexts = [
+        item for item in template_manifest.get("columnContexts") or []
+        if isinstance(item, dict) and isinstance(item.get("column"), int)
+    ]
+    target_name_contexts = [
+        item for item in contexts
+        if _is_person_name_label(item.get("primaryLabel")) or _is_person_name_label(item.get("pathLabel"))
+    ]
+    if not target_name_contexts:
+        return annotate_missing_source_employees(resolved, source_layouts)
+
+    occupied_cells = {
+        str(item.get("cell"))
+        for item in template_manifest.get("nonemptyCells") or []
+        if isinstance(item, dict) and nonempty(item.get("cell"))
+    }
+    formula_rows = {
+        int(item["row"])
+        for item in template_manifest.get("nonemptyCells") or []
+        if isinstance(item, dict) and item.get("valueKind") == "formula" and isinstance(item.get("row"), int)
+    }
+    for item in writes:
+        if isinstance(item, dict) and nonempty(item.get("targetCell")):
+            occupied_cells.add(str(item["targetCell"]))
+
+    header_row = int(template_manifest.get("headerRow") or 1)
+    max_column = int(template_manifest.get("maxColumn") or 1)
+    max_row = int(template_manifest.get("maxRow") or header_row) + 2000
+
+    def _row_free(row: int) -> bool:
+        if row in formula_rows:
+            return False
+        for ctx in target_name_contexts:
+            cell = get_column_letter(int(ctx["column"])) + str(row)
+            if cell in occupied_cells:
+                return False
+        return True
+
+    covered_rows: dict[str, int] = {}
+    for item in writes:
+        if not isinstance(item, dict):
+            continue
+        source = item.get("source") if isinstance(item.get("source"), dict) else {}
+        parsed = _parse_sheet_coordinate(source.get("location"))
+        if not parsed:
+            continue
+        sheet_name, coordinate = parsed
+        try:
+            source_row, _column = coordinate_to_tuple(coordinate)
+            target_row, _target_column = coordinate_to_tuple(str(item.get("targetCell")))
+        except (TypeError, ValueError):
+            continue
+        layout = (source_layouts.get(str(source.get("fileId"))) or {}).get(sheet_name)
+        if not layout:
+            continue
+        row_info = (layout.get("rows") or {}).get(source_row) or {}
+        name_key = str(row_info.get("nameKey") or "")
+        if name_key and name_key not in covered_rows:
+            covered_rows[name_key] = target_row
+
+    next_row = header_row + 1
+    seeded = 0
+    for employee in list_named_source_employees(source_layouts):
+        if employee["nameKey"] in covered_rows:
+            target_row = covered_rows[employee["nameKey"]]
+        else:
+            while next_row <= max_row and not _row_free(next_row):
+                next_row += 1
+            if next_row > max_row:
+                issues.append({
+                    "code": "EMPLOYEE_ROW_OVERFLOW",
+                    "message": f"No free -L row left for employee {employee['displayName']}",
+                    "sourceLabel": "employee",
+                    "targetCell": None,
+                })
+                break
+            target_row = next_row
+            next_row += 1
+        wrote_for_employee = False
+        for field in employee.get("fields") or []:
+            source_label = str(field.get("label") or "")
+            value = str(field.get("value") or "")
+            if not source_label or not value:
+                continue
+            context = _unambiguous_column(source_label, target_name_contexts)
+            if context is None:
+                scored = sorted(
+                    ((_context_score(source_label, ctx), ctx) for ctx in target_name_contexts),
+                    key=lambda pair: pair[0], reverse=True,
+                )
+                if scored and scored[0][0] >= 0.85:
+                    context = scored[0][1]
+            if context is None:
+                continue
+            target_cell = get_column_letter(int(context["column"])) + str(target_row)
+            if target_cell in occupied_cells or int(context["column"]) > max_column:
+                continue
+            location = f"{employee['sheetName']}!{field['coordinate']}"
+            writes.append({
+                "targetCell": target_cell,
+                "semanticLabel": context["primaryLabel"],
+                "sourceLabel": source_label,
+                "valueType": "text",
+                "value": value,
+                "confidence": 1.0,
+                "source": {
+                    "fileId": employee["fileId"],
+                    "location": location,
+                    "page": None,
+                    "rawText": f"{source_label}: {value}",
+                },
+            })
+            occupied_cells.add(target_cell)
+            seeded += 1
+            wrote_for_employee = True
+        covered_rows[employee["nameKey"]] = target_row
+        if wrote_for_employee:
+            issues.append({
+                "code": "EMPLOYEE_IDENTITY_SEEDED",
+                "message": (
+                    f"Seeded identity for {employee['displayName']} onto -L row {target_row} "
+                    f"from {employee['sheetName']}!{employee['sourceRow']}"
+                ),
+                "sourceLabel": "employee",
+                "targetCell": get_column_letter(int(target_name_contexts[0]["column"])) + str(target_row),
+            })
+    if seeded:
+        resolved["issues"] = [
+            item for item in issues if item.get("code") != "MISSING_SOURCE_EMPLOYEES"
+        ]
+    else:
+        resolved["issues"] = issues
+    return annotate_missing_source_employees(resolved, source_layouts)
 
 
 def filter_inconsistent_employee_source_writes(
@@ -490,43 +743,151 @@ def filter_inconsistent_employee_source_writes(
         compact_issues.append(item)
     resolved["writes"] = final_writes
     resolved["issues"] = compact_issues
+    return annotate_missing_source_employees(resolved, source_layouts)
 
-    # Soft coverage signal: named source employees that never appeared on any kept target row.
-    covered_names: set[str] = set()
-    for item in final_writes:
-        sheet_name, source_row, layout = _layout_for(item)
-        if not layout or source_row is None:
-            continue
-        row_info = (layout.get("rows") or {}).get(source_row) or {}
-        name_key = str(row_info.get("nameKey") or "")
-        if name_key:
-            covered_names.add(name_key)
-    missing: list[str] = []
-    for _file_id, sheets in source_layouts.items():
-        if not isinstance(sheets, dict):
-            continue
-        for _sheet, layout in sheets.items():
-            if not isinstance(layout, dict) or not layout.get("nameColumns"):
-                continue
-            for row_info in (layout.get("rows") or {}).values():
-                if not isinstance(row_info, dict) or not row_info.get("hasName"):
+
+def extract_last_l_identity_rows(workbook_path: str | Path) -> dict[str, Any]:
+    """Read person-name cells from a workbook's last ``-L`` sheet (typically CODE output)."""
+    path = Path(workbook_path)
+    require(path.is_file(), "Identity source workbook is missing")
+    manifest = inspect_last_l_sheet(path)
+    name_contexts = [
+        item for item in manifest.get("columnContexts") or []
+        if isinstance(item, dict) and isinstance(item.get("column"), int) and (
+            _is_person_name_label(item.get("primaryLabel"))
+            or _is_person_name_label(item.get("pathLabel"))
+        )
+    ]
+    require(bool(name_contexts), "CODE/result -L sheet has no person-name columns")
+    wb = load_workbook(path, data_only=True, read_only=False, keep_links=False)
+    try:
+        ws = wb[manifest["sheetName"]]
+        header_row = int(manifest["headerRow"])
+        rows: list[dict[str, Any]] = []
+        max_row = min(max(1, ws.max_row or 1), header_row + 500)
+        for row in range(header_row + 1, max_row + 1):
+            fields = []
+            names = []
+            for context in name_contexts:
+                column = int(context["column"])
+                text = _clean_cell_text(ws.cell(row, column).value)
+                if not text:
                     continue
-                name_key = str(row_info.get("nameKey") or "")
-                display = " / ".join(row_info.get("names") or []) or name_key
-                if name_key and name_key not in covered_names and display not in missing:
-                    missing.append(display)
-    if missing:
-        resolved["issues"].append({
-            "code": "MISSING_SOURCE_EMPLOYEES",
-            "message": (
-                "Source employees were not mapped to any kept -L row: "
-                + ", ".join(missing[:20])
-                + ("…" if len(missing) > 20 else "")
-            ),
-            "sourceLabel": "employee",
-            "targetCell": None,
-        })
-    return resolved
+                label = str(context.get("primaryLabel") or "")
+                names.append(text)
+                fields.append({
+                    "column": column,
+                    "columnLetter": get_column_letter(column),
+                    "label": label,
+                    "value": text,
+                    "cell": get_column_letter(column) + str(row),
+                })
+            if not fields:
+                continue
+            rows.append({
+                "row": row,
+                "names": names,
+                "displayName": " / ".join(names),
+                "nameKey": " / ".join(
+                    _normalized_semantic(item) for item in names if _normalized_semantic(item)
+                ),
+                "fields": fields,
+            })
+        return {
+            "sheetName": manifest["sheetName"],
+            "headerRow": header_row,
+            "nameColumns": [int(item["column"]) for item in name_contexts],
+            "employees": rows,
+        }
+    finally:
+        wb.close()
+
+
+def prepare_template_with_code_identities(
+    template_path: str | Path,
+    code_result_path: str | Path,
+    output_path: str | Path,
+) -> dict[str, Any]:
+    """Step 1: copy the template and pre-fill -L person names from the CODE result.
+
+    Amounts are never copied from CODE. The prepared workbook becomes the AI base so
+    name cells are already occupied and the model only fills the remaining blanks.
+    """
+    template = Path(template_path).resolve()
+    code_path = Path(code_result_path).resolve()
+    output = Path(output_path).resolve()
+    require(template.is_file(), "Template is missing")
+    require(code_path.is_file(), "CODE result is missing")
+    require(template != output, "Prepared template must not overwrite the source template")
+    require(not output.exists(), "Prepared template output already exists")
+    identity = extract_last_l_identity_rows(code_path)
+    employees = identity.get("employees") or []
+    require(bool(employees), "CODE result -L sheet has no employee names to anchor")
+    template_manifest = inspect_last_l_sheet(template)
+    require(
+        template_manifest["sheetName"] == identity["sheetName"],
+        "CODE result and template last -L sheet names differ",
+    )
+    output.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(template, output)
+    written = 0
+    anchored: list[dict[str, Any]] = []
+    try:
+        wb = load_workbook(output, data_only=False, read_only=False, keep_links=False)
+        try:
+            ws = wb[template_manifest["sheetName"]]
+            occupied = {
+                str(item.get("cell"))
+                for item in template_manifest.get("nonemptyCells") or []
+                if isinstance(item, dict) and nonempty(item.get("cell"))
+            }
+            for employee in employees:
+                row = int(employee["row"])
+                row_fields = []
+                for field in employee.get("fields") or []:
+                    cell_ref = get_column_letter(int(field["column"])) + str(row)
+                    if cell_ref in occupied:
+                        continue
+                    cell = ws[cell_ref]
+                    if isinstance(cell, MergedCell) or cell.data_type == "f" or cell.value is not None:
+                        continue
+                    cell.value = str(field["value"])
+                    occupied.add(cell_ref)
+                    written += 1
+                    row_fields.append({
+                        "column": int(field["column"]),
+                        "columnLetter": get_column_letter(int(field["column"])),
+                        "label": field.get("label"),
+                        "value": str(field["value"]),
+                        "cell": cell_ref,
+                    })
+                if row_fields:
+                    anchored.append({
+                        "row": row,
+                        "displayName": employee.get("displayName"),
+                        "names": list(employee.get("names") or []),
+                        "fields": row_fields,
+                    })
+            require(bool(anchored), "No CODE identity cells could be written into the template")
+            for sheet in wb.worksheets:
+                sheet.sheet_view.tabSelected = False
+            wb.active = template_manifest["sheetIndex"]
+            ws.sheet_view.tabSelected = True
+            wb.save(output)
+        finally:
+            wb.close()
+    except Exception:
+        if output.exists():
+            output.unlink()
+        raise
+    return {
+        "sheetName": identity["sheetName"],
+        "employeeCount": len(anchored),
+        "writeCount": written,
+        "employees": anchored,
+        "outputPath": str(output),
+        "outputSha256": _sha256(output.read_bytes()),
+    }
 
 
 def resolve_dynamic_template_fill_targets(plan: dict, template_manifest: dict, *,

@@ -449,15 +449,92 @@ class OpenAIResponsesProvider(AIProvider):
                     item["value"] = actual_text
                 item["sourceLabel"] = label
                 source["rawText"] = f"{label}: {actual_text}"
-            return filter_inconsistent_employee_source_writes(
+            # Also inspect every sheet so omitted employees are still discoverable.
+            for document in documents:
+                try:
+                    path = Path(self._document_resolver(copy.deepcopy(document))).resolve()
+                except Exception:
+                    continue
+                if path.suffix.lower() not in {".xlsx", ".xlsm"}:
+                    continue
+                if document["fileId"] not in workbooks:
+                    workbooks[document["fileId"]] = (
+                        load_workbook(path, data_only=False, read_only=False, keep_links=False),
+                        load_workbook(path, data_only=True, read_only=False, keep_links=False),
+                    )
+                formula_wb, _value_wb = workbooks[document["fileId"]]
+                layouts = source_layouts.setdefault(document["fileId"], {})
+                for sheet_name in formula_wb.sheetnames:
+                    if sheet_name not in layouts:
+                        layouts[sheet_name] = inspect_source_employee_layout(formula_wb[sheet_name])
+            filtered = filter_inconsistent_employee_source_writes(
                 trusted,
                 source_layouts=source_layouts,
                 template_manifest=template_manifest,
             )
+            if template_manifest is not None and self._template_has_prefilled_identities(template_manifest):
+                # CODE (or another step) already anchored person names on -L.
+                # Keep summary-row filters, but do not invent extra identity rows / missing-name issues.
+                issues = [
+                    item for item in (filtered.get("issues") or [])
+                    if not (isinstance(item, dict) and item.get("code") == "MISSING_SOURCE_EMPLOYEES")
+                ]
+                filtered["issues"] = issues
+                return filtered
+            if template_manifest is not None:
+                from .template_fill import seed_missing_employee_identity_writes
+                return seed_missing_employee_identity_writes(
+                    filtered, template_manifest, source_layouts,
+                )
+            return filtered
         finally:
             for formula_wb, value_wb in workbooks.values():
                 formula_wb.close()
                 value_wb.close()
+
+    @staticmethod
+    def _template_has_prefilled_identities(template_manifest: dict) -> bool:
+        from .template_fill import _is_person_name_label
+        name_columns = {
+            int(item["column"])
+            for item in template_manifest.get("columnContexts") or []
+            if isinstance(item, dict) and isinstance(item.get("column"), int) and (
+                _is_person_name_label(item.get("primaryLabel"))
+                or _is_person_name_label(item.get("pathLabel"))
+            )
+        }
+        if not name_columns:
+            return False
+        for item in template_manifest.get("nonemptyCells") or []:
+            if not isinstance(item, dict) or item.get("valueKind") == "formula":
+                continue
+            if item.get("column") in name_columns and item.get("value") not in (None, ""):
+                return True
+        return False
+
+    def _discover_source_employee_roster(self, documents: list[dict]) -> list[dict]:
+        """Program-detect named employees from original XLSX bills before prompting."""
+        from .template_fill import inspect_source_employee_layout, list_named_source_employees
+
+        source_layouts: dict[str, dict[str, dict]] = {}
+        workbooks = []
+        try:
+            for document in documents:
+                try:
+                    path = Path(self._document_resolver(copy.deepcopy(document))).resolve()
+                except Exception:
+                    continue
+                if path.suffix.lower() not in {".xlsx", ".xlsm"}:
+                    continue
+                wb = load_workbook(path, data_only=False, read_only=False, keep_links=False)
+                workbooks.append(wb)
+                layouts = source_layouts.setdefault(document["fileId"], {})
+                for sheet_name in wb.sheetnames:
+                    layouts[sheet_name] = inspect_source_employee_layout(wb[sheet_name])
+            return list_named_source_employees(source_layouts)
+        finally:
+            for wb in workbooks:
+                wb.close()
 
     def collect(self, request: dict) -> dict:
         validate_collection_request(request)
@@ -507,7 +584,8 @@ class OpenAIResponsesProvider(AIProvider):
     def plan_dynamic_template_fill(self, *, documents: list[dict], template_manifest: dict,
                                    run_id: str, period: str, currency: str,
                                    instructions: list[str],
-                                   column_mappings: dict[str, str] | None = None) -> dict:
+                                   column_mappings: dict[str, str] | None = None,
+                                   code_anchored_employees: list[dict] | None = None) -> dict:
         """Read original bills against the current template itself as the output contract."""
         require(bool(documents), "Original documents are required")
         require(isinstance(template_manifest, dict)
@@ -515,6 +593,30 @@ class OpenAIResponsesProvider(AIProvider):
                 and nonempty(template_manifest.get("sheetName")), "Invalid template manifest")
         request = {"documents": copy.deepcopy(documents)}
         column_mappings = copy.deepcopy(column_mappings or {})
+        code_anchored = copy.deepcopy(code_anchored_employees or [])
+        detected_employees = self._discover_source_employee_roster(documents)
+        # Prefer CODE-anchored roster when present; otherwise fall back to source scan.
+        roster_for_prompt = [
+            {
+                "displayName": item.get("displayName"),
+                "names": item.get("names") or [],
+                "targetRow": item.get("row"),
+                "source": "code_identity",
+            }
+            for item in code_anchored
+            if isinstance(item, dict) and nonempty(item.get("displayName"))
+        ] or [
+            {
+                "displayName": item["displayName"],
+                "names": item["names"],
+                "sheetName": item["sheetName"],
+                "sourceRow": item["sourceRow"],
+                "fileId": item["fileId"],
+                "source": "original_xlsx",
+            }
+            for item in detected_employees
+        ]
+        employee_count = len(roster_for_prompt)
         prompt = {
             "task": "Read the attached original supplier bills and fill the current last -L worksheet semantically.",
             "rules": [
@@ -531,6 +633,10 @@ class OpenAIResponsesProvider(AIProvider):
                 "Source and template column orders often differ (extra Monthly/Allowance columns). Always match by field label meaning, never by column letter or left-to-right position.",
                 "Never copy the source total/summary row into an employee row.",
                 "A source row is an employee only when CN Name or EN Name (or equivalent person-name column) is non-empty. Rows with amounts but blank names are totals/padding — never map them.",
+                "When codeAnchoredEmployees is present, person names are ALREADY written on those target rows. Do not rewrite names, do not reorder rows, and do not invent extra people.",
+                "Match each codeAnchoredEmployees targetRow to the same person in the original bill by CN/EN name, then fill the remaining blank pay fields on that exact row.",
+                "Bills commonly contain MULTIPLE employees. detectedSourceEmployees/codeAnchoredEmployees is the authoritative roster; fill every listed person.",
+                f"The current roster lists {employee_count} employee(s). Filling only one person when the roster has more is incorrect.",
                 "One employee maps to exactly one target -L row. Never duplicate the same person across multiple target rows.",
                 "All values written to one target row must come from that same source employee row. Do not mix a person's identity with another row's hours/salary/fees.",
                 "Prefer contiguous blank data rows under the -L header; fill every available unambiguous field for each employee, including zeros that appear on the source employee row.",
@@ -548,6 +654,8 @@ class OpenAIResponsesProvider(AIProvider):
             "currency": currency,
             "profileInstructions": list(instructions),
             "columnMappings": column_mappings,
+            "codeAnchoredEmployees": code_anchored,
+            "detectedSourceEmployees": roster_for_prompt,
             "documents": [{key: value for key, value in item.items() if key != "sourceRef"}
                           for item in documents],
             "template": copy.deepcopy(template_manifest),
@@ -567,17 +675,26 @@ class OpenAIResponsesProvider(AIProvider):
             }},
         }
         from .template_fill import resolve_dynamic_template_fill_targets, validate_dynamic_template_fill_plan
-        first_plan = resolve_dynamic_template_fill_targets(
-            self._trust_xlsx_source_evidence(
-                self._call_structured(payload), documents, template_manifest=template_manifest,
-            ),
-            template_manifest, column_mappings=column_mappings,
-        )
+
+        def _finalize(raw_plan: dict) -> dict:
+            return resolve_dynamic_template_fill_targets(
+                self._trust_xlsx_source_evidence(
+                    raw_plan, documents, template_manifest=template_manifest,
+                ),
+                template_manifest, column_mappings=column_mappings,
+            )
+
+        def _needs_employee_retry(plan: dict) -> bool:
+            codes = {
+                item.get("code") for item in (plan.get("issues") or []) if isinstance(item, dict)
+            }
+            return bool(codes & {"MISSING_SOURCE_EMPLOYEES", "EMPLOYEE_IDENTITY_SEEDED"})
+
+        first_plan = _finalize(self._call_structured(payload))
         try:
             validate_dynamic_template_fill_plan(
                 first_plan, template_manifest, documents, column_mappings=column_mappings,
             )
-            return first_plan
         except ValidationError as exc:
             correction = {
                 "task": "Return a complete corrected replacement plan.",
@@ -587,8 +704,10 @@ class OpenAIResponsesProvider(AIProvider):
                     "For every sourceLabel, compare all template.columnContexts pathLabel/primaryLabel values again.",
                     "Preserve source values and evidence; correct targetCell and semanticLabel when necessary.",
                     "Never use nameless summary/total source rows; keep one employee on one target row from one source row.",
+                    "Cover EVERY employee in detectedSourceEmployees with their own target row and pay fields.",
                     "If no target is unambiguous, omit that write and add a structured issue.",
                 ],
+                "detectedSourceEmployees": prompt["detectedSourceEmployees"],
                 "rejectedPlan": first_plan,
             }
             retry_payload = copy.deepcopy(payload)
@@ -596,18 +715,39 @@ class OpenAIResponsesProvider(AIProvider):
                 "type": "input_text",
                 "text": json.dumps(correction, ensure_ascii=False),
             })
-            corrected_plan = resolve_dynamic_template_fill_targets(
-                self._trust_xlsx_source_evidence(
-                    self._call_structured(retry_payload), documents,
-                    template_manifest=template_manifest,
-                ),
-                template_manifest,
-                column_mappings=column_mappings,
-            )
+            corrected_plan = _finalize(self._call_structured(retry_payload))
             validate_dynamic_template_fill_plan(
                 corrected_plan, template_manifest, documents, column_mappings=column_mappings,
             )
             return corrected_plan
+
+        if employee_count > 1 and _needs_employee_retry(first_plan):
+            correction = {
+                "task": "Return a complete replacement plan that covers every detected employee.",
+                "validationError": (
+                    "Previous plan missed or only partially covered multiple source employees. "
+                    "detectedSourceEmployees is authoritative."
+                ),
+                "rules": [
+                    "Create one target -L row per detectedSourceEmployees entry.",
+                    "Fill unambiguous pay fields for each employee from that employee's own source row.",
+                    "Do not stop after the first employee.",
+                    "Never use nameless summary/total source rows.",
+                ],
+                "detectedSourceEmployees": prompt["detectedSourceEmployees"],
+                "rejectedPlan": first_plan,
+            }
+            retry_payload = copy.deepcopy(payload)
+            retry_payload["input"][0]["content"].append({
+                "type": "input_text",
+                "text": json.dumps(correction, ensure_ascii=False),
+            })
+            corrected_plan = _finalize(self._call_structured(retry_payload))
+            validate_dynamic_template_fill_plan(
+                corrected_plan, template_manifest, documents, column_mappings=column_mappings,
+            )
+            return corrected_plan
+        return first_plan
 
 
 class ProviderRegistry:

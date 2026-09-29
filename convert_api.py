@@ -21,7 +21,7 @@
   POST /file-role/classify          轻量角色探测（Excel inspect / PDF 关键字+旁路）
   POST /mapping/inspect-source     样例源表头
   GET  /ai-validation/profiles     AI 对比试点配置（不调用模型）
-  POST /ai-validation/run          原账单 + 当前母版 → AI 对比工作簿（最后一个 -L）
+  POST /ai-validation/run          原账单 + 当前母版 → AI 对比工作簿（最后一个 -L；可选 CODE 结果仅锚定人名）
   GET  /region-template?region=Taiwan  地区默认 PN 母版
   POST /excel-snapshot  multipart: file, sheet(可选默认PN), max_cells(可选默认300)
   POST /hf-snapshot     multipart: file, sheet(可选默认PN), max_cells(可选默认300)  # Node HyperFormula
@@ -873,8 +873,13 @@ async def ai_validation_run(
     reasoning_effort: str | None = Form(None),
     base_url: str | None = Form(None),
     timeout_seconds: float | None = Form(None),
+    code_result: UploadFile | None = File(None),
 ):
-    """Build a separate, non-formal AI comparison workbook from original bills."""
+    """Build a separate, non-formal AI comparison workbook from original bills.
+
+    Optional ``code_result`` supplies only person-name anchors from the CODE
+    conversion ``-L`` sheet; AI still reads amounts from the original bills.
+    """
     if not _AI_VALIDATION_ENABLED:
         raise HTTPException(status_code=503, detail="AI validation is disabled")
     if str(provider or "").strip().lower() != "openai":
@@ -884,6 +889,8 @@ async def ai_validation_run(
     for item in files:
         _assert_safe_upload(item)
     _assert_safe_upload(template)
+    if code_result is not None:
+        _assert_safe_upload(code_result)
     template_suffix = Path(template.filename or "template.xlsx").suffix.lower()
     if template_suffix not in (".xlsx", ".xlsm"):
         raise HTTPException(status_code=400, detail="AI 对比母版仅支持 .xlsx/.xlsm")
@@ -903,6 +910,16 @@ async def ai_validation_run(
         if not template_bytes:
             raise HTTPException(status_code=400, detail="当前母版为空")
         template_path.write_bytes(template_bytes)
+        code_result_path = None
+        if code_result is not None:
+            code_suffix = Path(code_result.filename or "code-result.xlsx").suffix.lower()
+            if code_suffix not in (".xlsx", ".xlsm"):
+                raise HTTPException(status_code=400, detail="CODE 结果仅支持 .xlsx/.xlsm")
+            code_result_path = tmp_dir / ("code-result" + code_suffix)
+            code_bytes = await code_result.read()
+            if not code_bytes:
+                raise HTTPException(status_code=400, detail="CODE 结果为空")
+            code_result_path.write_bytes(code_bytes)
         output_path = tmp_dir / "AI_comparison.xlsx"
         source_hints = json.loads(source_hints_json) if source_hints_json and source_hints_json.strip() else None
         metadata = run_ai_comparison_workbook(
@@ -914,6 +931,7 @@ async def ai_validation_run(
             currency=str(currency).strip(),
             profile_id=str(profile_id).strip(),
             source_hints=source_hints,
+            code_result_path=code_result_path,
             provider_options={
                 "model": str(model or _AI_VALIDATION_MODEL).strip(),
                 "reasoning_effort": str(reasoning_effort or _AI_VALIDATION_REASONING).strip(),

@@ -2,7 +2,11 @@
 
 This module is intentionally separate from the deterministic conversion runner.
 It receives original supplier documents plus the current master template and
-creates a new AI-only comparison workbook.  It never reads a CODE result.
+creates a new AI-only comparison workbook.
+
+Optionally it may receive the CODE conversion workbook solely to copy person-name
+identity cells onto the -L sheet before the model runs.  Amounts, fees and other
+CODE values are never copied into the AI workbook.
 """
 from __future__ import annotations
 
@@ -15,7 +19,11 @@ from typing import Any
 from bill_validation.contracts import nonempty, require
 
 from .provider import AIProvider, OpenAIResponsesProvider
-from .template_fill import inspect_last_l_sheet, write_dynamic_ai_template_copy
+from .template_fill import (
+    inspect_last_l_sheet,
+    prepare_template_with_code_identities,
+    write_dynamic_ai_template_copy,
+)
 
 
 _ALLOWED_SUFFIXES = {".xlsx", ".xlsm", ".pdf", ".csv"}
@@ -87,8 +95,13 @@ def run_ai_comparison_workbook(*, original_paths: list[str | Path], template_pat
                                output_path: str | Path, run_id: str, period: str, currency: str,
                                profile_id: str = "taiwan-coral-sea", provider: AIProvider | None = None,
                                provider_options: dict[str, Any] | None = None,
-                               source_hints: dict | None = None) -> dict:
+                               source_hints: dict | None = None,
+                               code_result_path: str | Path | None = None) -> dict:
     """Produce an AI-filled copy of the current template's last ``-L`` sheet.
+
+    When ``code_result_path`` is provided, person names from the CODE result's
+    last ``-L`` sheet are written into a prepared template first.  The model then
+    only fills remaining blanks from the original supplier bills.
 
     The returned metadata deliberately has ``automaticPassEnabled=false``.  A
     caller may display or persist this artifact, but must not treat it as the
@@ -111,8 +124,24 @@ def run_ai_comparison_workbook(*, original_paths: list[str | Path], template_pat
             document_resolver=lambda document: resolved[document["fileId"]],
             **options,
         )
+    work_template = Path(template_path).resolve()
+    code_anchor = None
+    if code_result_path is not None:
+        prepared = Path(output_path).resolve().parent / ("ai-template-with-code-names-" + str(run_id) + ".xlsx")
+        if prepared.exists():
+            prepared.unlink()
+        print("[ai] step1: anchoring CODE -L person names onto template …", flush=True)
+        code_anchor = prepare_template_with_code_identities(
+            template_path, code_result_path, prepared,
+        )
+        work_template = prepared
+        print(
+            f"[ai] step1 done employees={code_anchor.get('employeeCount')} "
+            f"nameCells={code_anchor.get('writeCount')}",
+            flush=True,
+        )
     print("[ai] inspecting current last -L template …", flush=True)
-    manifest = inspect_last_l_sheet(template_path)
+    manifest = inspect_last_l_sheet(work_template)
     print(
         f"[ai] template sheet={manifest.get('sheetName')} "
         f"columns={len(manifest.get('columnContexts') or [])}",
@@ -121,7 +150,7 @@ def run_ai_comparison_workbook(*, original_paths: list[str | Path], template_pat
     column_mappings = _column_mappings(source_hints)
     require(hasattr(provider, "plan_dynamic_template_fill"),
             "AI provider cannot perform dynamic template filling")
-    print("[ai] asking model for fill plan (this is the long wait) …", flush=True)
+    print("[ai] step2: asking model for fill plan (this is the long wait) …", flush=True)
     plan = provider.plan_dynamic_template_fill(
         documents=documents,
         template_manifest=manifest,
@@ -130,6 +159,7 @@ def run_ai_comparison_workbook(*, original_paths: list[str | Path], template_pat
         currency=str(currency).upper(),
         instructions=_instructions(source_hints),
         column_mappings=column_mappings,
+        code_anchored_employees=(code_anchor or {}).get("employees"),
     )
     print(
         f"[ai] plan ready writes={len(plan.get('writes') or [])} "
@@ -137,7 +167,7 @@ def run_ai_comparison_workbook(*, original_paths: list[str | Path], template_pat
         flush=True,
     )
     artifact = write_dynamic_ai_template_copy(
-        template_path, output_path, plan, documents, column_mappings=column_mappings,
+        work_template, output_path, plan, documents, column_mappings=column_mappings,
     )
     print(f"[ai] workbook written sheet={artifact.get('sheetName')}", flush=True)
     return {
@@ -161,4 +191,6 @@ def run_ai_comparison_workbook(*, original_paths: list[str | Path], template_pat
         "issues": plan["issues"],
         "automaticPassEnabled": False,
         "formalResult": False,
+        "codeIdentityAnchored": bool(code_anchor),
+        "codeIdentityEmployeeCount": (code_anchor or {}).get("employeeCount") or 0,
     }

@@ -16,12 +16,13 @@ class PlanningMockProvider(MockAIProvider):
         self.plan_inputs = []
 
     def plan_dynamic_template_fill(self, *, documents, template_manifest, run_id, period, currency,
-                                   instructions, column_mappings):
+                                   instructions, column_mappings, **_kwargs):
         self.plan_inputs.append({
             "documents": copy.deepcopy(documents), "manifest": copy.deepcopy(template_manifest),
             "runId": run_id, "period": period, "currency": currency,
             "instructions": copy.deepcopy(instructions),
             "columnMappings": copy.deepcopy(column_mappings),
+            "codeAnchoredEmployees": copy.deepcopy(_kwargs.get("code_anchored_employees")),
         })
         return {
             "planVersion": 3,
