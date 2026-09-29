@@ -343,6 +343,66 @@ class AITemplateFillTests(unittest.TestCase):
         self.assertEqual(result["writes"][0]["targetCell"], "B2")
         self.assertEqual(result["writes"][0]["semanticLabel"], "Basic Salary")
 
+    def test_trusted_xlsx_parent_child_header_retargets_neighbor_column(self):
+        template = Path(self.temp.name) / "hi-template.xlsx"
+        tw = Workbook()
+        ws = tw.active
+        ws.title = "TW-L"
+        ws["A1"] = "EE Dedution"
+        ws.merge_cells("A1:C1")
+        ws["A2"] = "勞退自提 Pension EE"
+        ws["B2"] = "勞退自提 (調整) Pension EE 1T"
+        ws["C2"] = "健保自付 HI EE"
+        tw.save(template)
+        tw.close()
+        manifest = inspect_last_l_sheet(template)
+
+        source = Path(self.temp.name) / "hi-source.xlsx"
+        src = Workbook()
+        src_ws = src.active
+        src_ws.title = "Payroll"
+        src_ws["A1"] = "EE Dedution"
+        src_ws.merge_cells("A1:C1")
+        src_ws["A2"] = "勞退自提 Pension EE"
+        src_ws["B2"] = "勞退自提 (調整) Pension EE 1T"
+        src_ws["C2"] = "健保自付 HI EE"
+        src_ws["C3"] = -563
+        src.save(source)
+        src.close()
+        document = {
+            "fileId": "source-1",
+            "sha256": __import__("hashlib").sha256(source.read_bytes()).hexdigest(),
+            "mediaType": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "sourceRef": "opaque://source-1",
+        }
+        model_plan = {
+            "planVersion": 3, "templateSha256": manifest["templateSha256"],
+            "sheetName": "TW-L", "model": "gpt-5.6-luna", "automaticWriteEnabled": False,
+            "writes": [{
+                "targetCell": "B3",
+                "semanticLabel": "勞退自提 (調整) Pension EE 1T",
+                "sourceLabel": "勞退自提 (調整) Pension EE 1T",
+                "valueType": "decimal", "value": "-563", "confidence": 0.91,
+                "source": {"fileId": "source-1", "location": "Payroll!C3", "page": None,
+                           "rawText": "勞退自提 (調整) Pension EE 1T: -563"},
+            }], "issues": [],
+        }
+
+        def post(url, headers, payload, timeout):
+            return {"status": "completed", "output": [{"type": "message", "content": [
+                {"type": "output_text", "text": json.dumps(model_plan)},
+            ]}]}
+
+        provider = OpenAIResponsesProvider(document_resolver=lambda ignored: source,
+                                           api_key="test-key-not-real", http_post=post)
+        result = provider.plan_dynamic_template_fill(
+            documents=[document], template_manifest=manifest, run_id="run-path-lock",
+            period="2026-09", currency="TWD", instructions=[],
+        )
+        self.assertEqual(result["writes"][0]["targetCell"], "C3")
+        self.assertEqual(result["writes"][0]["semanticLabel"], "健保自付 HI EE")
+        self.assertIn("健保自付 HI EE", result["writes"][0]["sourceLabel"])
+
     def test_dynamic_semantic_guard_rejects_nearby_but_wrong_column(self):
         semantic_template = Path(self.temp.name) / "semantic-template.xlsx"
         wb = Workbook()
@@ -382,14 +442,14 @@ class AITemplateFillTests(unittest.TestCase):
         self.assertEqual(tier_wrong["issues"][0]["code"], "COLUMN_MISMATCH_SKIPPED")
 
         configured = resolve_dynamic_template_fill_targets(
-            plan("C2", "Pension EE", "Pension EE"), manifest,
-            column_mappings={"Pension EE": "HI EE"},
+            plan("C2", "Pension EE", "Vendor Pension"), manifest,
+            column_mappings={"Vendor Pension": "HI EE"},
         )
         self.assertEqual(configured["writes"][0]["targetCell"], "B2")
         self.assertEqual(configured["writes"][0]["semanticLabel"], "HI EE")
         validate_dynamic_template_fill_plan(
             configured, manifest, self.documents,
-            column_mappings={"Pension EE": "HI EE"},
+            column_mappings={"Vendor Pension": "HI EE"},
         )
 
         gi = resolve_dynamic_template_fill_targets(
@@ -447,6 +507,35 @@ class AITemplateFillTests(unittest.TestCase):
         self.assertEqual(resolved["writes"][0]["semanticLabel"], "Hours")
         validate_dynamic_template_fill_plan(resolved, manifest, self.documents)
         self.assertEqual(len(resolved["writes"]), 1)
+
+        # Exact parent+child path beats a neighboring similar leaf (HI EE vs Pension EE).
+        insurance = Path(self.temp.name) / "insurance-path-template.xlsx"
+        ins = Workbook()
+        ins_ws = ins.active
+        ins_ws.title = "Ins-L"
+        ins_ws["A1"] = "EE Dedution"
+        ins_ws.merge_cells("A1:C1")
+        ins_ws["A2"] = "勞退自提 Pension EE"
+        ins_ws["B2"] = "勞退自提 (調整) Pension EE 1T"
+        ins_ws["C2"] = "健保自付 HI EE"
+        ins.save(insurance)
+        ins.close()
+        ins_manifest = inspect_last_l_sheet(insurance)
+        misaimed = resolve_dynamic_template_fill_targets({
+            "planVersion": 3, "templateSha256": ins_manifest["templateSha256"],
+            "sheetName": "Ins-L", "model": "fixture", "automaticWriteEnabled": False,
+            "writes": [{
+                "targetCell": "B3",
+                "semanticLabel": "勞退自提 (調整) Pension EE 1T",
+                "sourceLabel": "EE Dedution / 健保自付 HI EE",
+                "valueType": "decimal", "value": "-563", "confidence": 0.9,
+                "source": {"fileId": "source-1", "location": "S!C7", "page": None,
+                           "rawText": "EE Dedution / 健保自付 HI EE: -563"},
+            }], "issues": [],
+        }, ins_manifest)
+        self.assertEqual(misaimed["writes"][0]["targetCell"], "C3")
+        self.assertEqual(misaimed["writes"][0]["semanticLabel"], "健保自付 HI EE")
+        validate_dynamic_template_fill_plan(misaimed, ins_manifest, self.documents)
 
     def test_filters_summary_row_mixed_employee_and_duplicate_rows(self):
         source = Path(self.temp.name) / "payroll-source.xlsx"

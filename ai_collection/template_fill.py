@@ -142,6 +142,40 @@ def _context_score(source_label: Any, context: dict) -> float:
     return max(scores) if scores else 0.0
 
 
+def _header_path_key(value: Any) -> str:
+    """Normalize a parent/child header path for exact Excel-to-template matching."""
+    return _normalized_semantic(str(value or "").replace("/", " "))
+
+
+def _source_header_has_parent(label: Any) -> bool:
+    text = " ".join(str(label or "").split())
+    return " / " in text or (text.count("/") >= 1 and len(text.split("/")) >= 2)
+
+
+def _exact_header_column(label: str, column_contexts: list[dict]) -> dict | None:
+    """Lock a column when Excel source headers equal the template path.
+
+    Parent+child pathLabel wins over leaf-only similarity.  A leaf match is used
+    only when that primaryLabel is unique and the source label has no parent.
+    """
+    source_key = _header_path_key(label)
+    if not source_key:
+        return None
+    path_hits = [
+        item for item in column_contexts
+        if _header_path_key(item.get("pathLabel") or item.get("primaryLabel")) == source_key
+    ]
+    if len(path_hits) == 1:
+        return path_hits[0]
+    if _source_header_has_parent(label):
+        return None
+    leaf_hits = [
+        item for item in column_contexts
+        if _header_path_key(item.get("primaryLabel")) == source_key
+    ]
+    return leaf_hits[0] if len(leaf_hits) == 1 else None
+
+
 def _configured_target(source_label: str, column_mappings: dict[str, str] | None) -> str | None:
     if not column_mappings:
         return None
@@ -1122,8 +1156,15 @@ def resolve_dynamic_template_fill_targets(plan: dict, template_manifest: dict, *
                 "targetCell": item.get("targetCell"),
             })
             continue
-        configured = _configured_target(str(item["sourceLabel"]), column_mappings)
-        lookup = configured or str(item["sourceLabel"])
+        source_header = str(item["sourceLabel"])
+        exact = _exact_header_column(source_header, contexts)
+        configured = None if exact is not None else _configured_target(
+            source_header, column_mappings,
+        )
+        if exact is not None:
+            lookup = str(exact.get("pathLabel") or exact.get("primaryLabel") or source_header)
+        else:
+            lookup = configured or source_header
         if _is_service_fee_label(lookup):
             issues.append({
                 "code": "SERVICE_FEE_SKIPPED",
@@ -1135,7 +1176,7 @@ def resolve_dynamic_template_fill_targets(plan: dict, template_manifest: dict, *
                 "targetCell": item.get("targetCell"),
             })
             continue
-        context = _unambiguous_column(lookup, contexts)
+        context = exact or _unambiguous_column(lookup, contexts)
         if context is not None and _is_service_fee_label(context.get("primaryLabel")):
             issues.append({
                 "code": "SERVICE_FEE_SKIPPED",

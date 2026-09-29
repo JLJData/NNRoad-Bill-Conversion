@@ -379,6 +379,7 @@ class OpenAIResponsesProvider(AIProvider):
                                     template_manifest: dict | None = None) -> dict:
         """Replace model-reported XLSX labels/evidence with cells from the original file."""
         from .template_fill import (
+            _column_contexts,
             filter_inconsistent_employee_source_writes,
             inspect_source_employee_layout,
         )
@@ -387,6 +388,7 @@ class OpenAIResponsesProvider(AIProvider):
         by_id = {item["fileId"]: item for item in documents}
         workbooks = {}
         source_layouts: dict[str, dict[str, dict]] = {}
+        header_contexts: dict[tuple[str, str], list[dict]] = {}
         try:
             for item in trusted.get("writes") or []:
                 source = item.get("source") if isinstance(item, dict) else None
@@ -421,14 +423,29 @@ class OpenAIResponsesProvider(AIProvider):
                     layouts[sheet_name] = inspect_source_employee_layout(formula_ws)
                 cell = formula_ws[coordinate]
                 actual = value_ws[coordinate].value
-                label = ""
-                for row in range(cell.row - 1, 0, -1):
-                    candidate = formula_ws.cell(row, cell.column)
-                    if candidate.data_type == "f" or not isinstance(candidate.value, str):
-                        continue
-                    label = " ".join(candidate.value.split()).strip()
-                    if label:
-                        break
+                header_key = (document["fileId"], sheet_name)
+                if header_key not in header_contexts:
+                    _header_row, sheet_contexts = _column_contexts(formula_ws)
+                    header_contexts[header_key] = sheet_contexts
+                source_ctx = next(
+                    (ctx for ctx in header_contexts[header_key]
+                     if isinstance(ctx, dict) and ctx.get("column") == cell.column),
+                    None,
+                )
+                if source_ctx and nonempty(source_ctx.get("pathLabel")):
+                    path_label = str(source_ctx["pathLabel"])
+                    label = path_label if " / " in path_label else str(
+                        source_ctx.get("primaryLabel") or path_label
+                    )
+                else:
+                    label = ""
+                    for row in range(cell.row - 1, 0, -1):
+                        candidate = formula_ws.cell(row, cell.column)
+                        if candidate.data_type == "f" or not isinstance(candidate.value, str):
+                            continue
+                        label = " ".join(candidate.value.split()).strip()
+                        if label:
+                            break
                 if not label or actual is None:
                     continue
                 if hasattr(actual, "isoformat"):
@@ -631,6 +648,7 @@ class OpenAIResponsesProvider(AIProvider):
                 "semanticLabel must copy the selected target column's template.columnContexts primaryLabel exactly.",
                 "sourceLabel must copy the original source field label exactly; rawText must contain that label and value.",
                 "Compare the source label with every target column using parent+child pathLabel when present; identical leaf labels under different parents are different fields.",
+                "For Excel originals, if the source column's parent+child header path equals a template.columnContexts pathLabel, that column is the exclusive highest-priority match. Do not pick a neighboring column that only shares a similar leaf.",
                 "columnMappings contains reviewed supplier-label to target-label hints for this supplier and customer; prefer a matching hint when its target exists in the current template.",
                 "If a columnMappings target is absent or stale, use the current template semantics and report ambiguity instead of inventing a target.",
                 "Treat qualifiers as meaningful: employee/employer, EE/ER, normal/adjustment, tier/category, generation/base, and similar suffixes are different fields.",
