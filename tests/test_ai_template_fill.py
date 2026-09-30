@@ -8,6 +8,7 @@ from openpyxl import Workbook, load_workbook
 
 from ai_collection import (
     OpenAIResponsesProvider,
+    copy_code_provenance_cells,
     extract_last_l_identity_rows,
     filter_inconsistent_employee_source_writes,
     inspect_last_l_sheet,
@@ -16,6 +17,8 @@ from ai_collection import (
     prepare_template_with_code_identities,
     resolve_dynamic_template_fill_targets,
     seed_missing_employee_identity_writes,
+    strip_code_provenance_writes,
+    sync_code_owned_regions_from_code_result,
     validate_dynamic_template_fill_plan,
     validate_template_fill_plan,
     write_ai_template_copy,
@@ -762,6 +765,264 @@ class AITemplateFillTests(unittest.TestCase):
             self.assertIsNone(wb2["TW-L"]["D3"].value)  # CODE formula not copied
         finally:
             wb2.close()
+
+    def test_strip_and_copy_code_provenance_cells(self):
+        plan = {
+            "planVersion": 3,
+            "writes": [
+                {"targetCell": "E11", "sourceLabel": "Basic Salary", "value": "100"},
+                {"targetCell": "G11", "sourceLabel": "Business Tax", "value": "9"},
+            ],
+            "issues": [],
+        }
+        cells = [{"sheet": "India-L", "row": 11, "col": 7, "kind": "india_business_tax", "label": "Business Tax"}]
+        stripped = strip_code_provenance_writes(plan, cells, "India-L")
+        self.assertEqual([item["targetCell"] for item in stripped["writes"]], ["E11"])
+        self.assertTrue(any(item.get("code") == "CODE_PROVENANCE_CELL_SKIPPED" for item in stripped["issues"]))
+
+        code = Path(self.temp.name) / "code-prov.xlsx"
+        ai = Path(self.temp.name) / "ai-prov.xlsx"
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "PN"
+        ws["B5"] = 7.12
+        l_sheet = wb.create_sheet("India-L")
+        l_sheet["G11"] = 99
+        l_sheet["E11"] = 100
+        wb.save(code)
+        wb.close()
+
+        tw = Workbook()
+        tw.active.title = "PN"
+        tw.create_sheet("India-L")
+        tw["India-L"]["E11"] = 100
+        tw["India-L"]["G11"] = 1  # AI wrongly invented
+        tw.save(ai)
+        tw.close()
+
+        result = copy_code_provenance_cells(code, ai, [
+            {"sheet": "PN", "row": 5, "col": 2, "kind": "pn_fx"},
+            {"sheet": "India-L", "row": 11, "col": 7, "kind": "india_business_tax"},
+        ])
+        self.assertEqual(result["copyCount"], 2)
+        out = load_workbook(ai, data_only=False)
+        try:
+            self.assertEqual(out["PN"]["B5"].value, 7.12)
+            self.assertEqual(out["India-L"]["G11"].value, 99)
+            self.assertEqual(out["India-L"]["E11"].value, 100)
+        finally:
+            out.close()
+
+        # Only explicit special formulas may overwrite employee inputs on -L.
+        ai2 = Path(self.temp.name) / "ai-prov-sync.xlsx"
+        tw2 = Workbook()
+        tw2.active.title = "PN"
+        tw2["PN"]["B5"] = 0
+        l2 = tw2.create_sheet("India-L")
+        l2["E11"] = 53698  # stale sample literal
+        l2["G11"] = 1
+        l2["F11"] = 123  # ordinary AI input must survive a different CODE formula
+        l2["H11"] = "=F11+1"  # keep the template's own calculation
+        tw2.save(ai2)
+        tw2.close()
+        code2 = Path(self.temp.name) / "code-prov-sync.xlsx"
+        cw = Workbook()
+        cw.active.title = "PN"
+        cw["PN"]["B5"] = 7.12
+        cl = cw.create_sheet("India-L")
+        cl["E11"] = "=ROUND(1+1,0)"
+        cl["G11"] = 99
+        cl["F11"] = "=1+1"
+        cl["H11"] = "=F11+2"
+        cw.save(code2)
+        cw.close()
+        synced = sync_code_owned_regions_from_code_result(
+            code2, ai2, provenance_cells=[{"sheet": "India-L", "row": 11, "col": 5}], data_start_row=11,
+        )
+        self.assertGreaterEqual(synced["nonLCopyCount"], 1)
+        self.assertEqual(synced["provenanceCopyCount"], 1)
+        self.assertEqual(synced["formulaCopyCount"], 0)
+        out2 = load_workbook(ai2, data_only=False)
+        try:
+            self.assertEqual(out2["PN"]["B5"].value, 7.12)
+            self.assertEqual(out2["India-L"]["E11"].value, "=ROUND(1+1,0)")
+            self.assertEqual(out2["India-L"]["F11"].value, 123)
+            self.assertEqual(out2["India-L"]["H11"].value, "=F11+1")
+        finally:
+            out2.close()
+
+        # Metadata band above dataStartRow (period dates) must come from CODE.
+        ai3 = Path(self.temp.name) / "ai-meta-sync.xlsx"
+        tw3 = Workbook()
+        tw3.active.title = "PN"
+        l3 = tw3.create_sheet("India-L")
+        l3["B4"] = "Employee Name"
+        l3["G4"] = "Basic salary"
+        l3["B8"] = "2026/3/1"  # stale sample period
+        l3["C8"] = "2026/3/31"
+        l3["B10"] = "Rekha"
+        l3["M10"] = 11470
+        tw3.save(ai3)
+        tw3.close()
+        code3 = Path(self.temp.name) / "code-meta-sync.xlsx"
+        cw3 = Workbook()
+        cw3.active.title = "PN"
+        cl3 = cw3.create_sheet("India-L")
+        cl3["B4"] = "Employee Name"
+        cl3["G4"] = "Basic salary"
+        cl3["B8"] = "2026-07-01"
+        cl3["C8"] = "2026-07-31"
+        cl3["B10"] = "Rekha"
+        cl3["M10"] = 2860
+        cl3["G11"] = "=ROUND(1,0)"
+        cw3.save(code3)
+        cw3.close()
+        meta_synced = sync_code_owned_regions_from_code_result(
+            code3, ai3, provenance_cells=[], data_start_row=10,
+        )
+        self.assertGreaterEqual(meta_synced["metadataCopyCount"], 2)
+        out3 = load_workbook(ai3, data_only=False)
+        try:
+            self.assertEqual(out3["India-L"]["B8"].value, "2026-07-01")
+            self.assertEqual(out3["India-L"]["C8"].value, "2026-07-31")
+            # Employee pay literals stay AI's (not overwritten by CODE amounts).
+            self.assertEqual(out3["India-L"]["M10"].value, 11470)
+            self.assertIsNone(out3["India-L"]["G11"].value)
+        finally:
+            out3.close()
+
+    def test_prepare_clears_sample_amounts_then_anchors_names(self):
+        """Master sample pay literals must be cleared so AI sees blank input cells."""
+        code = Path(self.temp.name) / "code-with-names.xlsx"
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "TW-L"
+        ws["A1"] = "CN Name"
+        ws["B1"] = "EN Name"
+        ws["C1"] = "Basic Salary"
+        ws["D1"] = "Tax"
+        ws["A2"] = "王品涵"
+        ws["B2"] = "Pin Han"
+        ws["C2"] = 100
+        wb.save(code)
+        wb.close()
+
+        template = Path(self.temp.name) / "template-with-sample.xlsx"
+        tw = Workbook()
+        sheet = tw.active
+        sheet.title = "TW-L"
+        sheet["A1"] = "CN Name"
+        sheet["B1"] = "EN Name"
+        sheet["C1"] = "Basic Salary"
+        sheet["D1"] = "Tax"
+        sheet["A2"] = "王品涵"  # sample name
+        sheet["B2"] = "Pin Han "
+        sheet["C2"] = 99999  # stale sample amount — must be cleared
+        sheet["D2"] = "=A2"  # formula reserved
+        tw.save(template)
+        tw.close()
+
+        prepared = Path(self.temp.name) / "prepared-reuse.xlsx"
+        result = prepare_template_with_code_identities(template, code, prepared)
+        self.assertEqual(result["employeeCount"], 1)
+        self.assertGreaterEqual(result["clearedSampleCount"], 3)
+        self.assertEqual(result["writeCount"], 2)  # names rewritten after clear
+        self.assertEqual(result["employees"][0]["displayName"], "王品涵 / Pin Han")
+        wb2 = load_workbook(prepared, data_only=False)
+        try:
+            self.assertEqual(wb2["TW-L"]["A2"].value, "王品涵")
+            self.assertEqual(wb2["TW-L"]["B2"].value, "Pin Han")
+            self.assertIsNone(wb2["TW-L"]["C2"].value)
+            self.assertEqual(wb2["TW-L"]["D2"].value, "=A2")
+        finally:
+            wb2.close()
+
+    def test_identity_scan_respects_data_start_row(self):
+        """India-style: Employee Name header in row 4, period date in B8, person in B10."""
+        from ai_collection.template_fill import _prefilled_identity_rows
+
+        code = Path(self.temp.name) / "india-code.xlsx"
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "India-L"
+        ws["D2"] = "ER"
+        ws["F3"] = "Gross Salary"
+        # Dense fee header row so header detection stays on row 4 (not period row 8).
+        ws["B4"] = "Employee Name"
+        ws["F4"] = "Subtotal"
+        ws["G4"] = "Basic salary"
+        ws["H4"] = "HRA"
+        ws["I4"] = "Telephone allowance"
+        ws["J4"] = "LTA"
+        ws["K4"] = "Special allowance"
+        ws["A8"] = "Pay Period"
+        # Metadata text in the name column above dataStartRow (Crosslake puts period here).
+        ws["B8"] = "META-PERIOD-START"
+        ws["C8"] = "META-PERIOD-END"
+        ws["B10"] = "Rekha "
+        ws["G10"] = 1000
+        wb.save(code)
+        wb.close()
+
+        without = extract_last_l_identity_rows(code)
+        self.assertEqual(
+            [item["displayName"] for item in without["employees"]],
+            ["META-PERIOD-START", "Rekha"],
+        )
+
+        with_start = extract_last_l_identity_rows(code, data_start_row=10)
+        self.assertEqual(with_start["dataStartRow"], 10)
+        self.assertEqual(
+            [item["displayName"] for item in with_start["employees"]],
+            ["Rekha"],
+        )
+
+        template = Path(self.temp.name) / "india-template.xlsx"
+        tw = Workbook()
+        sheet = tw.active
+        sheet.title = "India-L"
+        sheet["D2"] = "ER"
+        sheet["F3"] = "Gross Salary"
+        sheet["B4"] = "Employee Name"
+        sheet["F4"] = "Subtotal"
+        sheet["G4"] = "Basic salary"
+        sheet["H4"] = "HRA"
+        sheet["I4"] = "Telephone allowance"
+        sheet["J4"] = "LTA"
+        sheet["K4"] = "Special allowance"
+        sheet["A8"] = "Pay Period"
+        sheet["B8"] = "META-PERIOD-START"
+        sheet["C8"] = "META-PERIOD-END"
+        sheet["M10"] = 11470  # sample amount below dataStart — must clear
+        sheet["G10"] = "=B10"  # formula reserved; name cell B10 stays blank for anchoring
+        tw.save(template)
+        tw.close()
+
+        prepared = Path(self.temp.name) / "india-prepared.xlsx"
+        result = prepare_template_with_code_identities(
+            template, code, prepared, data_start_row=10,
+        )
+        self.assertEqual(result["employeeCount"], 1)
+        self.assertEqual(result["employees"][0]["displayName"], "Rekha")
+        self.assertEqual(result["dataStartRow"], 10)
+        self.assertGreaterEqual(result["clearedSampleCount"], 1)
+        prepared_wb = load_workbook(prepared, data_only=False)
+        try:
+            self.assertEqual(prepared_wb["India-L"]["B8"].value, "META-PERIOD-START")
+            self.assertIsNone(prepared_wb["India-L"]["M10"].value)
+            self.assertEqual(prepared_wb["India-L"]["B10"].value, "Rekha")
+            self.assertEqual(prepared_wb["India-L"]["G10"].value, "=B10")
+        finally:
+            prepared_wb.close()
+
+        manifest = inspect_last_l_sheet(prepared)
+        manifest["dataStartRow"] = 10
+        prefilled = _prefilled_identity_rows(manifest)
+        self.assertEqual(sorted(prefilled), [10])
+        self.assertEqual(prefilled[10]["displayName"], "Rekha")
+        # Without dataStartRow the metadata cell would look like a person.
+        loose = _prefilled_identity_rows(inspect_last_l_sheet(prepared))
+        self.assertIn(8, loose)
 
     def test_service_fee_writes_are_skipped(self):
         template = Path(self.temp.name) / "fee-template.xlsx"

@@ -43,7 +43,7 @@ def _literal_label(value: Any, data_type: str | None = None) -> str:
     return " ".join(str(value).split()).strip()
 
 
-def _column_contexts(ws) -> tuple[int, list[dict]]:
+def _column_contexts(ws, header_row: int | None = None) -> tuple[int, list[dict]]:
     """Describe columns semantically without assuming field names or coordinates."""
     merged_labels: dict[tuple[int, int], tuple[str, str]] = {}
     for merged in ws.merged_cells.ranges:
@@ -67,7 +67,8 @@ def _column_contexts(ws) -> tuple[int, list[dict]]:
             elif (row, column) in merged_labels:
                 labels.add(merged_labels[(row, column)])
         row_scores.append((len(labels), row))
-    header_row = max(row_scores, key=lambda item: (item[0], item[1]))[1] if row_scores else 1
+    if header_row is None:
+        header_row = max(row_scores, key=lambda item: (item[0], item[1]))[1] if row_scores else 1
 
     contexts = []
     for column in range(1, ws.max_column + 1):
@@ -582,11 +583,24 @@ def _name_token_set(names: Any) -> set[str]:
     return tokens
 
 
+def _identity_data_start_row(template_manifest: dict | None, header_row: int) -> int:
+    """First employee data row; skips period/metadata rows below the header."""
+    raw = None if not isinstance(template_manifest, dict) else template_manifest.get("dataStartRow")
+    if raw is None:
+        return header_row + 1
+    try:
+        start = int(raw)
+    except (TypeError, ValueError):
+        return header_row + 1
+    return max(start, header_row + 1)
+
+
 def _prefilled_identity_rows(template_manifest: dict | None) -> dict[int, dict[str, Any]]:
     """Person names already present on -L data rows (e.g. CODE identity anchoring)."""
     if not isinstance(template_manifest, dict):
         return {}
     header_row = int(template_manifest.get("headerRow") or 1)
+    data_start = _identity_data_start_row(template_manifest, header_row)
     name_columns: set[int] = set()
     for item in template_manifest.get("columnContexts") or []:
         if isinstance(item, dict) and isinstance(item.get("column"), int) and (
@@ -602,7 +616,7 @@ def _prefilled_identity_rows(template_manifest: dict | None) -> dict[int, dict[s
             continue
         row = item.get("row")
         column = item.get("column")
-        if not isinstance(row, int) or row <= header_row:
+        if not isinstance(row, int) or row < data_start:
             continue
         if column not in name_columns:
             continue
@@ -932,11 +946,17 @@ def filter_inconsistent_employee_source_writes(
     return annotate_missing_source_employees(resolved, source_layouts)
 
 
-def extract_last_l_identity_rows(workbook_path: str | Path) -> dict[str, Any]:
+def extract_last_l_identity_rows(
+    workbook_path: str | Path,
+    *,
+    data_start_row: int | None = None,
+) -> dict[str, Any]:
     """Read person-name cells from a workbook's last ``-L`` sheet (typically CODE output)."""
     path = Path(workbook_path)
     require(path.is_file(), "Identity source workbook is missing")
     manifest = inspect_last_l_sheet(path)
+    if data_start_row is not None:
+        manifest["dataStartRow"] = int(data_start_row)
     name_contexts = [
         item for item in manifest.get("columnContexts") or []
         if isinstance(item, dict) and isinstance(item.get("column"), int) and (
@@ -949,9 +969,10 @@ def extract_last_l_identity_rows(workbook_path: str | Path) -> dict[str, Any]:
     try:
         ws = wb[manifest["sheetName"]]
         header_row = int(manifest["headerRow"])
+        start_row = _identity_data_start_row(manifest, header_row)
         rows: list[dict[str, Any]] = []
         max_row = min(max(1, ws.max_row or 1), header_row + 500)
-        for row in range(header_row + 1, max_row + 1):
+        for row in range(start_row, max_row + 1):
             fields = []
             names = []
             for context in name_contexts:
@@ -982,6 +1003,7 @@ def extract_last_l_identity_rows(workbook_path: str | Path) -> dict[str, Any]:
         return {
             "sheetName": manifest["sheetName"],
             "headerRow": header_row,
+            "dataStartRow": start_row,
             "nameColumns": [int(item["column"]) for item in name_contexts],
             "employees": rows,
         }
@@ -993,6 +1015,8 @@ def prepare_template_with_code_identities(
     template_path: str | Path,
     code_result_path: str | Path,
     output_path: str | Path,
+    *,
+    data_start_row: int | None = None,
 ) -> dict[str, Any]:
     """Step 1: copy the template and pre-fill -L person names from the CODE result.
 
@@ -1006,7 +1030,7 @@ def prepare_template_with_code_identities(
     require(code_path.is_file(), "CODE result is missing")
     require(template != output, "Prepared template must not overwrite the source template")
     require(not output.exists(), "Prepared template output already exists")
-    identity = extract_last_l_identity_rows(code_path)
+    identity = extract_last_l_identity_rows(code_path, data_start_row=data_start_row)
     employees = identity.get("employees") or []
     require(bool(employees), "CODE result -L sheet has no employee names to anchor")
     template_manifest = inspect_last_l_sheet(template)
@@ -1017,34 +1041,55 @@ def prepare_template_with_code_identities(
     output.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(template, output)
     written = 0
+    reused = 0
+    cleared = 0
     anchored: list[dict[str, Any]] = []
+    resolved_data_start = identity.get("dataStartRow")
     try:
         wb = load_workbook(output, data_only=False, read_only=False, keep_links=False)
         try:
             ws = wb[template_manifest["sheetName"]]
-            occupied = {
-                str(item.get("cell"))
-                for item in template_manifest.get("nonemptyCells") or []
-                if isinstance(item, dict) and nonempty(item.get("cell"))
-            }
+            header_row = int(template_manifest.get("headerRow") or identity.get("headerRow") or 1)
+            start_row = _identity_data_start_row(
+                {"dataStartRow": identity.get("dataStartRow") if data_start_row is None else data_start_row},
+                header_row,
+            )
+            resolved_data_start = start_row
+            # Drop master sample literals in the employee block so AI starts blank
+            # (formulas stay). Otherwise occupied sample amounts make writes=0.
+            max_row = min(max(1, ws.max_row or 1), start_row + 500)
+            max_col = max(1, ws.max_column or 1)
+            for row in range(start_row, max_row + 1):
+                for col in range(1, max_col + 1):
+                    cell = ws.cell(row, col)
+                    if isinstance(cell, MergedCell) or cell.data_type == "f" or cell.value is None:
+                        continue
+                    cell.value = None
+                    cleared += 1
             for employee in employees:
                 row = int(employee["row"])
                 row_fields = []
                 for field in employee.get("fields") or []:
-                    cell_ref = get_column_letter(int(field["column"])) + str(row)
-                    if cell_ref in occupied:
-                        continue
+                    column = int(field["column"])
+                    cell_ref = get_column_letter(column) + str(row)
                     cell = ws[cell_ref]
-                    if isinstance(cell, MergedCell) or cell.data_type == "f" or cell.value is not None:
+                    if isinstance(cell, MergedCell) or cell.data_type == "f":
                         continue
-                    cell.value = str(field["value"])
-                    occupied.add(cell_ref)
-                    written += 1
+                    code_name = " ".join(str(field.get("value") or "").split()).strip()
+                    if not code_name:
+                        continue
+                    existing = _clean_cell_text(cell.value)
+                    if existing and _normalized_semantic(existing) == _normalized_semantic(code_name):
+                        # Same name survived clear (unusual); count as reuse.
+                        reused += 1
+                    else:
+                        cell.value = code_name
+                        written += 1
                     row_fields.append({
-                        "column": int(field["column"]),
-                        "columnLetter": get_column_letter(int(field["column"])),
+                        "column": column,
+                        "columnLetter": get_column_letter(column),
                         "label": field.get("label"),
-                        "value": str(field["value"]),
+                        "value": code_name,
                         "cell": cell_ref,
                     })
                 if row_fields:
@@ -1068,8 +1113,12 @@ def prepare_template_with_code_identities(
         raise
     return {
         "sheetName": identity["sheetName"],
+        "headerRow": identity.get("headerRow"),
+        "dataStartRow": resolved_data_start,
         "employeeCount": len(anchored),
         "writeCount": written,
+        "reuseCount": reused,
+        "clearedSampleCount": cleared,
         "employees": anchored,
         "outputPath": str(output),
         "outputSha256": _sha256(output.read_bytes()),
@@ -1241,7 +1290,8 @@ def resolve_dynamic_template_fill_targets(plan: dict, template_manifest: dict, *
     return resolved
 
 
-def inspect_last_l_sheet(template_path: str | Path, *, max_nonempty_cells: int = 20000) -> dict:
+def inspect_last_l_sheet(template_path: str | Path, *, max_nonempty_cells: int = 20000,
+                         header_row: int | None = None) -> dict:
     """Return a bounded, read-only manifest for the last sheet ending in ``-L``."""
     path = Path(template_path)
     raw = path.read_bytes()
@@ -1249,7 +1299,7 @@ def inspect_last_l_sheet(template_path: str | Path, *, max_nonempty_cells: int =
     try:
         sheet_name = _last_l_sheet(list(wb.sheetnames))
         ws = wb[sheet_name]
-        header_row, column_contexts = _column_contexts(ws)
+        header_row, column_contexts = _column_contexts(ws, header_row=header_row)
         cells = []
         for row in ws.iter_rows():
             for cell in row:
@@ -1562,9 +1612,249 @@ def _dynamic_value(item: dict) -> str | int | float | date:
     return int(number) if number == number.to_integral_value() else float(number)
 
 
+def normalize_code_provenance_cells(raw: Any) -> list[dict[str, Any]]:
+    """Parse Office ``codeProvenanceCells`` (Excel 1-based sheet/row/col)."""
+    if raw is None:
+        return []
+    require(isinstance(raw, list), "AI codeProvenanceCells must be a list")
+    require(len(raw) <= 500, "AI codeProvenanceCells exceeds the entry limit")
+    result: list[dict[str, Any]] = []
+    seen: set[tuple[str, int, int]] = set()
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        sheet = str(item.get("sheet") or "")
+        try:
+            row = int(item.get("row"))
+            col = int(item.get("col"))
+        except (TypeError, ValueError):
+            continue
+        if not sheet or row < 1 or col < 1:
+            continue
+        key = (sheet, row, col)
+        if key in seen:
+            continue
+        seen.add(key)
+        entry: dict[str, Any] = {"sheet": sheet, "row": row, "col": col}
+        kind = " ".join(str(item.get("kind") or "").split()).strip()
+        label = " ".join(str(item.get("label") or "").split()).strip()
+        if kind:
+            entry["kind"] = kind
+        if label:
+            entry["label"] = label
+        result.append(entry)
+    return result
+
+
+def strip_code_provenance_writes(
+    plan: dict,
+    provenance_cells: list[dict[str, Any]],
+    sheet_name: str,
+) -> dict:
+    """Drop model writes that target CODE special-source cells on the active -L sheet."""
+    resolved = copy.deepcopy(plan)
+    writes = resolved.get("writes")
+    if not isinstance(writes, list) or not provenance_cells:
+        return resolved
+    reserved = {
+        (str(item["sheet"]), int(item["row"]), int(item["col"]))
+        for item in provenance_cells
+        if isinstance(item, dict)
+    }
+    kept: list[dict] = []
+    issues = resolved.setdefault("issues", [])
+    if not isinstance(issues, list):
+        issues = []
+        resolved["issues"] = issues
+    for item in writes:
+        if not isinstance(item, dict):
+            continue
+        try:
+            row, column = coordinate_to_tuple(str(item.get("targetCell")))
+        except (TypeError, ValueError):
+            kept.append(item)
+            continue
+        if (sheet_name, row, column) in reserved:
+            issues.append({
+                "code": "CODE_PROVENANCE_CELL_SKIPPED",
+                "message": (
+                    f"Skipped {item.get('targetCell')}: CODE special-source cell "
+                    f"(kind={next((c.get('kind') for c in provenance_cells if c.get('sheet') == sheet_name and int(c['row']) == row and int(c['col']) == column), None)})"
+                ),
+                "targetCell": item.get("targetCell"),
+                "sourceLabel": item.get("sourceLabel"),
+            })
+            continue
+        kept.append(item)
+    resolved["writes"] = kept
+    return resolved
+
+
+def copy_code_provenance_cells(
+    code_result_path: str | Path,
+    ai_output_path: str | Path,
+    provenance_cells: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Copy CODE special-source cells onto the AI workbook (any sheet)."""
+    code_path = Path(code_result_path).resolve()
+    ai_path = Path(ai_output_path).resolve()
+    require(code_path.is_file(), "CODE result is missing for provenance copy")
+    require(ai_path.is_file(), "AI output is missing for provenance copy")
+    cells = normalize_code_provenance_cells(provenance_cells)
+    if not cells:
+        return {"copyCount": 0, "skippedCount": 0}
+    copied = 0
+    skipped = 0
+    code_wb = load_workbook(code_path, data_only=False, read_only=False, keep_links=False)
+    try:
+        ai_wb = load_workbook(ai_path, data_only=False, read_only=False, keep_links=False)
+        try:
+            for item in cells:
+                sheet = item["sheet"]
+                row = int(item["row"])
+                col = int(item["col"])
+                if sheet not in code_wb.sheetnames or sheet not in ai_wb.sheetnames:
+                    skipped += 1
+                    continue
+                src = code_wb[sheet].cell(row, col)
+                dst = ai_wb[sheet].cell(row, col)
+                if isinstance(dst, MergedCell):
+                    skipped += 1
+                    continue
+                dst.value = src.value
+                copied += 1
+            ai_wb.save(ai_path)
+        finally:
+            ai_wb.close()
+    finally:
+        code_wb.close()
+    return {"copyCount": copied, "skippedCount": skipped}
+
+
+def sync_code_owned_regions_from_code_result(
+    code_result_path: str | Path,
+    ai_output_path: str | Path,
+    *,
+    provenance_cells: list[dict[str, Any]] | None = None,
+    data_start_row: int | None = None,
+) -> dict[str, Any]:
+    """Make CODE-owned regions match the formal result after AI fills ``-L``.
+
+    1. Copy every non-last-``-L`` sheet cell from CODE (PN / regional EE etc.).
+    2. On the last ``-L`` sheet, copy CODE metadata rows above the employee block
+       (period dates etc.). Employee formulas are copied only at explicit special
+       coordinates; ordinary AI inputs and template formulas stay untouched.
+    3. Copy explicit ``codeProvenanceCells`` coordinates when provided.
+    """
+    code_path = Path(code_result_path).resolve()
+    ai_path = Path(ai_output_path).resolve()
+    require(code_path.is_file(), "CODE result is missing for CODE-owned sync")
+    require(ai_path.is_file(), "AI output is missing for CODE-owned sync")
+    cells = normalize_code_provenance_cells(provenance_cells)
+    non_l_copied = 0
+    formula_copied = 0
+    metadata_copied = 0
+    provenance_copied = 0
+    skipped = 0
+    code_wb = load_workbook(code_path, data_only=False, read_only=False, keep_links=False)
+    try:
+        ai_wb = load_workbook(ai_path, data_only=False, read_only=False, keep_links=False)
+        try:
+            last_l = _last_l_sheet(list(code_wb.sheetnames))
+            # Copy explicit special coordinates first, so their counts are not
+            # swallowed by the broader metadata/non-L synchronization below.
+            for item in cells:
+                sheet = item["sheet"]
+                row = int(item["row"])
+                col = int(item["col"])
+                if sheet not in code_wb.sheetnames or sheet not in ai_wb.sheetnames:
+                    skipped += 1
+                    continue
+                src = code_wb[sheet].cell(row, col)
+                dst = ai_wb[sheet].cell(row, col)
+                if isinstance(dst, MergedCell):
+                    skipped += 1
+                    continue
+                if dst.value != src.value:
+                    dst.value = src.value
+                    provenance_copied += 1
+            for sheet_name in code_wb.sheetnames:
+                if sheet_name not in ai_wb.sheetnames:
+                    skipped += 1
+                    continue
+                code_ws = code_wb[sheet_name]
+                ai_ws = ai_wb[sheet_name]
+                if sheet_name.strip().casefold() != last_l.strip().casefold():
+                    for row in code_ws.iter_rows(
+                        min_row=1, max_row=code_ws.max_row or 1,
+                        max_col=code_ws.max_column or 1,
+                    ):
+                        for src in row:
+                            if isinstance(src, MergedCell) or src.value is None:
+                                continue
+                            dst = ai_ws.cell(src.row, src.column)
+                            if isinstance(dst, MergedCell):
+                                skipped += 1
+                                continue
+                            if dst.value != src.value:
+                                dst.value = src.value
+                                non_l_copied += 1
+                    continue
+                # Prefer configured dataStartRow: period/date rows above it often
+                # outscore the real header and break header-based band detection.
+                if data_start_row is not None:
+                    try:
+                        employee_start = max(1, int(data_start_row))
+                    except (TypeError, ValueError):
+                        employee_start = None
+                else:
+                    employee_start = None
+                if employee_start is None:
+                    header_row, _contexts = _column_contexts(code_ws)
+                    employee_start = header_row + 1
+                for row in code_ws.iter_rows(
+                    min_row=1, max_row=code_ws.max_row or 1,
+                    max_col=code_ws.max_column or 1,
+                ):
+                    for src in row:
+                        if isinstance(src, MergedCell) or src.value is None:
+                            continue
+                        dst = ai_ws.cell(src.row, src.column)
+                        if isinstance(dst, MergedCell):
+                            skipped += 1
+                            continue
+                        # Employee formulas outside the special list must not
+                        # overwrite AI values and hide comparison differences.
+                        if src.row >= employee_start:
+                            continue
+                        if src.data_type == "f":
+                            if dst.value != src.value:
+                                dst.value = src.value
+                                formula_copied += 1
+                            continue
+                        # Headers + period/metadata literals above the employee block.
+                        if src.row < employee_start and dst.value != src.value:
+                            dst.value = src.value
+                            metadata_copied += 1
+            ai_wb.save(ai_path)
+        finally:
+            ai_wb.close()
+    finally:
+        code_wb.close()
+    return {
+        "copyCount": non_l_copied + formula_copied + metadata_copied + provenance_copied,
+        "nonLCopyCount": non_l_copied,
+        "formulaCopyCount": formula_copied,
+        "metadataCopyCount": metadata_copied,
+        "provenanceCopyCount": provenance_copied,
+        "skippedCount": skipped,
+    }
+
+
 def write_dynamic_ai_template_copy(template_path: str | Path, output_path: str | Path, plan: dict,
                                    documents: list[dict], *,
-                                   column_mappings: dict[str, str] | None = None) -> dict:
+                                   column_mappings: dict[str, str] | None = None,
+                                   code_provenance_cells: list[dict[str, Any]] | None = None) -> dict:
     """Write an evidence-backed dynamic plan to a new copy of the current template."""
     source = Path(template_path).resolve()
     output = Path(output_path).resolve()
@@ -1573,6 +1863,9 @@ def write_dynamic_ai_template_copy(template_path: str | Path, output_path: str |
     manifest = inspect_last_l_sheet(source)
     plan = resolve_dynamic_template_fill_targets(
         plan, manifest, column_mappings=column_mappings,
+    )
+    plan = strip_code_provenance_writes(
+        plan, normalize_code_provenance_cells(code_provenance_cells), manifest["sheetName"],
     )
     validate_dynamic_template_fill_plan(
         plan, manifest, documents, column_mappings=column_mappings,
@@ -1608,4 +1901,5 @@ def write_dynamic_ai_template_copy(template_path: str | Path, output_path: str |
         "writeCount": len(plan["writes"]),
         "issueCount": len(plan["issues"]),
         "automaticPassEnabled": False,
+        "plan": plan,
     }

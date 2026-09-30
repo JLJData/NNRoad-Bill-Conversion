@@ -1222,11 +1222,23 @@ def convert(
             if UAE_L_SHEET not in wb.sheetnames:
                 raise ValueError(f"母版缺少 {UAE_L_SHEET}")
             write_uae_l(wb[UAE_L_SHEET], employees)
+            # Connect 映射拆分（Basic/Housing/Transport）→ 核对页蓝色 ⓘ
+            from bill_convert.connect_salary_split import build_connect_salary_split_cell_writes
+
+            l_header_row, l_data_start, _ = _uae_l_layout(target=True)
+            connect_split_writes = build_connect_salary_split_cell_writes(
+                employees,
+                sheet=UAE_L_SHEET,
+                data_start=l_data_start,
+                header_map=_header_map(wb[UAE_L_SHEET], l_header_row),
+                mapping=_active_mapping(),
+            )
             # UAE 姓名列若母版已是公式（='UAE-L'!B…）则保留，勿用文本覆盖
             set_period(wb, employees)
             expand_uae_employee_rows(wb, len(employees))
             fixed_value_writes = set_recurring_fees(wb, employees)
             fact_store_updates, plugin_cell_writes = _apply_vendor_plugins(wb, warnings, employee_count=len(employees))
+            plugin_cell_writes = list(plugin_cell_writes or []) + list(connect_split_writes or [])
             pn_layout = fit_uae_pn_employees(wb, len(employees))
             try:
                 fx, pn_fx_write = apply_fx(

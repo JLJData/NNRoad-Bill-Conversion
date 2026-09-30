@@ -55,7 +55,7 @@ class AnchoredCoverageTests(unittest.TestCase):
                            "page": None, "rawText": f"Basic Salary: {(source_row - 1) * 100}"},
             })
 
-    def run_plans(self, plans):
+    def run_plans(self, plans, provenance=None):
         self.calls = []
 
         def post(url, headers, payload, timeout):
@@ -70,6 +70,7 @@ class AnchoredCoverageTests(unittest.TestCase):
         return provider.plan_dynamic_template_fill(
             documents=self.documents, template_manifest=self.manifest, run_id="coverage-test",
             period="2026-08", currency="TWD", instructions=[],
+            code_provenance_cells=provenance,
             code_anchored_employees=[
                 {"row": row, "displayName": name, "names": [name]}
                 for row, name in enumerate(["Alpha", "Bravo", "Charlie", "Delta"], 2)
@@ -89,6 +90,38 @@ class AnchoredCoverageTests(unittest.TestCase):
         self.assertFalse(any(fact["sourceLabel"] == "Service Fee" for fact in alpha["inputFacts"]))
         correction = json.loads(self.calls[1]["input"][0]["content"][-1]["text"])
         self.assertIn("no payroll data", correction["validationError"])
+
+    def test_all_special_inputs_allow_empty_ai_plan_without_retry(self):
+        reserved = [{"sheet": "Payroll-L", "row": row, "col": 3} for row in range(2, 6)]
+        plan = self.run_plans([self.empty], reserved)
+        self.assertEqual(plan["writes"], [])
+        self.assertEqual(len(self.calls), 1)
+
+    def test_special_writes_removed_after_retargeting_before_coverage(self):
+        reserved = [{"sheet": "Payroll-L", "row": row, "col": 3} for row in range(2, 6)]
+        misplaced = copy.deepcopy(self.full)
+        for write in misplaced["writes"]:
+            write["targetCell"] = write["targetCell"].replace("C", "D")
+        plan = self.run_plans([misplaced], reserved)
+        self.assertEqual(plan["writes"], [])
+        self.assertEqual(len(self.calls), 1)
+        self.assertTrue(any(i["code"] == "CODE_PROVENANCE_CELL_SKIPPED" for i in plan["issues"]))
+
+    def test_special_totals_excluded_but_other_pay_fields_still_required(self):
+        self.add_employee_totals()
+        reserved = [{"sheet": "Payroll-L", "row": row, "col": 5} for row in range(2, 6)]
+        plan = self.run_plans([self.full], reserved)
+        self.assertEqual(len(plan["writes"]), 4)
+        self.assertEqual(len(self.calls), 1)
+        partial = copy.deepcopy(self.full)
+        partial["writes"] = partial["writes"][:3]
+        with self.assertRaisesRegex(ValidationError, "no payroll data.*Delta"):
+            self.run_plans([partial], reserved)
+
+    def test_same_coordinate_on_another_sheet_does_not_exempt_employee(self):
+        reserved = [{"sheet": "PN", "row": row, "col": 3} for row in range(2, 6)]
+        with self.assertRaisesRegex(ValidationError, "no payroll data"):
+            self.run_plans([self.empty], reserved)
 
     def test_repeated_empty_plan_is_rejected_instead_of_successful_export(self):
         with self.assertRaisesRegex(ValidationError, "no payroll data.*Alpha.*Delta"):

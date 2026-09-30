@@ -32,6 +32,8 @@ _captured_auth_from_colleague/
 # 样例账单、试转输出（保留本地，勿提交）
 账单/
 输出/
+output/ai_audit/
+output/ai_evaluation/
 
 # Excel 临时锁文件 / 修复中间文件
 ~$*

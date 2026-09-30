@@ -877,8 +877,9 @@ async def ai_validation_run(
 ):
     """Build a separate, non-formal AI comparison workbook from original bills.
 
-    Optional ``code_result`` supplies only person-name anchors from the CODE
-    conversion ``-L`` sheet; AI still reads amounts from the original bills.
+    Independent mode uses the original bills and a blank template. Optional
+    ``code_result`` is used only after extraction for declared special fields.
+    Raw attempts and validation feedback are retained in the output audit sheet.
     """
     if not _AI_VALIDATION_ENABLED:
         raise HTTPException(status_code=503, detail="AI validation is disabled")

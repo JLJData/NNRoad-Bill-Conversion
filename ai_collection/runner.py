@@ -1,12 +1,8 @@
-"""End-to-end AI comparison workbook orchestration.
+"""Independent AI comparison by default; explicit legacy mode for regression.
 
-This module is intentionally separate from the deterministic conversion runner.
-It receives original supplier documents plus the current master template and
-creates a new AI-only comparison workbook.
-
-Optionally it may receive the CODE conversion workbook solely to copy person-name
-identity cells onto the -L sheet before the model runs.  Amounts, fees and other
-CODE values are never copied into the AI workbook.
+Independent generation receives originals and a blank template. CODE is used
+only for declared special-field ownership and the subsequent audited overlay.
+The old anchored/reconciled path remains below the explicit mode dispatch.
 """
 from __future__ import annotations
 
@@ -21,7 +17,9 @@ from bill_validation.contracts import nonempty, require
 from .provider import AIProvider, OpenAIResponsesProvider
 from .template_fill import (
     inspect_last_l_sheet,
+    normalize_code_provenance_cells,
     prepare_template_with_code_identities,
+    sync_code_owned_regions_from_code_result,
     write_dynamic_ai_template_copy,
 )
 
@@ -91,6 +89,48 @@ def _column_mappings(source_hints: dict) -> dict[str, str]:
     return result
 
 
+def _code_provenance_cells(source_hints: dict) -> list[dict[str, Any]]:
+    return normalize_code_provenance_cells(source_hints.get("codeProvenanceCells"))
+
+
+# Fixed-layout engines / AI profile ids whose employee block starts below metadata.
+_PROFILE_DATA_START_ROW = {
+    "india-payroll": 10,
+    "india_payroll_calc": 10,
+}
+
+
+def _data_start_row(source_hints: dict, profile_id: str, *, sheet_name: str | None = None) -> int | None:
+    """Optional first employee row for CODE identity anchoring / prefilled names.
+
+    Prefer Office-merged ``targetL.dataStartRow`` from the convert mapping; fall
+    back to engineId / known profile defaults / India-L sheet convention.
+    ``None`` means header_row + 1.
+    """
+    target = source_hints.get("targetL")
+    raw = None
+    if isinstance(target, dict) and target.get("dataStartRow") is not None:
+        raw = target.get("dataStartRow")
+    elif source_hints.get("dataStartRow") is not None:
+        raw = source_hints.get("dataStartRow")
+    else:
+        engine = str(source_hints.get("engineId") or source_hints.get("engine_id") or "").strip()
+        if engine in _PROFILE_DATA_START_ROW:
+            raw = _PROFILE_DATA_START_ROW[engine]
+        elif profile_id in _PROFILE_DATA_START_ROW:
+            raw = _PROFILE_DATA_START_ROW[profile_id]
+        elif str(sheet_name or "").strip().casefold() == "india-l":
+            raw = 10
+    if raw is None:
+        return None
+    try:
+        start = int(raw)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("AI targetL.dataStartRow must be an integer") from exc
+    require(start >= 1, "AI targetL.dataStartRow must be >= 1")
+    return start
+
+
 def run_ai_comparison_workbook(*, original_paths: list[str | Path], template_path: str | Path,
                                output_path: str | Path, run_id: str, period: str, currency: str,
                                profile_id: str = "taiwan-coral-sea", provider: AIProvider | None = None,
@@ -124,30 +164,62 @@ def run_ai_comparison_workbook(*, original_paths: list[str | Path], template_pat
             document_resolver=lambda document: resolved[document["fileId"]],
             **options,
         )
+    mode = source_hints.get("comparisonMode", "independent")
+    require(mode in {"independent", "legacy"}, "Unknown AI comparisonMode")
+    if mode == "independent":
+        from .independent_runner import run_independent
+        return run_independent(
+            documents=documents, resolved=resolved, template_path=template_path, output_path=output_path,
+            run_id=str(run_id), period=str(period), currency=str(currency).upper(), profile_id=profile_id,
+            provider=provider, source_hints=source_hints, code_result_path=code_result_path,
+        )
     work_template = Path(template_path).resolve()
+    # Peek sheet name so India-L can default dataStartRow=10 even when Office
+    # sends a numeric DB profile id instead of india-payroll / engineId.
+    peek_manifest = inspect_last_l_sheet(work_template)
+    data_start_row = _data_start_row(
+        source_hints, str(profile_id), sheet_name=str(peek_manifest.get("sheetName") or ""),
+    )
     code_anchor = None
     if code_result_path is not None:
         prepared = Path(output_path).resolve().parent / ("ai-template-with-code-names-" + str(run_id) + ".xlsx")
         if prepared.exists():
             prepared.unlink()
-        print("[ai] step1: anchoring CODE -L person names onto template …", flush=True)
+        print(
+            "[ai] step1: anchoring CODE -L person names onto template"
+            + (f" (dataStartRow={data_start_row})" if data_start_row is not None else "")
+            + " …",
+            flush=True,
+        )
         code_anchor = prepare_template_with_code_identities(
             template_path, code_result_path, prepared,
+            data_start_row=data_start_row,
         )
         work_template = prepared
         print(
             f"[ai] step1 done employees={code_anchor.get('employeeCount')} "
-            f"nameCells={code_anchor.get('writeCount')}",
+            f"nameCells={code_anchor.get('writeCount')} "
+            f"reused={code_anchor.get('reuseCount')} "
+            f"clearedSample={code_anchor.get('clearedSampleCount')}",
             flush=True,
         )
     print("[ai] inspecting current last -L template …", flush=True)
     manifest = inspect_last_l_sheet(work_template)
+    if data_start_row is not None:
+        manifest["dataStartRow"] = data_start_row
+    elif isinstance(code_anchor, dict) and code_anchor.get("dataStartRow") is not None:
+        manifest["dataStartRow"] = code_anchor["dataStartRow"]
     print(
         f"[ai] template sheet={manifest.get('sheetName')} "
-        f"columns={len(manifest.get('columnContexts') or [])}",
+        f"columns={len(manifest.get('columnContexts') or [])}"
+        + (
+            f" dataStartRow={manifest.get('dataStartRow')}"
+            if manifest.get("dataStartRow") is not None else ""
+        ),
         flush=True,
     )
     column_mappings = _column_mappings(source_hints)
+    provenance_cells = _code_provenance_cells(source_hints)
     require(hasattr(provider, "plan_dynamic_template_fill"),
             "AI provider cannot perform dynamic template filling")
     print("[ai] step2: asking model for fill plan (this is the long wait) …", flush=True)
@@ -160,6 +232,7 @@ def run_ai_comparison_workbook(*, original_paths: list[str | Path], template_pat
         instructions=_instructions(source_hints),
         column_mappings=column_mappings,
         code_anchored_employees=(code_anchor or {}).get("employees"),
+        code_provenance_cells=provenance_cells,
     )
     print(
         f"[ai] plan ready writes={len(plan.get('writes') or [])} "
@@ -167,14 +240,43 @@ def run_ai_comparison_workbook(*, original_paths: list[str | Path], template_pat
         flush=True,
     )
     artifact = write_dynamic_ai_template_copy(
-        work_template, output_path, plan, documents, column_mappings=column_mappings,
+        work_template, output_path, plan, documents,
+        column_mappings=column_mappings,
+        code_provenance_cells=provenance_cells,
     )
+    final_plan = artifact.get("plan") or plan
     print(f"[ai] workbook written sheet={artifact.get('sheetName')}", flush=True)
+    provenance_copy = {
+        "copyCount": 0, "skippedCount": 0,
+        "nonLCopyCount": 0, "formulaCopyCount": 0, "provenanceCopyCount": 0,
+    }
+    if code_result_path is not None:
+        print(
+            "[ai] step3: syncing CODE-owned sheets/formulas"
+            + (f" + {len(provenance_cells)} provenance cell(s)" if provenance_cells else "")
+            + " …",
+            flush=True,
+        )
+        provenance_copy = sync_code_owned_regions_from_code_result(
+            code_result_path, output_path,
+            provenance_cells=provenance_cells,
+            data_start_row=manifest.get("dataStartRow") or data_start_row,
+        )
+        print(
+            f"[ai] step3 done copied={provenance_copy.get('copyCount')} "
+            f"nonL={provenance_copy.get('nonLCopyCount')} "
+            f"metadata={provenance_copy.get('metadataCopyCount')} "
+            f"formulas={provenance_copy.get('formulaCopyCount')} "
+            f"provenance={provenance_copy.get('provenanceCopyCount')} "
+            f"skipped={provenance_copy.get('skippedCount')}",
+            flush=True,
+        )
+        artifact["outputSha256"] = hashlib.sha256(Path(output_path).read_bytes()).hexdigest()
     return {
         "runId": str(run_id),
         "profileId": profile_id,
         "provider": provider.provider_id,
-        "model": plan["model"],
+        "model": final_plan["model"],
         "schemaId": "current-template-last-L",
         "schemaVersion": manifest["templateSha256"][:16],
         "period": str(period),
@@ -184,11 +286,17 @@ def run_ai_comparison_workbook(*, original_paths: list[str | Path], template_pat
         "outputSha256": artifact["outputSha256"],
         "writeCount": artifact["writeCount"],
         "recordCount": None,
-        "readiness": "review_required" if plan["issues"] else "ready_for_review",
-        "issueCount": len(plan["issues"]),
-        "planVersion": plan["planVersion"],
+        "readiness": "review_required" if final_plan["issues"] else "ready_for_review",
+        "issueCount": len(final_plan["issues"]),
+        "planVersion": final_plan["planVersion"],
         "columnMappingHintCount": len(column_mappings),
-        "issues": plan["issues"],
+        "codeProvenanceCellCount": len(provenance_cells),
+        "codeProvenanceCopyCount": provenance_copy.get("provenanceCopyCount") or 0,
+        "codeOwnedCopyCount": provenance_copy.get("copyCount") or 0,
+        "codeOwnedMetadataCopyCount": provenance_copy.get("metadataCopyCount") or 0,
+        "codeOwnedNonLCopyCount": provenance_copy.get("nonLCopyCount") or 0,
+        "codeOwnedFormulaCopyCount": provenance_copy.get("formulaCopyCount") or 0,
+        "issues": final_plan["issues"],
         "automaticPassEnabled": False,
         "formalResult": False,
         "codeIdentityAnchored": bool(code_anchor),
