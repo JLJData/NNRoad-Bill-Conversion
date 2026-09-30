@@ -39,7 +39,7 @@ Provider 返回的每个写入值须包含原始文件 ID、位置和原文；�
 - `AIProvider`：所有真实／本地模型适配器的统一接口。
 - `ProviderRegistry`：按全局 provider ID 注册，拒绝重复与未知 Provider。
 - `MockAIProvider`：使用固定结果或回调运行测试，不读文件、不联网。
-- `OpenAIResponsesProvider`：默认使用 `gpt-5.6-luna`；调用前解析原始文件引用并核对 SHA-256，通过 Responses API 文件输入和 Structured Outputs 返回采集结果。当前已按引擎默认开放 `tw/uk/uae/pakistan/india/cyprus_payroll_calc` 的 template-driven AI 对比（Office 也可在 `portal_bill_ai_profile_config_version` 挂 ACTIVE 配置）。
+- `OpenAIResponsesProvider`：默认使用 `gpt-5.6-luna`；调用前解析原始文件引用并核对 SHA-256，通过 Responses API 文件输入和 Structured Outputs 返回采集结果。当前已按引擎默认开放全部已注册 payroll 引擎（含 china/hk/tw/uk/uae/pakistan/italy/india/cyprus/indonesia/kyrgyzstan）的 template-driven AI 对比（Office 也可在 `portal_bill_ai_profile_config_version` 挂 ACTIVE 配置）。
 - `run_collection`：校验独立请求、调用 Provider、校验运行 ID、Provider 身份、Schema、证据和结构化输出。
 - `AIProviderError`：超时及模型／传输失败，与 Code-vs-AI 业务差异分开处理。
 - `inspect_last_l_sheet`：每次按当前母版重新选择工作簿顺序中最后一个 `-L` 表，并动态识别表头行、各列标题、表名、哈希、非空单元格、公式和合并区域。
