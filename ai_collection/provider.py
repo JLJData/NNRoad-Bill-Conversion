@@ -516,10 +516,15 @@ class OpenAIResponsesProvider(AIProvider):
 
     def _discover_source_employee_roster(self, documents: list[dict]) -> list[dict]:
         """Program-detect named employees from original XLSX bills before prompting."""
-        from .template_fill import inspect_source_employee_layout, list_named_source_employees
+        from .template_fill import (
+            _column_contexts, _is_service_fee_label,
+            inspect_source_employee_layout, list_named_source_employees,
+        )
 
         source_layouts: dict[str, dict[str, dict]] = {}
         workbooks = []
+        value_workbooks = {}
+        contexts = {}
         try:
             for document in documents:
                 try:
@@ -530,10 +535,39 @@ class OpenAIResponsesProvider(AIProvider):
                     continue
                 wb = load_workbook(path, data_only=False, read_only=False, keep_links=False)
                 workbooks.append(wb)
+                values = load_workbook(path, data_only=True, read_only=False, keep_links=False)
+                workbooks.append(values)
+                value_workbooks[document["fileId"]] = values
                 layouts = source_layouts.setdefault(document["fileId"], {})
                 for sheet_name in wb.sheetnames:
                     layouts[sheet_name] = inspect_source_employee_layout(wb[sheet_name])
-            return list_named_source_employees(source_layouts)
+                    if layouts[sheet_name]["nameColumns"]:
+                        contexts[(document["fileId"], sheet_name)] = _column_contexts(wb[sheet_name])[1]
+            employees = list_named_source_employees(source_layouts)
+            for employee in employees:
+                ws = value_workbooks[employee["fileId"]][employee["sheetName"]]
+                facts = []
+                for context in contexts[(employee["fileId"], employee["sheetName"])]:
+                    if _is_service_fee_label(context["pathLabel"]):
+                        continue
+                    cell = ws.cell(employee["sourceRow"], context["column"])
+                    value = cell.value
+                    if value is None or value == "" or value == 0:
+                        continue
+                    value_type = "text"
+                    if hasattr(value, "isoformat"):
+                        value = value.isoformat()[:10]
+                        value_type = "date"
+                    elif isinstance(value, (int, float)) and not isinstance(value, bool):
+                        value_type = "decimal"
+                    facts.append({
+                        "sourceLabel": context["pathLabel"],
+                        "location": f"{employee['sheetName']}!{cell.coordinate}",
+                        "value": str(value),
+                        "valueType": value_type,
+                    })
+                employee["inputFacts"] = facts
+            return employees
         finally:
             for wb in workbooks:
                 wb.close()
@@ -556,7 +590,7 @@ class OpenAIResponsesProvider(AIProvider):
             "rules": [
                 "Use worksheet meaning, labels, row context, units and employee layout; do not rely on old coordinates.",
                 "Map every employee name and available requested field only when the target is unambiguous.",
-                "Never target formulas, headers, merged placeholders, totals, or another worksheet.",
+                "Never target formulas, headers, merged placeholders, aggregate summary rows, or another worksheet. A named employee's Total column is an input field and may be filled from that employee's source Total.",
                 "Do not include values in the plan; reference only recordIndex and field.",
                 "Put ambiguity or missing target structure in issues and leave the cell unwritten.",
             ],
@@ -627,11 +661,12 @@ class OpenAIResponsesProvider(AIProvider):
                 "Use worksheet meaning, labels, row context and units; do not rely on historical coordinates or field names.",
                 "Only propose writes to blank input cells in this worksheet.",
                 "Choose the employee row carefully. The service will resolve a uniquely known target column from columnMappings and current template labels instead of trusting the proposed column coordinate.",
-                "Never target formulas, headers, merged placeholders, totals or another worksheet.",
+                "Never target formulas, headers, merged placeholders, aggregate summary rows or another worksheet. A named employee's Total column is an input field and must be filled when the original bill provides it and the target is blank.",
                 "Formula cells (valueKind=formula in template.nonemptyCells) belong to the template. Do not propose writes to them; Excel will compute them.",
                 "Blank and numeric 0 are equivalent. Never write 0 / 0.0 / 0.00 into a cell — leave that cell unwritten (blank).",
                 "Copy source facts faithfully. Do not invent payroll calculations. Missing or zero amounts should stay blank, not become literal zero writes.",
                 "Every write must include precise evidence from an attached original file.",
+                "detectedSourceEmployees.inputFacts contains program-read non-zero facts from the ORIGINAL XLSX, with exact source locations. Use these facts alongside the attached bill; they are not CODE amounts.",
                 "Identity columns are sacred: BU, CN Name, EN Name, Position, Start Date, End Date and FT/PT must map to the template column with the same meaning. Never shift them one column right/left.",
                 "Do not write company/BU values into CN Name, employee Chinese names into EN Name, or English names into Position.",
                 "Source and template column orders often differ (extra Monthly/Allowance columns). Always match by field label meaning, never by column letter or left-to-right position.",
@@ -657,6 +692,7 @@ class OpenAIResponsesProvider(AIProvider):
                 "If a source fact or target is ambiguous, report an issue and leave it unwritten.",
                 "Do not write section/group headers such as Pay Items into employee value cells.",
                 "Never write Service Fee / 服务费 (or any source/template column whose meaning is service fee). Leave those cells blank; they are out of scope for AI filling.",
+                "Skipping the Service Fee column does not exclude an employee's reported Total. Copy the original Total as reported, even when it includes service fees; do not recompute it or subtract the skipped fee.",
                 "Do not move a skipped fee amount into an adjacent fee/charge column — omit that amount entirely.",
             ],
             "runId": run_id,
@@ -665,7 +701,8 @@ class OpenAIResponsesProvider(AIProvider):
             "profileInstructions": list(instructions),
             "columnMappings": column_mappings,
             "codeAnchoredEmployees": code_anchored,
-            "detectedSourceEmployees": roster_for_prompt,
+            "detectedSourceEmployees": detected_employees,
+            "targetEmployees": roster_for_prompt,
             "documents": [{key: value for key, value in item.items() if key != "sourceRef"}
                           for item in documents],
             "template": copy.deepcopy(template_manifest),
@@ -684,7 +721,57 @@ class OpenAIResponsesProvider(AIProvider):
                 "schema": _dynamic_template_plan_output_schema(template_manifest, documents, self._model),
             }},
         }
-        from .template_fill import resolve_dynamic_template_fill_targets, validate_dynamic_template_fill_plan
+        from .template_fill import (
+            _configured_target, _exact_header_column, _is_service_fee_label,
+            _name_token_set, _prefilled_identity_rows, _unambiguous_column,
+            resolve_dynamic_template_fill_targets, validate_dynamic_template_fill_plan,
+        )
+
+        def _validate(plan: dict) -> None:
+            validate_dynamic_template_fill_plan(
+                plan, template_manifest, documents, column_mappings=column_mappings,
+            )
+            # Validate retained writes, after formula/zero/unsafe writes are removed.
+            # Pre-filled names prove identity only, never successful data extraction.
+            occupied = {item["cell"] for item in template_manifest.get("nonemptyCells") or []}
+            kept_cells = {item["targetCell"] for item in plan["writes"]}
+            missing = []
+            missing_fields = []
+            for row, identity in _prefilled_identity_rows(template_manifest).items():
+                expected = set()
+                exact_expected = {}
+                for employee in detected_employees:
+                    if not identity["tokens"] & _name_token_set(employee["names"]):
+                        continue
+                    for fact in employee.get("inputFacts") or []:
+                        if fact["valueType"] != "decimal":
+                            continue
+                        contexts = template_manifest["columnContexts"]
+                        exact = _exact_header_column(fact["sourceLabel"], contexts)
+                        configured = None if exact else _configured_target(fact["sourceLabel"], column_mappings)
+                        label = configured or fact["sourceLabel"]
+                        context = exact or _unambiguous_column(label, contexts)
+                        if context is None:
+                            continue
+                        if _is_service_fee_label(context["primaryLabel"]):
+                            continue
+                        cell = context["columnLetter"] + str(row)
+                        if cell not in occupied:
+                            expected.add(cell)
+                            # Only exact headers or reviewed mappings impose field-level
+                            # completeness; fuzzy candidates remain subject to AI review.
+                            if exact is not None or configured is not None:
+                                exact_expected[cell] = context["primaryLabel"]
+                if expected and not (expected & kept_cells):
+                    missing.append(f"{identity['displayName']} (target row {row})")
+                for cell, label in exact_expected.items():
+                    if cell not in kept_cells:
+                        missing_fields.append(f"{identity['displayName']}: {label} -> {cell}")
+            require(not missing, "AI returned no payroll data for employees with available source values: "
+                    + ", ".join(missing) + ". Fill their blank input cells using detectedSourceEmployees.inputFacts.")
+            require(not missing_fields, "AI omitted available source fields with unambiguous targets: "
+                    + "; ".join(missing_fields[:40])
+                    + ". Fill these inputs from detectedSourceEmployees.inputFacts; employee Total columns are not summary rows.")
 
         def _finalize(raw_plan: dict) -> dict:
             return resolve_dynamic_template_fill_targets(
@@ -702,9 +789,7 @@ class OpenAIResponsesProvider(AIProvider):
 
         first_plan = _finalize(self._call_structured(payload))
         try:
-            validate_dynamic_template_fill_plan(
-                first_plan, template_manifest, documents, column_mappings=column_mappings,
-            )
+            _validate(first_plan)
         except ValidationError as exc:
             correction = {
                 "task": "Return a complete corrected replacement plan.",
@@ -728,9 +813,7 @@ class OpenAIResponsesProvider(AIProvider):
                 "text": json.dumps(correction, ensure_ascii=False),
             })
             corrected_plan = _finalize(self._call_structured(retry_payload))
-            validate_dynamic_template_fill_plan(
-                corrected_plan, template_manifest, documents, column_mappings=column_mappings,
-            )
+            _validate(corrected_plan)
             return corrected_plan
 
         if employee_count > 1 and _needs_employee_retry(first_plan):
@@ -755,9 +838,7 @@ class OpenAIResponsesProvider(AIProvider):
                 "text": json.dumps(correction, ensure_ascii=False),
             })
             corrected_plan = _finalize(self._call_structured(retry_payload))
-            validate_dynamic_template_fill_plan(
-                corrected_plan, template_manifest, documents, column_mappings=column_mappings,
-            )
+            _validate(corrected_plan)
             return corrected_plan
         return first_plan
 
