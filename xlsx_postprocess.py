@@ -15,6 +15,7 @@ from xlsx_keep_images import require_pillow
 from xlsx_richtext_fix import migrate_inlinestr_richtext_to_shared_strings
 from xlsx_theme_fill_fix import materialize_theme_fills
 from xlsx_date_cell_fix import normalize_template_date_cells
+from xlsx_pn_font_fix import normalize_pn_billto_fonts
 
 
 def postprocess_converted_xlsx(xlsx_path: Path | str) -> dict[str, int]:
@@ -29,8 +30,10 @@ def postprocess_converted_xlsx(xlsx_path: Path | str) -> dict[str, int]:
     migrate_inlinestr_richtext_to_shared_strings(path)
     theme_stats = materialize_theme_fills(path) or {}
     date_cells = normalize_template_date_cells(path)
+    pn_fonts = normalize_pn_billto_fonts(path)
     return {
         "theme_fills": int(theme_stats.get("fills", 0) or 0),
         "theme_xfs": int(theme_stats.get("xfs", 0) or 0),
         "date_cells": int(date_cells or 0),
+        "pn_fonts": int(pn_fonts or 0),
     }

@@ -130,11 +130,10 @@ ENGINE_DEFAULTS: dict[str, dict[str, Any]] = {
         "employeeFormulaStyles": [],
         "skipSourceHeaders": [],
         "fxPolicy": {
-            "mode": "vendor_bill",
-            "sourceSheetHints": ["S-Payment Notice", "Payment Notice", "付款通知"],
-            "sourceCell": "C51",
+            "mode": "nnroad",
             "fallback": "none",
             "defaultCurrency": "CNY",
+            "adjustment": 0.97,
         },
     },
     "hk_payroll_calc": {
@@ -461,6 +460,92 @@ ENGINE_DEFAULTS: dict[str, dict[str, Any]] = {
         ],
         "fxPolicy": {"mode": "none"},
     },
+    # Indonesia：默认 columnRename 必须覆盖「非同名」列（资格化 key 完全一致才算同名）。
+    # 仅 HEALTH INSURANCE… 可同名自动配；其余须出现在此表，前端映射可见。
+    "indonesia_payroll_calc": {
+        "schemaVersion": 1,
+        "metaCells": {
+            "periodFrom": "C2",
+            "periodTo": "E2",
+            "fxRate": "C4",
+        },
+        "sourceEmployeeSheet": {
+            "sheet": "Sheet1",
+            "candidates": ["Sheet1", "Indonesia-L"],
+            # 子表头行；父行 = headerRow-1（供资格化 父/子）
+            "headerRow": 7,
+            "dataStartRow": 8,
+            "nameHeaders": ["Name of Employee", "EMPLOYEE NAME", "Employee Name"],
+            "layout": "link_compliance_payroll",
+        },
+        "targetL": {
+            "sheet": "Indonesia-L",
+            "candidates": ["Indonesia-L"],
+            "headerRow": 7,
+            "dataStartRow": 8,
+        },
+        "columnRename": {
+            "EMPLOYEE NAME": "Name of Employee",
+            "BASIC PAY (IDR)": "Base Salary",
+            "SOCIAL INSURANCE (BPJS KETENAGAKERJAAN)/JKK 0.24%": "JKK 0.24%",
+            "SOCIAL INSURANCE (BPJS KETENAGAKERJAAN)/JHT 3.7%": "JHT 3.7%",
+            "SOCIAL INSURANCE (BPJS KETENAGAKERJAAN)/JP 2%": "JP 2%",
+            "SOCIAL INSURANCE (BPJS KETENAGAKERJAAN)/JKM  0.3%": "JKM  0.3%",
+            "DEDUCTION/JP 1%": "JP 1%",
+            "DEDUCTION/BPJS KESEHATAN 1%": "BPJS KESEHATAN 1%",
+            "DEDUCTION/INCOME TAX (PPH21)": "INCOME TAX (PPH21)",
+            # 注意：不映射 DEDUCTION/JHT 2% → 母版 K 列为公式 ROUND(C*2%,0)
+        },
+        "formulaTemplates": {
+            "applyDefaultToAllEmployees": True,
+            "Indonesia": {"defaultExampleRow": 9},
+            "Indonesia EE": {"defaultExampleRow": 10, "dataStartOffset": 0},
+        },
+        "employeeFormulaStyles": [],
+        "skipSourceHeaders": [],
+        "pnSheets": {"main": "Indonesia", "ee": "Indonesia EE", "l": "Indonesia-L"},
+        "fxPolicy": {
+            "mode": "vendor_bill",
+            "fallback": "api",
+            "defaultCurrency": "IDR",
+        },
+    },
+    # Kyrgyzstan：Atlas 竖表标签源；税列由母版公式从 Base Salary 推导，默认无 columnRename。
+    "kyrgyzstan_payroll_calc": {
+        "schemaVersion": 1,
+        "metaCells": {
+            "periodFrom": "C2",
+            "periodTo": "E2",
+        },
+        "sourceEmployeeSheet": {
+            "sheet": "Iskakov",
+            "candidates": ["Iskakov", "Kyrgyzstan-L", "Sheet1"],
+            "headerRow": 7,
+            "dataStartRow": 8,
+            "nameHeaders": ["Name of Employee", "Employee Name"],
+            "layout": "atlas_cost_calculation",
+        },
+        "targetL": {
+            "sheet": "Kyrgyzstan-L",
+            "candidates": ["Kyrgyzstan-L"],
+            "headerRow": 7,
+            "dataStartRow": 8,
+        },
+        "columnRename": {},
+        "formulaTemplates": {
+            "applyDefaultToAllEmployees": True,
+            "Kyrgyzstan": {"defaultExampleRow": 9},
+            "Kyrgyzstan EE": {"defaultExampleRow": 10, "dataStartOffset": 0},
+        },
+        "employeeFormulaStyles": [],
+        "skipSourceHeaders": [],
+        "pnSheets": {"main": "Kyrgyzstan", "ee": "Kyrgyzstan EE", "l": "Kyrgyzstan-L"},
+        "fxPolicy": {
+            "mode": "vendor_bill",
+            "fallback": "api",
+            "defaultCurrency": "KGS",
+        },
+    },
 }
 
 # 列名对照不再内置默认：须在 Office「转换映射」中配置并保存。
@@ -630,6 +715,24 @@ PROFILE_MAPPING_OVERLAYS: dict[str, dict[str, Any]] = {
         },
         "columnRename": {},
     },
+    "link_compliance_id": {
+        "sourceEmployeeSheet": {
+            "sheet": "Sheet1",
+            "candidates": ["Sheet1", "Indonesia-L"],
+            "headerRow": 7,
+            "dataStartRow": 8,
+            "nameHeaders": ["Name of Employee", "EMPLOYEE NAME", "Employee Name"],
+            "layout": "link_compliance_payroll",
+        },
+        "targetL": {
+            "sheet": "Indonesia-L",
+            "candidates": ["Indonesia-L"],
+            "headerRow": 7,
+            "dataStartRow": 8,
+        },
+        # columnRename 不注入 overlay：以引擎默认 / Office 已存映射为准；预填见 builtinColumnRename
+        "columnRename": {},
+    },
 }
 
 
@@ -654,14 +757,40 @@ _BUILTIN_COLUMN_RENAME_BY_PROFILE: dict[str, dict[str, str]] = {
         "Medical Insurance Cover": "Medical Insurance",
         "Medical Insurance": "Medical Insurance",
     },
+    # 与 ENGINE_DEFAULTS.indonesia_payroll_calc.columnRename 保持一致（前端预填可见）
+    "link_compliance_id": {
+        "EMPLOYEE NAME": "Name of Employee",
+        "BASIC PAY (IDR)": "Base Salary",
+        "SOCIAL INSURANCE (BPJS KETENAGAKERJAAN)/JKK 0.24%": "JKK 0.24%",
+        "SOCIAL INSURANCE (BPJS KETENAGAKERJAAN)/JHT 3.7%": "JHT 3.7%",
+        "SOCIAL INSURANCE (BPJS KETENAGAKERJAAN)/JP 2%": "JP 2%",
+        "SOCIAL INSURANCE (BPJS KETENAGAKERJAAN)/JKM  0.3%": "JKM  0.3%",
+        "DEDUCTION/JP 1%": "JP 1%",
+        "DEDUCTION/BPJS KESEHATAN 1%": "BPJS KESEHATAN 1%",
+        "DEDUCTION/INCOME TAX (PPH21)": "INCOME TAX (PPH21)",
+    },
 }
 
 
-def get_builtin_column_rename(pdf_profile_id: str | None) -> dict[str, str]:
+def get_builtin_column_rename(
+    pdf_profile_id: str | None, engine_id: str | None = None
+) -> dict[str, str]:
     pid = str(pdf_profile_id or "").strip()
-    if not pid:
-        return {}
-    return copy.deepcopy(_BUILTIN_COLUMN_RENAME_BY_PROFILE.get(pid, {}))
+    if pid:
+        hit = _BUILTIN_COLUMN_RENAME_BY_PROFILE.get(pid)
+        if hit:
+            return copy.deepcopy(hit)
+    eid = str(engine_id or "").strip()
+    if eid == "china_hrone":
+        eid = "china_payroll_calc"
+    if eid == "hk_vertical_l":
+        eid = "hk_payroll_calc"
+    # Indonesia：引擎默认 columnRename 同时作为 UI 预填（无 pdf profile 或 overlay 为空时）
+    if eid == "indonesia_payroll_calc":
+        rename = (ENGINE_DEFAULTS.get(eid) or {}).get("columnRename") or {}
+        if isinstance(rename, dict) and rename:
+            return copy.deepcopy(rename)
+    return {}
 
 
 def resolve_convert_mapping(engine_id: str, raw: dict[str, Any] | None) -> dict[str, Any]:

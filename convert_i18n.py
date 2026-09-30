@@ -307,11 +307,19 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "china.formula_no_fields": "映射有员工公式样式，但未找到 chinaExampleRow/mainExampleRow 字段（可能未保存成功）",
         # --- china_hrone ---
         "china_hrone.fx_not_read": "供应商账单未读到汇率（S-Payment Notice!{cell} 或「汇率」标签），PN FX 格未改",
+        "china_hrone.fx_nnroad_fail": "汇率应按当月1号×0.97 取自 NNRoad，但未取到（{detail}），PN FX 格未改（不用供应商账单汇率）",
         "china_hrone.no_pn_sheet": "母版没有 PN 表，汇率已读到但未写入",
         "china_hrone.no_fx_row": "母版 PN 未找到 FX rate 行，汇率已读到但未写入",
         "china_hrone.no_names": "未从源表读到员工姓名，无法匹配 EE Code",
         "china_hrone.no_ee_sheet": "母版没有 China EE 表，EE Code 未写入",
         "china_hrone.no_directory": "未提供客户员工目录，无法匹配 EE Code",
+        "china_hrone.fx_source": "账期月1号的最低汇率 × 0.97",
+        "china_hrone.fx_source_month": "{year}年{month}月1号的最低汇率 × 0.97",
+        "unlock.empty": "源表为空，不是有效 Excel: {name}",
+        "unlock.source_is_pdf": "源表实际是 PDF，不是 Excel: {name}",
+        "unlock.not_xlsx_header": "源表不是有效 xlsx（文件头 {header}）: {name}",
+        "unlock.after_decrypt": "源表解密后仍无法打开（{name}）: {detail}",
+        "unlock.template_not_xlsx": "母版不是有效 xlsx（{name}）: {detail}",
         # --- tw ---
         "tw.fx_fallback": "Summary 未找到有效 Exchange rate，已回退 API TWD 汇率",
         # --- uk ---
@@ -616,11 +624,19 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "china.formula_no_fields": "Employee formula styles configured but chinaExampleRow/mainExampleRow missing (save may have failed)",
         # --- china_hrone ---
         "china_hrone.fx_not_read": "FX not read from vendor bill (S-Payment Notice!{cell} or 汇率 label); PN FX cell unchanged",
+        "china_hrone.fx_nnroad_fail": "FX should be NNRoad month-1 * 0.97, but it was not fetched ({detail}); PN FX unchanged (vendor bill FX not used)",
         "china_hrone.no_pn_sheet": "Template has no PN sheet; FX read but not written",
         "china_hrone.no_fx_row": "PN FX rate row not found; FX read but not written",
         "china_hrone.no_names": "No employee names read from source; cannot match EE Code",
         "china_hrone.no_ee_sheet": "Template has no China EE sheet; EE Code not written",
         "china_hrone.no_directory": "No client employee directory; cannot match EE Code",
+        "china_hrone.fx_source": "Billing-month day-1 lowest FX × 0.97",
+        "china_hrone.fx_source_month": "{year}-{month} day-1 lowest FX × 0.97",
+        "unlock.empty": "Source file is empty, not a valid Excel: {name}",
+        "unlock.source_is_pdf": "Source file is actually a PDF, not Excel: {name}",
+        "unlock.not_xlsx_header": "Source is not a valid xlsx (header {header}): {name}",
+        "unlock.after_decrypt": "Source still cannot be opened after decrypt ({name}): {detail}",
+        "unlock.template_not_xlsx": "Template is not a valid xlsx ({name}): {detail}",
         # --- tw ---
         "tw.fx_fallback": "Summary has no valid Exchange rate; fell back to API TWD FX",
         # --- uk ---

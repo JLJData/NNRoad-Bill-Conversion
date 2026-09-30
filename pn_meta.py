@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import asdict, dataclass
 from datetime import date, datetime
 from pathlib import Path
@@ -160,6 +161,37 @@ def _write_pn_date_cell(ws, coord: str, value: date) -> None:
     cell.number_format = PN_DATE_NUMBER_FORMAT
 
 
+def _write_pn_text_cell(
+    ws,
+    coord: str,
+    value: str,
+    *,
+    max_lines: int = 3,
+    multiline_in_cell: bool = False,
+) -> None:
+    """只写 PN 元数据值；行高/列宽/对齐/换行以母版为准。
+
+    - B8 客户名称：换行保留在同一格（与母版 ``\\n`` 一致，不能拆到 B9）
+    - B10 地址等：含换行时按同列连续行写入（如 B10/B11 两行）
+    """
+    text = str(value or "")
+    normalized = text.replace("\r\n", "\n").replace("\r", "\n")
+    if multiline_in_cell:
+        ws[coord].value = normalized.strip("\n") if normalized else text
+        return
+    if "\n" not in normalized:
+        ws[coord].value = text
+        return
+    m = re.fullmatch(r"([A-Za-z]+)(\d+)", coord.strip())
+    if not m:
+        ws[coord].value = text
+        return
+    col, start_row = m.group(1), int(m.group(2))
+    lines = [ln.strip() for ln in normalized.split("\n") if ln.strip()]
+    for i, line in enumerate(lines[:max_lines]):
+        ws[f"{col}{start_row + i}"].value = line
+
+
 def apply_pn_meta(
     wb: Workbook,
     meta: PnMeta | dict[str, Any],
@@ -190,9 +222,11 @@ def apply_pn_meta(
         )
 
     ws = wb[PN_SHEET]
-    ws[PN_CELLS["customer_name"]] = pn.customer_name
+    _write_pn_text_cell(
+        ws, PN_CELLS["customer_name"], pn.customer_name, multiline_in_cell=True
+    )
     ws[PN_CELLS["customer_id"]] = pn.customer_id
-    ws[PN_CELLS["billing_address"]] = pn.billing_address
+    _write_pn_text_cell(ws, PN_CELLS["billing_address"], pn.billing_address)
     ws[PN_CELLS["invoice_number"]] = invoice_number
     _write_pn_date_cell(ws, PN_CELLS["invoice_date"], invoice_date)
     if pn.due_date is not None:

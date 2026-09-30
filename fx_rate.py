@@ -91,3 +91,8 @@ CYPRUS_FX_ADJUSTMENT = 0.97
 def get_cyprus_pn_fx_rate(rates: dict[str, float] | None = None) -> float:
     """Cyprus PN FX：USD → EUR，再乘调整系数 0.97。"""
     return round(get_usd_rate("EUR", rates) * CYPRUS_FX_ADJUSTMENT, 10)
+
+
+def get_indonesia_pn_fx_rate(rates: dict[str, float] | None = None) -> float:
+    """Indonesia-L!C4 / PN FX：USD → IDR（优先用供应商账单汇率；API 回退无调整系数）。"""
+    return round(get_usd_rate("IDR", rates), 4)
