@@ -689,6 +689,8 @@ def resolve_convert_mapping(engine_id: str, raw: dict[str, Any] | None) -> dict[
         ):
             if whole_key in override:
                 base[whole_key] = copy.deepcopy(override.pop(whole_key))
+        # AI-only prompts must not reach CODE convert engines.
+        override.pop("aiInstructions", None)
         merged = _deep_merge(base, override)
 
     pid = ""
@@ -708,6 +710,7 @@ def resolve_convert_mapping(engine_id: str, raw: dict[str, Any] | None) -> dict[
         merged["pdfProfileId"] = pid
     engine_writes = (ENGINE_DEFAULTS.get(engine_id) or {}).get("fixedValueWrites")
     if isinstance(merged, dict):
+        merged.pop("aiInstructions", None)
         if engine_writes is not None:
             merged["fixedValueWrites"] = copy.deepcopy(engine_writes)
         else:

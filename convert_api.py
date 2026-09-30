@@ -22,6 +22,7 @@
   POST /mapping/inspect-source     样例源表头
   GET  /ai-validation/profiles     AI 对比试点配置（不调用模型）
   POST /ai-validation/run          原账单 + 当前母版 → AI 对比工作簿（最后一个 -L；可选 CODE 结果仅锚定人名）
+  POST /ai-validation/suggest-prompt  CODE/AI 差异摘要 + 用户需求 → 建议 aiInstructions
   GET  /region-template?region=Taiwan  地区默认 PN 母版
   POST /excel-snapshot  multipart: file, sheet(可选默认PN), max_cells(可选默认300)
   POST /hf-snapshot     multipart: file, sheet(可选默认PN), max_cells(可选默认300)  # Node HyperFormula
@@ -52,7 +53,8 @@ from pdf_ingest.runner import run_pdf_to_source, run_pdf_to_source_batch, run_ve
 from region_templates import list_regions, get_region_template
 from xlsx_unlock import collect_unlock_passwords, unlock_xlsx
 from convert_i18n import parse_accept_language, reset_locale, set_locale, get_locale, translate_outbound
-from ai_collection import list_ai_validation_profiles, run_ai_comparison_workbook
+from ai_collection import list_ai_validation_profiles, run_ai_comparison_workbook, suggest_ai_instructions
+from ai_collection.provider import AIProviderError
 
 CONVERT_API_KEY = os.environ.get("CONVERT_API_KEY", "").strip()
 _DISABLE_DOCS = os.environ.get("CONVERT_DISABLE_DOCS", "").strip() in ("1", "true", "True", "yes")
@@ -966,6 +968,61 @@ async def ai_validation_run(
         _cleanup_dir(tmp_dir)
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"AI 对比生成失败: {exc}") from exc
+
+
+@app.post("/ai-validation/suggest-prompt")
+async def ai_validation_suggest_prompt(request: Request):
+    """Suggest mapping.aiInstructions from CODE/AI diffs and an operator request.
+
+    Body JSON:
+      userRequest, currentInstructions?, comparison?,
+      model?/reasoning_effort?/base_url?/timeout_seconds?
+    """
+    if not _AI_VALIDATION_ENABLED:
+        raise HTTPException(status_code=503, detail="AI validation is disabled")
+    try:
+        body = await request.json()
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail="请求体必须是 JSON") from exc
+    if not isinstance(body, dict):
+        raise HTTPException(status_code=400, detail="请求体必须是 JSON 对象")
+    user_request = str(body.get("userRequest") or "").strip()
+    if not user_request:
+        raise HTTPException(status_code=400, detail="userRequest 不能为空")
+    comparison = body.get("comparison")
+    if comparison is None:
+        comparison = {}
+    if not isinstance(comparison, dict):
+        raise HTTPException(status_code=400, detail="comparison 必须是 JSON 对象")
+    current = body.get("currentInstructions")
+    if current is None:
+        current = []
+    if isinstance(current, str):
+        current = [line.strip() for line in current.splitlines() if line.strip()]
+    if not isinstance(current, list):
+        raise HTTPException(status_code=400, detail="currentInstructions 必须是字符串数组或文本")
+    provider = str(body.get("provider") or "openai").strip().lower()
+    if provider != "openai":
+        raise HTTPException(status_code=400, detail="Only the openai AI validation provider is supported")
+    try:
+        result = suggest_ai_instructions(
+            user_request=user_request,
+            current_instructions=[str(x) for x in current],
+            comparison=comparison,
+            model=str(body.get("model") or _AI_VALIDATION_MODEL).strip() or _AI_VALIDATION_MODEL,
+            reasoning_effort=str(body.get("reasoning_effort") or _AI_VALIDATION_REASONING).strip()
+            or _AI_VALIDATION_REASONING,
+            base_url=str(body.get("base_url")).strip() if body.get("base_url") else None,
+            timeout_seconds=float(body["timeout_seconds"]) if body.get("timeout_seconds") is not None else None,
+        )
+        return JSONResponse(result)
+    except (ValueError, KeyError, TypeError) as exc:
+        raise HTTPException(status_code=400, detail=f"AI 提示词建议参数无效: {exc}") from exc
+    except AIProviderError as exc:
+        raise HTTPException(status_code=502, detail=f"AI 提示词建议失败: {exc}") from exc
+    except Exception as exc:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"AI 提示词建议失败: {exc}") from exc
 
 
 @app.post("/excel-snapshot")

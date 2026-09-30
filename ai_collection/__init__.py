@@ -28,6 +28,7 @@ from .template_fill import (
     write_dynamic_ai_template_copy,
 )
 from .runner import list_ai_validation_profiles, run_ai_comparison_workbook
+from .suggest_prompt import suggest_ai_instructions
 
 __all__ = [
     "AIProvider",
@@ -55,6 +56,7 @@ __all__ = [
     "write_dynamic_ai_template_copy",
     "list_ai_validation_profiles",
     "run_ai_comparison_workbook",
+    "suggest_ai_instructions",
     "validate_ai_collection",
     "validate_collection_request",
 ]
