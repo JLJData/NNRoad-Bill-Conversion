@@ -19,6 +19,7 @@ from openpyxl import load_workbook
 from openpyxl.cell.cell import MergedCell
 from openpyxl.utils.cell import coordinate_to_tuple, range_boundaries, get_column_letter
 from openpyxl.formula.translate import Translator
+from openpyxl.formula.tokenizer import Token, Tokenizer
 
 from bill_validation.contracts import ValidationError, decimal_text, nonempty, require
 from .template_fill import (
@@ -415,114 +416,119 @@ def validate_independent_plan(plan: dict, manifest: dict, documents: list[dict],
     used_rows = set()
     named_employee = False
     source_errors = []
+    write_errors = []
     try:
         for item in writes:
-            require(isinstance(item, dict) and set(item) == expected, "Invalid independent AI write structure")
-            cell = item.get("targetCell")
-            require(isinstance(cell, str) and re.fullmatch(r"[A-Z]{1,3}[1-9][0-9]*", cell) is not None,
-                    "Invalid target cell coordinate")
-            row, column = coordinate_to_tuple(cell)
-            metadata_kind = (manifest.get("metadataInputs") or {}).get(cell)
-            field = row_fields.get(cell) if vertical else None
-            is_name_target = bool(name_cell and cell == name_cell)
-            if vertical:
-                require((field is not None or is_name_target or metadata_kind is not None)
-                        and 1 <= column <= min(16384, manifest["maxColumn"]),
-                        f"{cell}: target is outside the vertical label/amount inputs")
-            else:
-                require((row in employee_rows or metadata_kind is not None)
-                        and 1 <= column <= min(16384, manifest["maxColumn"]),
-                        f"{cell}: target is outside the employee input table")
-            require(cell not in seen, f"{cell}: duplicate target write")
-            seen.add(cell)
-            require(cell not in occupied, f"{cell}: cannot overwrite a formula or non-empty template cell")
-            require(not any(c1 <= column <= c2 and r1 <= row <= r2 and (column, row) != (c1, r1)
-                            for c1, r1, c2, r2 in merged), f"{cell}: cannot write a merged placeholder")
-            context = contexts.get(column)
-            if vertical:
+            try:
+                require(isinstance(item, dict) and set(item) == expected, "Invalid independent AI write structure")
+                cell = item.get("targetCell")
+                require(isinstance(cell, str) and re.fullmatch(r"[A-Z]{1,3}[1-9][0-9]*", cell) is not None,
+                        "Invalid target cell coordinate")
+                row, column = coordinate_to_tuple(cell)
+                metadata_kind = (manifest.get("metadataInputs") or {}).get(cell)
+                field = row_fields.get(cell) if vertical else None
+                is_name_target = bool(name_cell and cell == name_cell)
+                if vertical:
+                    require((field is not None or is_name_target or metadata_kind is not None)
+                            and 1 <= column <= min(16384, manifest["maxColumn"]),
+                            f"{cell}: target is outside the vertical label/amount inputs")
+                else:
+                    require((row in employee_rows or metadata_kind is not None)
+                            and 1 <= column <= min(16384, manifest["maxColumn"]),
+                            f"{cell}: target is outside the employee input table")
+                require(cell not in seen, f"{cell}: duplicate target write")
+                seen.add(cell)
+                require(cell not in occupied, f"{cell}: cannot overwrite a formula or non-empty template cell")
+                require(not any(c1 <= column <= c2 and r1 <= row <= r2 and (column, row) != (c1, r1)
+                                for c1, r1, c2, r2 in merged), f"{cell}: cannot write a merged placeholder")
+                context = contexts.get(column)
+                if vertical:
+                    if is_name_target:
+                        require(item.get("semanticLabel") in {"Employee Name", "Employee", name_cell},
+                                f"{cell}: semanticLabel for the title name cell must be Employee Name")
+                    elif metadata_kind is None:
+                        require(field is not None and item.get("semanticLabel") in {
+                            field.get("label"), field.get("primaryLabel"), field.get("pathLabel")},
+                            f"{cell}: semanticLabel must match the row field label")
+                else:
+                    require(metadata_kind is not None or context is not None and item.get("semanticLabel") in {
+                        context.get("primaryLabel"), context.get("pathLabel")},
+                        f"{cell}: semanticLabel must describe the selected template column")
+                require(nonempty(item.get("sourceLabel")) and nonempty(item.get("reason")),
+                        f"{cell}: source label and placement reason are required")
+                require(not any(is_excluded_service_fee(label) for label in (
+                    item["sourceLabel"], item["semanticLabel"],
+                    (field or context or {}).get("primaryLabel") or (field or {}).get("label"))),
+                    f"{cell}: Service Fee is excluded; omit this write")
+                kind, value = item.get("valueType"), item.get("value")
+                require(kind in {"text", "decimal", "date"} and nonempty(value), f"{cell}: invalid typed value")
+                if kind == "decimal":
+                    require(Decimal(decimal_text(value)).is_finite(), f"{cell}: invalid decimal")
+                elif kind == "date":
+                    try:
+                        date.fromisoformat(value)
+                    except (TypeError, ValueError):
+                        raise ValidationError(f"{cell}: date must use YYYY-MM-DD") from None
+                require(metadata_kind is None or kind == metadata_kind, f"{cell}: metadata requires {metadata_kind}")
                 if is_name_target:
-                    require(item.get("semanticLabel") in {"Employee Name", "Employee", name_cell},
-                            f"{cell}: semanticLabel for the title name cell must be Employee Name")
-                elif metadata_kind is None:
-                    require(field is not None and item.get("semanticLabel") in {
-                        field.get("label"), field.get("primaryLabel"), field.get("pathLabel")},
-                        f"{cell}: semanticLabel must match the row field label")
-            else:
-                require(metadata_kind is not None or context is not None and item.get("semanticLabel") in {
-                    context.get("primaryLabel"), context.get("pathLabel")},
-                    f"{cell}: semanticLabel must describe the selected template column")
-            require(nonempty(item.get("sourceLabel")) and nonempty(item.get("reason")),
-                    f"{cell}: source label and placement reason are required")
-            require(not any(is_excluded_service_fee(label) for label in (
-                item["sourceLabel"], item["semanticLabel"],
-                (field or context or {}).get("primaryLabel") or (field or {}).get("label"))),
-                f"{cell}: Service Fee is excluded; omit this write")
-            kind, value = item.get("valueType"), item.get("value")
-            require(kind in {"text", "decimal", "date"} and nonempty(value), f"{cell}: invalid typed value")
-            if kind == "decimal":
-                require(Decimal(decimal_text(value)).is_finite(), f"{cell}: invalid decimal")
-            elif kind == "date":
-                try:
-                    date.fromisoformat(value)
-                except (TypeError, ValueError):
-                    raise ValidationError(f"{cell}: date must use YYYY-MM-DD") from None
-            require(metadata_kind is None or kind == metadata_kind, f"{cell}: metadata requires {metadata_kind}")
-            if is_name_target:
-                title = _TITLE_RE.match(str(value)) if kind == "text" else None
-                person = _person(title.group(1) if title else value)
-                require(kind == "text" and bool(person), f"{cell}: employee name must be text")
-                named_employee = True
-            elif vertical and field is not None:
-                used_rows.add(row)
-                require(column not in set(manifest.get("codeOwnedColumns") or []),
-                        f"{cell}: CODE-owned special field; omit this write")
-            elif row in employee_rows:
-                used_rows.add(row)
-                if column in set(manifest.get("nameColumns") or []):
-                    require(kind == "text" and bool(_person(value)), f"{cell}: employee name must be text")
-                    name_rows.add(row)
-                require(column not in set(manifest.get("codeOwnedColumns") or []),
-                        f"{cell}: CODE-owned special field; omit this write")
-            confidence = item.get("confidence")
-            require(type(confidence) in {int, float} and 0 <= confidence <= 1, f"{cell}: invalid confidence")
-            evidence = item.get("source")
-            require(isinstance(evidence, dict) and set(evidence) == {"fileId", "location", "page", "rawText"}
-                    and evidence.get("fileId") in known and nonempty(evidence.get("location"))
-                    and nonempty(evidence.get("rawText")), f"{cell}: invalid source evidence")
-            require(evidence["page"] is None or type(evidence["page"]) is int and evidence["page"] >= 1,
-                    f"{cell}: invalid source page")
-            # Check the existence of a cited XLSX cell, not its semantic mapping
-            # or equality to the proposed amount. Differences must remain observable.
-            path = (source_paths or {}).get(evidence["fileId"])
-            if path is not None and path.suffix.lower() == ".pdf":
-                from pypdf import PdfReader
-                if evidence["fileId"] not in pdfs:
-                    pdfs[evidence["fileId"]] = PdfReader(path)
-                if not (type(evidence["page"]) is int and 1 <= evidence["page"] <= len(pdfs[evidence["fileId"]].pages)):
-                    source_errors.append(f"{cell}: PDF evidence must reference an existing page")
-                continue
-            if path is None or path.suffix.lower() not in {".xlsx", ".xlsm"}:
-                continue
-            parsed = _parse_sheet_coordinate(evidence["location"])
-            if parsed is None:
-                source_errors.append(f"{cell}: XLSX evidence must cite one Sheet!Cell")
-                continue
-            if evidence["fileId"] not in workbooks:
-                workbooks[evidence["fileId"]] = load_workbook(path, data_only=False, keep_links=False)
-            wb = workbooks[evidence["fileId"]]
-            sheet_name, source_cell = parsed
-            if sheet_name not in wb.sheetnames:
-                source_errors.append(f"{cell}: source worksheet does not exist")
-                continue
-            ws = wb[sheet_name]
-            sr, sc = coordinate_to_tuple(source_cell)
-            if not (sr <= ws.max_row and sc <= ws.max_column):
-                source_errors.append(f"{cell}: source cell is outside the source sheet ({evidence['location']})")
-            elif ws[source_cell].value is None:
-                source_errors.append(f"{cell}: cited source cell is empty ({evidence['location']})")
+                    title = _TITLE_RE.match(str(value)) if kind == "text" else None
+                    person = _person(title.group(1) if title else value)
+                    require(kind == "text" and bool(person), f"{cell}: employee name must be text")
+                    named_employee = True
+                elif vertical and field is not None:
+                    used_rows.add(row)
+                    require(column not in set(manifest.get("codeOwnedColumns") or []),
+                            f"{cell}: CODE-owned special field; omit this write")
+                elif row in employee_rows:
+                    used_rows.add(row)
+                    if column in set(manifest.get("nameColumns") or []):
+                        require(kind == "text" and bool(_person(value)), f"{cell}: employee name must be text")
+                        name_rows.add(row)
+                    require(column not in set(manifest.get("codeOwnedColumns") or []),
+                            f"{cell}: CODE-owned special field; omit this write")
+                confidence = item.get("confidence")
+                require(type(confidence) in {int, float} and 0 <= confidence <= 1, f"{cell}: invalid confidence")
+                evidence = item.get("source")
+                require(isinstance(evidence, dict) and set(evidence) == {"fileId", "location", "page", "rawText"}
+                        and evidence.get("fileId") in known and nonempty(evidence.get("location"))
+                        and nonempty(evidence.get("rawText")), f"{cell}: invalid source evidence")
+                require(evidence["page"] is None or type(evidence["page"]) is int and evidence["page"] >= 1,
+                        f"{cell}: invalid source page")
+                # Check the existence of a cited XLSX cell, not its semantic mapping
+                # or equality to the proposed amount. Differences must remain observable.
+                path = (source_paths or {}).get(evidence["fileId"])
+                if path is not None and path.suffix.lower() == ".pdf":
+                    from pypdf import PdfReader
+                    if evidence["fileId"] not in pdfs:
+                        pdfs[evidence["fileId"]] = PdfReader(path)
+                    if not (type(evidence["page"]) is int and 1 <= evidence["page"] <= len(pdfs[evidence["fileId"]].pages)):
+                        source_errors.append(f"{cell}: PDF evidence must reference an existing page")
+                    continue
+                if path is None or path.suffix.lower() not in {".xlsx", ".xlsm"}:
+                    continue
+                parsed = _parse_sheet_coordinate(evidence["location"])
+                if parsed is None:
+                    source_errors.append(f"{cell}: XLSX evidence must cite one Sheet!Cell")
+                    continue
+                if evidence["fileId"] not in workbooks:
+                    workbooks[evidence["fileId"]] = load_workbook(path, data_only=False, keep_links=False)
+                wb = workbooks[evidence["fileId"]]
+                sheet_name, source_cell = parsed
+                if sheet_name not in wb.sheetnames:
+                    source_errors.append(f"{cell}: source worksheet does not exist")
+                    continue
+                ws = wb[sheet_name]
+                sr, sc = coordinate_to_tuple(source_cell)
+                if not (sr <= ws.max_row and sc <= ws.max_column):
+                    source_errors.append(f"{cell}: source cell is outside the source sheet ({evidence['location']})")
+                elif ws[source_cell].value is None:
+                    source_errors.append(f"{cell}: cited source cell is empty ({evidence['location']})")
+            except ValidationError as exc:
+                write_errors.append(str(exc))
     finally:
         for wb in workbooks.values():
             wb.close()
+    require(not write_errors, "; ".join(write_errors[:50]))
     if vertical:
         require(named_employee or not name_cell,
                 "AI must identify the employee name for the vertical title cell")
@@ -689,6 +695,101 @@ def copy_independent_special_cells(code_path, output_path, provenance, manifest)
         code.close()
         ai.close()
     return {"records": records, "issues": issues}
+
+
+def _formula_literal(value) -> str:
+    if value is None:
+        return "0"
+    if isinstance(value, bool):
+        return "TRUE" if value else "FALSE"
+    if isinstance(value, (int, float, Decimal)):
+        return f"({value})" if value < 0 else str(value)
+    return '"' + str(value).replace('"', '""') + '"'
+
+
+def _inline_removed_sheet_refs(wb, kept: list[str], removed: list[str], code_values=None) -> list[dict]:
+    """Replace references to dropped sheets (e.g. =PN!B8 title text) with their values.
+
+    Only the referenced context cell is inlined; the rest of the -L formula still
+    evaluates the AI-written amounts. Values prefer the CODE result's calculated
+    PN context, then a literal in the AI workbook. Unresolvable references fail
+    explicitly instead of publishing #NAME?/#REF! after the sheet is gone.
+    """
+    removed_names = {name.casefold(): name for name in removed}
+    inlined = []
+
+    def referenced_value(sheet: str, ref: str, where: str):
+        if code_values is not None and sheet in code_values.sheetnames:
+            value = code_values[sheet][ref].value
+            if value is not None:
+                return value
+        source = wb[sheet][ref]
+        require(source.data_type != "f",
+                f"{where}: references {sheet}!{ref}, which has no calculated value after {sheet} is dropped")
+        return source.value
+
+    for name in kept:
+        for row in wb[name].iter_rows():
+            for cell in row:
+                if cell.data_type != "f" or not isinstance(cell.value, str):
+                    continue
+                tokens = Tokenizer(cell.value)
+                values = []
+                for token in tokens.items:
+                    if token.type != Token.OPERAND or token.subtype != Token.RANGE or "!" not in token.value:
+                        continue
+                    sheet_part, ref = token.value.rsplit("!", 1)
+                    sheet = (sheet_part[1:-1].replace("''", "'")
+                             if sheet_part.startswith("'") and sheet_part.endswith("'") else sheet_part)
+                    if sheet.casefold() not in removed_names:
+                        continue
+                    where = f"{name}!{cell.coordinate}"
+                    require(":" not in ref, f"{where}: range reference to dropped sheet {sheet} needs review")
+                    value = referenced_value(removed_names[sheet.casefold()], ref.replace("$", ""), where)
+                    values.append(value)
+                    token.value = _formula_literal(value)
+                    token.subtype = Token.TEXT if isinstance(value, str) else Token.NUMBER
+                if not values:
+                    continue
+                formula = cell.value
+                if len(tokens.items) == 1:
+                    cell.value = values[0]
+                    if isinstance(values[0], str):
+                        cell.data_type = "s"
+                else:
+                    cell.value = tokens.render()
+                inlined.append({"sheet": name, "cell": cell.coordinate, "formula": formula, "value": cell.value})
+    return inlined
+
+
+def keep_ai_comparison_sheets(path: str | Path, code_path: str | Path | None = None) -> list[str]:
+    """Drop PN and other template sheets; keep the last -L plus independent audit sheets.
+
+    AI comparison never publishes PN. Leaving those formulas in the workbook
+    makes LibreOffice recalculate unused summary cells such as PN!F15.
+    """
+    output = Path(path)
+    wb = load_workbook(output, keep_links=False)
+    code_values = load_workbook(code_path, data_only=True, keep_links=False) if code_path else None
+    try:
+        last_l = _last_l_sheet(list(wb.sheetnames))
+        keep = {last_l, AUDIT_SHEET, PROVENANCE_SHEET}
+        removed = [name for name in wb.sheetnames if name not in keep]
+        if removed:
+            _inline_removed_sheet_refs(wb, [n for n in wb.sheetnames if n in keep], removed, code_values)
+        for name in removed:
+            del wb[name]
+        if removed:
+            wb.active = wb.sheetnames.index(last_l)
+            for sheet in wb.worksheets:
+                sheet.sheet_view.tabSelected = False
+            wb[last_l].sheet_view.tabSelected = True
+            wb.save(output)
+        return removed
+    finally:
+        wb.close()
+        if code_values is not None:
+            code_values.close()
 
 
 def embed_independent_audit(output_path, audit):

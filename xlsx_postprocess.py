@@ -5,7 +5,8 @@
 1) inlineStr 富文本 → sharedStrings（LuckyExcel 预览可读完整文本）
 2) 主题填充落地 RGB + applyFill（避免丢浅蓝底）
 
-金额公式结果由前端 HyperFormula 重算，不再注入 PN 公式缓存 <v>。
+此步骤不计算公式。Office 后端使用 LibreOffice 计算并保存 converted 公式缓存；
+前端 HyperFormula 仅用于网页预览，不能替代正式落盘结果。
 """
 from __future__ import annotations
 

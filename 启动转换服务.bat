@@ -2,6 +2,13 @@
 chcp 65001 >nul
 cd /d "%~dp0"
 
+REM 与 Linux deploy.sh 一致：优先加载 env\convert.env（勿提交真实密钥）
+if exist "env\convert.env" (
+  for /f "usebackq eol=# tokens=1,* delims==" %%a in ("env\convert.env") do (
+    if not "%%a"=="" if not defined %%a set "%%a=%%b"
+  )
+)
+
 REM 默认仅本机监听；勿用 0.0.0.0 除非已设 CONVERT_API_KEY 且有防火墙
 if not defined CONVERT_HOST set CONVERT_HOST=127.0.0.1
 if not defined CONVERT_PORT set CONVERT_PORT=8765

@@ -713,6 +713,17 @@ class OpenAIResponsesProvider(AIProvider):
                 "An employee Total is not a nameless summary row. Copy an explicitly reported employee total only to an appropriate blank input, not a formula.",
                 "A discrepancy with CODE is allowed. Never use knowledge of CODE or a previous comparison result to make your output agree.",
             ]
+            employee_rows = set(template_manifest.get("employeeRows") or [])
+            locked = sorted((item for item in template_manifest.get("nonemptyCells") or []
+                             if item.get("row") in employee_rows),
+                            key=lambda item: (item.get("row", 0), item.get("column", 0)))
+            if locked:
+                rules.append(
+                    "These employee-row cells already hold template formulas or fixed values and are NOT writable, "
+                    "even when the original bill reports an item with the same label (the template computes it): "
+                    + ", ".join(f"{item['cell']} ({item.get('value')})" for item in locked[:200])
+                    + ". Omit those writes; add an issue only if the reported amount looks inconsistent."
+                )
         profile_instructions = [str(item) for item in (instructions or []) if nonempty(item)]
         prompt = {
             "task": "Independently read the original supplier bills and fill the blank master template. Return planVersion 4.",

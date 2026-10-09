@@ -150,7 +150,8 @@ def _cell_formula_text(value: Any) -> str | None:
 
 def _set_cell_value(cell, value: Any) -> None:
     if isinstance(value, float):
-        cell.value = round(value, 6) if abs(value) >= 1e-9 else 0
+        # Preserve source precision; rounding belongs to explicit business formulas/display.
+        cell.value = value
         fmt = str(cell.number_format or "")
         if "yy" in fmt.lower() or "h:" in fmt.lower() or "m/d" in fmt.lower():
             cell.number_format = "General"

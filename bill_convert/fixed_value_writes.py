@@ -52,7 +52,8 @@ def _apply_one(
         start = _layout_int(mapping, "dataStartRow")
     if start is None or start < 1 or employee_count < 1:
         return []
-    fee = round(float(amount), 6)
+    # Configuration values are inputs, not a business rounding boundary.
+    fee = amount
     label = str(spec.get("label") or value_key).strip() or value_key
     cells: list[dict[str, Any]] = []
     for i in range(employee_count):

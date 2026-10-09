@@ -12,7 +12,7 @@ from pathlib import Path
 from bill_validation.contracts import require
 from .independent import (
     AUDIT_SHEET, PROVENANCE_SHEET, code_owned_columns, copy_independent_special_cells,
-    embed_independent_audit, plan_sha256, prepare_independent_template,
+    embed_independent_audit, keep_ai_comparison_sheets, plan_sha256, prepare_independent_template,
     validate_independent_plan, validate_independent_template, write_independent_template_copy,
 )
 from .template_fill import normalize_code_provenance_cells
@@ -82,6 +82,7 @@ def run_independent(*, documents, resolved, template_path, output_path, run_id, 
         audit["status"] = "completed"
         persist()
         embed_independent_audit(output, audit)
+        keep_ai_comparison_sheets(output, code_result_path)
         issues = list(plan["issues"]) + special["issues"]
         return {
             "runId": run_id, "profileId": profile_id, "provider": provider.provider_id, "model": plan["model"],

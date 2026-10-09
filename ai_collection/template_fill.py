@@ -1420,8 +1420,8 @@ def write_ai_template_copy(template_path: str | Path, output_path: str | Path, p
                 require(not isinstance(cell, MergedCell), "Cannot write to a merged placeholder")
                 require(cell.data_type != "f", "Cannot overwrite a formula cell")
                 cell.value = _resolve_value(item, collection)
-            # The review UI opens the workbook's active sheet. Make the dynamically
-            # selected last -L sheet visible immediately without removing other sheets.
+            # The review UI opens the workbook's active sheet. Independent
+            # delivery later drops PN and other unused template sheets.
             for sheet in wb.worksheets:
                 sheet.sheet_view.tabSelected = False
             wb.active = manifest["sheetIndex"]

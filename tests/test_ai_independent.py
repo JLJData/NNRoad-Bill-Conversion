@@ -105,6 +105,8 @@ class IndependentTests(unittest.TestCase):
         self.assertEqual([ws["D2"].value, ws["D3"].value], [22, 11])
         self.assertEqual(ws["A5"].value, "Notes: retain this fixed instruction")
         self.assertEqual(ws["E2"].value, "=SUM(B2:D2)")
+        self.assertNotIn("PN", wb.sheetnames)
+        self.assertEqual(set(wb.sheetnames), {"Payroll-L", AUDIT_SHEET, PROVENANCE_SHEET})
         raw = "".join(r[0].value for r in wb[AUDIT_SHEET].iter_rows(min_row=2))
         audit = json.loads(raw)
         self.assertEqual(audit["attempts"][0]["plan"], audit["finalPlan"])
@@ -291,6 +293,62 @@ class IndependentTests(unittest.TestCase):
             validate_independent_plan(plan, manifest, [{"fileId": "source-1"}], source_paths={"source-1": self.source})
         self.assertIn("B2:", str(caught.exception))
         self.assertIn("C2:", str(caught.exception))
+        self.assertEqual(plan, before)
+
+    def test_dropping_pn_inlines_cross_sheet_references(self):
+        from ai_collection.independent import keep_ai_comparison_sheets
+
+        def workbook(path, client, rate, rate_formula=False):
+            wb = Workbook()
+            pn = wb.active
+            pn.title = "PN"
+            pn["B8"] = client
+            pn["B4"] = "=1+1" if rate_formula else rate
+            ws = wb.create_sheet("Indonesia-L")
+            ws["C1"] = "=PN!B8"
+            ws["C8"] = 100
+            ws["D8"] = "=ROUND(C8/PN!$B$4,2)"
+            wb.save(path)
+            wb.close()
+
+        ai, code = self.root / "ai.xlsx", self.root / "code.xlsx"
+        workbook(ai, None, None, rate_formula=True)
+        workbook(code, 'Viagens "Abreu", S.A.\nVAT', 16000)
+        self.assertEqual(keep_ai_comparison_sheets(ai, code), ["PN"])
+        wb = load_workbook(ai)
+        self.addCleanup(wb.close)
+        ws = wb["Indonesia-L"]
+        self.assertEqual(wb.sheetnames, ["Indonesia-L"])
+        self.assertEqual(ws["C1"].value, 'Viagens "Abreu", S.A.\nVAT')
+        self.assertEqual(ws["C1"].data_type, "s")
+        self.assertEqual(ws["D8"].value, "=ROUND(C8/16000,2)", "AI amount C8 stays live")
+
+        workbook(ai, "Client", None, rate_formula=True)
+        with self.assertRaises(ValidationError) as caught:
+            keep_ai_comparison_sheets(ai)
+        self.assertIn("Indonesia-L!D8", str(caught.exception))
+
+        wb = Workbook()
+        wb.active.title = "PN"
+        wb.create_sheet("X-L")["A1"] = "=SUM(PN!A1:A3)"
+        wb.save(ai)
+        wb.close()
+        with self.assertRaises(ValidationError) as caught:
+            keep_ai_comparison_sheets(ai)
+        self.assertIn("range reference to dropped sheet PN", str(caught.exception))
+
+    def test_invalid_write_targets_reported_together_for_retry(self):
+        manifest = prepare_independent_template(self.template, self.root / "blank.xlsx")
+        payload = {"input": [{"content": [{"text": json.dumps({"template": manifest})}]}]}
+        plan = self.plan(payload)
+        manifest["nonemptyCells"].append({"cell": "C2", "row": 2, "column": 3,
+                                          "value": "=B2*2%", "valueKind": "formula"})
+        plan["writes"][1]["targetCell"] = "B99"
+        before = copy.deepcopy(plan)
+        with self.assertRaises(ValidationError) as caught:
+            validate_independent_plan(plan, manifest, [{"fileId": "source-1"}], source_paths={"source-1": self.source})
+        self.assertIn("B99: target is outside the employee input table", str(caught.exception))
+        self.assertIn("C2: cannot overwrite a formula or non-empty template cell", str(caught.exception))
         self.assertEqual(plan, before)
 
     def test_vertical_label_amount_clears_amounts_keeps_labels_and_accepts_plan(self):
