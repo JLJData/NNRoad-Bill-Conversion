@@ -5,25 +5,18 @@
 """
 from __future__ import annotations
 
-import re
 from datetime import date, datetime
 from pathlib import Path
 
 from openpyxl import load_workbook
+from openpyxl.styles.numbers import is_date_format
 
 from xlsx_convert_utils import coerce_datetime_for_excel
 from xlsx_keep_images import require_pillow
 
-_DATE_FMT_HINT = re.compile(r"y{1,4}|m/d|d/m|d-mmm|h:mm|年|月", re.I)
-
-
 def _is_excel_date_format(fmt: str | None) -> bool:
-    if not fmt or str(fmt).strip().lower() == "general":
-        return False
-    head = str(fmt).split(";")[0]
-    if re.match(r"^[\s#0,]*\.?0*%?$", head.replace("$", "")) and not _DATE_FMT_HINT.search(head):
-        return False
-    return bool(_DATE_FMT_HINT.search(head))
+    # Ignore quoted units such as 0 "days" or 0 "元/月"; those are numeric cells.
+    return bool(fmt) and is_date_format(str(fmt))
 
 
 def _parse_date_text(text: str) -> datetime | None:
@@ -105,6 +98,20 @@ def _ensure_date_header_column_formats(wb) -> int:
                 if is_date_column_header(str(raw)):
                     # 避免把整段「Pay Period」合并区误标；From/To 单列表头才收
                     h = norm(raw).lower()
+                    if h in ("from", "to", "period from", "period to"):
+                        # Inline metadata is laid out as date / "to" / date.
+                        # Treating "to" as a column header corrupts salary cells below it.
+                        neighbours = [ws.cell(r, col) for col in (c - 1, c + 1) if col >= 1]
+                        if any(
+                            isinstance(neighbour.value, (datetime, date))
+                            or (isinstance(neighbour.value, str) and _parse_date_text(neighbour.value))
+                            or (
+                                (isinstance(neighbour.value, (int, float)) or neighbour.data_type == "f")
+                                and _is_excel_date_format(neighbour.number_format)
+                            )
+                            for neighbour in neighbours
+                        ):
+                            continue
                     if h in ("from", "to", "period from", "period to") or h.endswith(" date") or "start date" in h or "end date" in h:
                         date_cols[c] = r
         if not date_cols:
