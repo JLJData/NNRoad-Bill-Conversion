@@ -5,6 +5,7 @@ import unittest
 
 from openpyxl import Workbook, load_workbook
 from xlsx_date_cell_fix import (
+    _ensure_bare_formula_date_formats,
     _ensure_date_header_column_formats,
     _is_excel_date_format,
     normalize_template_date_cells,
@@ -49,6 +50,18 @@ class DateCellFixTests(unittest.TestCase):
         for fmt in ['yyyy/mm', 'yyyy"年"m"月"', 'mm:ss', 'yyyy/m/d']:
             with self.subTest(fmt=fmt):
                 self.assertTrue(_is_excel_date_format(fmt))
+
+    def test_bare_cross_sheet_ref_inherits_date_format(self):
+        wb = Workbook()
+        ws_l = wb.active
+        ws_l.title = "Indonesia-L"
+        ws_l["E2"] = datetime(2026, 9, 30)
+        ws_l["E2"].number_format = "yyyy/m/d"
+        ws_i = wb.create_sheet("Indonesia")
+        ws_i["C2"] = "='Indonesia-L'!E2"
+        self.assertEqual(_ensure_bare_formula_date_formats(wb), 1)
+        self.assertEqual(ws_i["C2"].number_format, "yyyy/m/d")
+        self.assertEqual(ws_i["C2"].value, "='Indonesia-L'!E2")
 
     def test_postprocess_preserves_numeric_value_with_unit(self):
         with TemporaryDirectory() as directory:

@@ -5,6 +5,7 @@
 """
 from __future__ import annotations
 
+import re
 from datetime import date, datetime
 from pathlib import Path
 
@@ -73,9 +74,120 @@ def normalize_template_date_cells(xlsx_path: Path | str) -> int:
                         changed += 1
     # From/To 等日期列表头：强制日期格式（含公式列，避免 Lucky/HF 显示成 46235）
     changed += _ensure_date_header_column_formats(wb)
+    # Pay Period 等：纯单元格引用公式继承源格日期格式（如 ='Indonesia-L'!E2）
+    changed += _ensure_bare_formula_date_formats(wb)
     if changed:
         wb.save(path)
     return changed
+
+
+_BARE_FORMULA_REF_RE = re.compile(
+    r"^(?:(?:'((?:[^']|'')+)'|([^'!\s]+))!)?\$?([A-Z]{1,3})\$?(\d+)$",
+    re.IGNORECASE,
+)
+
+
+def _col_letters_to_index(letters: str) -> int:
+    n = 0
+    for ch in letters.upper():
+        n = n * 26 + (ord(ch) - ord("A") + 1)
+    return n
+
+
+def _formula_body(cell) -> str | None:
+    if getattr(cell, "data_type", None) == "f":
+        raw = cell.value
+        return str(raw).lstrip("=").strip() if raw is not None else None
+    if isinstance(cell.value, str) and cell.value.startswith("="):
+        return cell.value.lstrip("=").strip()
+    return None
+
+
+def _find_sheet(wb, name: str):
+    if name in wb.sheetnames:
+        return wb[name]
+    lower = name.lower()
+    for sheet_name in wb.sheetnames:
+        if sheet_name.lower() == lower:
+            return wb[sheet_name]
+    return None
+
+
+def _ensure_bare_formula_date_formats(wb) -> int:
+    """给「仅引用另一格」的公式打上源格日期格式，避免 WPS/Excel 显示 46266。"""
+    date_fmt = "yyyy/m/d"
+    cache: dict[tuple[str, int, int], str | None] = {}
+
+    def effective_date_fmt(ws, row: int, col: int, visiting: frozenset[tuple[str, int, int]]) -> str | None:
+        key = (ws.title, row, col)
+        if key in cache:
+            return cache[key]
+        cache[key] = None
+        if key in visiting:
+            return None
+        next_visiting = visiting | {key}
+        cell = ws.cell(row, col)
+        fmt = cell.number_format or ""
+        if _is_excel_date_format(fmt):
+            cache[key] = fmt
+            return fmt
+        if isinstance(cell.value, (datetime, date)):
+            cache[key] = date_fmt
+            return date_fmt
+        body = _formula_body(cell)
+        if body:
+            ref = _resolve_bare_ref(ws, body)
+            if ref:
+                src_ws, src_row, src_col = ref
+                inherited = effective_date_fmt(src_ws, src_row, src_col, next_visiting)
+                if inherited:
+                    cache[key] = inherited
+                    return inherited
+        return None
+
+    changed = 0
+    for ws in wb.worksheets:
+        for row in ws.iter_rows():
+            for cell in row:
+                if _is_excel_date_format(cell.number_format or ""):
+                    continue
+                body = _formula_body(cell)
+                if not body:
+                    continue
+                ref = _resolve_bare_ref(ws, body)
+                if not ref:
+                    continue
+                src_ws, src_row, src_col = ref
+                inherited = effective_date_fmt(src_ws, src_row, src_col, frozenset())
+                if not inherited:
+                    continue
+                if (cell.number_format or "").strip().lower() != inherited.strip().lower():
+                    cell.number_format = inherited
+                    changed += 1
+    return changed
+
+
+def _resolve_bare_ref(home_ws, formula_body: str):
+    m = _BARE_FORMULA_REF_RE.match(formula_body.strip())
+    if not m:
+        return None
+    sheet_part = m.group(1)
+    if sheet_part is not None:
+        sheet_name = sheet_part.replace("''", "'")
+    elif m.group(2):
+        sheet_name = m.group(2)
+    else:
+        src_ws = home_ws
+        col = _col_letters_to_index(m.group(3))
+        row = int(m.group(4))
+        return src_ws, row, col
+    wb = home_ws.parent
+    src_ws = _find_sheet(wb, sheet_name) if wb is not None else None
+    if src_ws is None:
+        return None
+    col = _col_letters_to_index(m.group(3))
+    row = int(m.group(4))
+    return src_ws, row, col
 
 
 def _ensure_date_header_column_formats(wb) -> int:
