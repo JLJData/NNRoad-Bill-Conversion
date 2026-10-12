@@ -155,6 +155,20 @@ def build_invoice_number(
     return generate_invoice_number(customer_id, bill_date, seq)
 
 
+def _replace_plain_text(cell, value: str) -> None:
+    """Replace a cell without keeping leftover rich-text runs (old+new invoice numbers)."""
+    text = "" if value is None else str(value)
+    try:
+        from openpyxl.cell.rich_text import CellRichText
+
+        if isinstance(cell.value, CellRichText):
+            cell.value = None
+    except Exception:
+        cell.value = None
+    cell.value = None
+    cell.value = text
+
+
 def _write_pn_date_cell(ws, coord: str, value: date) -> None:
     cell = ws[coord]
     cell.value = format_date_for_excel(value)
@@ -225,9 +239,9 @@ def apply_pn_meta(
     _write_pn_text_cell(
         ws, PN_CELLS["customer_name"], pn.customer_name, multiline_in_cell=True
     )
-    ws[PN_CELLS["customer_id"]] = pn.customer_id
+    _replace_plain_text(ws[PN_CELLS["customer_id"]], pn.customer_id)
     _write_pn_text_cell(ws, PN_CELLS["billing_address"], pn.billing_address)
-    ws[PN_CELLS["invoice_number"]] = invoice_number
+    _replace_plain_text(ws[PN_CELLS["invoice_number"]], invoice_number)
     _write_pn_date_cell(ws, PN_CELLS["invoice_date"], invoice_date)
     if pn.due_date is not None:
         _write_pn_date_cell(ws, PN_CELLS["due_date"], pn.due_date)
