@@ -29,6 +29,7 @@ from region_templates import get_region_template
 from xlsx_convert_utils import clean_value, norm
 from xlsx_luckysheet_compat import apply_luckysheet_compat
 from xlsx_postprocess import postprocess_converted_xlsx
+from xlsx_template_styles import load_conversion_template
 from convert_mapping import find_sheet_name, resolve_convert_mapping
 from bill_convert.formula_copy import (
     copy_row_formulas as shared_copy_row_formulas,
@@ -1120,7 +1121,7 @@ def _convert_impl(
     output_path.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(template_path, output_path)
 
-    wb = load_workbook(output_path, rich_text=True)
+    wb = load_conversion_template(output_path, rich_text=True)
     required = (CHINA_L_SHEET, CHINA_SHEET, CHINA_EE_SHEET, PN_SHEET)
     for name in required:
         if name not in wb.sheetnames:

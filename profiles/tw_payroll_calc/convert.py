@@ -65,6 +65,7 @@ from region_templates import get_region_template
 from xlsx_convert_utils import clean_value, coerce_datetime_for_excel, is_date_column_header, norm
 from xlsx_luckysheet_compat import apply_luckysheet_compat
 from xlsx_postprocess import postprocess_converted_xlsx
+from xlsx_template_styles import load_conversion_template
 
 DEFAULT_TEMPLATE = get_region_template("Taiwan")
 
@@ -1331,7 +1332,7 @@ def _convert_impl(
     output_path.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(template_path, output_path)
 
-    wb = load_workbook(output_path, rich_text=True)
+    wb = load_conversion_template(output_path, rich_text=True)
     tw_l_name = resolve_tw_l_sheet_name(list(wb.sheetnames))
     for name in (TW_SHEET, TW_EE_SHEET, PN_SHEET):
         if name not in wb.sheetnames:

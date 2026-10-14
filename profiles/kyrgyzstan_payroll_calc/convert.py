@@ -44,6 +44,7 @@ from region_templates import get_region_template
 from xlsx_convert_utils import coerce_datetime_for_excel, norm
 from xlsx_luckysheet_compat import apply_luckysheet_compat
 from xlsx_postprocess import postprocess_converted_xlsx
+from xlsx_template_styles import load_conversion_template
 
 DEFAULT_TEMPLATE = get_region_template("Kyrgyzstan")
 
@@ -488,7 +489,7 @@ def write_expense_claim_pn(
     period = _expense_period_tag(employee)
     desc = f"Expense claim for {name}" + (f" - {period}" if period else "")
     applied_pn = None
-    wb = load_workbook(output_path)
+    wb = load_conversion_template(output_path)
     try:
         if PN_SHEET not in wb.sheetnames:
             raise ValueError(f"Expense 母版缺少 sheet「{PN_SHEET}」")
@@ -1102,7 +1103,7 @@ def convert(
         output_path.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(template_path, output_path)
 
-        wb = load_workbook(output_path)
+        wb = load_conversion_template(output_path)
         try:
             if KYRGYZSTAN_L_SHEET not in wb.sheetnames:
                 raise ValueError(f"母版缺少 sheet「{KYRGYZSTAN_L_SHEET}」")

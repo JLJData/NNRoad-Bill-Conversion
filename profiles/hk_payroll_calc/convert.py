@@ -51,6 +51,7 @@ from xlsx_convert_utils import (
     norm,
 )
 from xlsx_postprocess import postprocess_converted_xlsx
+from xlsx_template_styles import load_conversion_template
 
 DEFAULT_TEMPLATE = get_region_template("Hong Kong")
 
@@ -878,7 +879,7 @@ def _convert_impl(
     output_path.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(template_path, output_path)
 
-    wb = load_workbook(output_path, rich_text=True)
+    wb = load_conversion_template(output_path, rich_text=True)
     for name in (HK_L_SHEET, HK_SHEET, HK_EE_SHEET, PN_SHEET):
         if name not in wb.sheetnames:
             wb.close()

@@ -29,6 +29,7 @@ from pn_meta import PnMeta, apply_pn_meta
 from profiles.tw_payroll_calc.convert import match_ee_code
 from region_templates import get_region_template
 from xlsx_postprocess import postprocess_converted_xlsx
+from xlsx_template_styles import load_conversion_template
 from bill_convert.uk_layout import (
     ensure_uk_l_count,
     expand_uk_employee_rows,
@@ -303,7 +304,7 @@ def _convert_impl(
     output_path.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(template_path, output_path)
 
-    wb = load_workbook(output_path, rich_text=True)
+    wb = load_conversion_template(output_path, rich_text=True)
     for name in (UK_L_SHEET, UK_SHEET, PN_SHEET):
         if name not in wb.sheetnames:
             wb.close()

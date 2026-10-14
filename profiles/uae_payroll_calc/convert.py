@@ -34,6 +34,7 @@ from region_templates import get_region_template
 from xlsx_convert_utils import coerce_datetime_for_excel, is_date_column_header
 from xlsx_luckysheet_compat import apply_luckysheet_compat_uae
 from xlsx_postprocess import postprocess_converted_xlsx
+from xlsx_template_styles import load_conversion_template
 
 DEFAULT_TEMPLATE = get_region_template("UAE")
 
@@ -1212,7 +1213,7 @@ def convert(
 
         output_path.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(template_path, output_path)
-        wb = load_workbook(output_path)
+        wb = load_conversion_template(output_path)
         warnings: list[str] = []
         fact_store_updates: dict[str, Any] = {}
         fx = None

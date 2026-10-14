@@ -104,6 +104,13 @@ def run_convert(
             op_info = apply_outstanding_payment(wb_out, convert_mapping)
             if op_info:
                 wb_out.save(output_path)
+                # Only repair display/storage after this save. Do not repeat
+                # date/value normalization performed by the engine.
+                from xlsx_richtext_fix import migrate_inlinestr_richtext_to_shared_strings
+                from xlsx_theme_fill_fix import materialize_theme_fills
+
+                migrate_inlinestr_richtext_to_shared_strings(output_path)
+                materialize_theme_fills(output_path)
                 result["outstanding_payment"] = op_info
                 if not op_info.get("written"):
                     print(f"[outstanding-payment] skip: {op_info}")
@@ -113,6 +120,7 @@ def run_convert(
                         f"(timeline {op_info.get('timelineBalance')}, negated) "
                         f"→ {op_info.get('sheet')}!r{op_info.get('row')}c{op_info.get('col')}"
                     )
+            wb_out.close()
     except Exception as exc:
         # 旁路失败不阻断主转换
         print(f"[outstanding-payment] failed (ignored): {exc}")

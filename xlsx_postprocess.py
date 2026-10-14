@@ -2,8 +2,9 @@
 """
 转换结果写盘后的统一后处理：
 
-1) inlineStr 富文本 → sharedStrings（LuckyExcel 预览可读完整文本）
-2) 主题填充落地 RGB + applyFill（避免丢浅蓝底）
+1) 日期值/格式规范化（会通过 openpyxl 再次保存）
+2) inlineStr 富文本 → sharedStrings（LuckyExcel 预览可读完整文本）
+3) 主题填充落地 RGB + applyFill（必须在最后一次 openpyxl 保存之后）
 
 此步骤不计算公式。Office 后端使用 LibreOffice 计算并保存 converted 公式缓存；
 前端 HyperFormula 仅用于网页预览，不能替代正式落盘结果。
@@ -28,9 +29,9 @@ def postprocess_converted_xlsx(xlsx_path: Path | str) -> dict[str, int]:
     """
     path = Path(xlsx_path)
     require_pillow()
+    date_cells = normalize_template_date_cells(path)
     migrate_inlinestr_richtext_to_shared_strings(path)
     theme_stats = materialize_theme_fills(path) or {}
-    date_cells = normalize_template_date_cells(path)
     pn_fonts = normalize_pn_billto_fonts(path)
     return {
         "theme_fills": int(theme_stats.get("fills", 0) or 0),

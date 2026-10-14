@@ -53,6 +53,7 @@ from pn_meta import PnMeta, apply_pn_meta
 from profiles.tw_payroll_calc.convert import match_ee_code
 from region_templates import get_region_template
 from xlsx_postprocess import postprocess_converted_xlsx
+from xlsx_template_styles import load_conversion_template
 
 DEFAULT_TEMPLATE = get_region_template("Pakistan")
 
@@ -726,7 +727,7 @@ def convert(
 
         output_path.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(template_path, output_path)
-        wb = load_workbook(output_path)
+        wb = load_conversion_template(output_path)
         warnings: list[str] = []
         formula_plan: list[dict[str, Any]] = []
         fx = None

@@ -34,6 +34,7 @@ from region_templates import get_region_template
 from xlsx_convert_utils import norm
 from xlsx_luckysheet_compat import apply_luckysheet_compat
 from xlsx_postprocess import postprocess_converted_xlsx
+from xlsx_template_styles import load_conversion_template
 from xlsx_unlock import collect_unlock_passwords, unlock_xlsx
 
 ENGINE_ID = "china_hrone_payment_notice"
@@ -397,7 +398,7 @@ def _convert_impl(
         except Exception as exc:
             raise ValueError(f"源表解密后仍无法打开（{unlocked.name}）: {exc}") from exc
         try:
-            dst_wb = load_workbook(output_path, rich_text=True)
+            dst_wb = load_conversion_template(output_path, rich_text=True)
         except Exception as exc:
             raise ValueError(f"母版不是有效 xlsx（{output_path.name}）: {exc}") from exc
         try:
