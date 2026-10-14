@@ -22,6 +22,7 @@ from openpyxl import load_workbook
 from openpyxl.worksheet.worksheet import Worksheet
 
 from bill_convert.fixed_value_writes import apply_fixed_value_writes
+from bill_convert.sparse_ee_code_fill import ensure_ee_code_fill_from_peer_row
 from bill_convert.formula_layout import sort_employees_by_code
 from convert_mapping import find_sheet_name, resolve_convert_mapping
 from fx_rate import fetch_usd_rates, get_uk_gbp_per_usd
@@ -251,6 +252,7 @@ def apply_uk_ee_codes(
             emp.get("title"),
         )
         code, warn = match_ee_code(names, directory)
+        ensure_ee_code_fill_from_peer_row(ws, row, code_col=4, peer_col=5)
         ws.cell(row, 4).value = code
         if warn:
             warnings.append(f"UK EE 第{i + 1}人：{warn}")
