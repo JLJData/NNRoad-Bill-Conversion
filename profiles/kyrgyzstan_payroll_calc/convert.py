@@ -9,8 +9,9 @@ Kyrgyzstan：Atlas Employment「Payroll cost calculation」Excel（或已是 Kyr
 - PN / Kyrgyzstan / Kyrgyzstan EE 以母版公式为准；只写 Kyrgyzstan-L 数据与 PN 汇率。
 - 税/净薪/总成本列保留母版公式（由 Base Salary 推导）。
 - EE Code 必须来自员工库匹配，禁止沿用供应商账单工号。
-- 工资 PN 不写差旅垫付（Expense 保持 0）。有「Advance for business travel expenses」且金额≠0 时，
-  每人另出一份 Expense 发票，只把 KGS 原值写入 PN!E16（F16 跟母版公式）。
+- 工资 PN 不写差旅垫付（Expense 保持 0）。源表命中 travelAdvanceLabelNeedles（默认
+  「Advance for business travel expenses」）且金额≠0 时，每人另出一份 Expense 发票，
+  只把 KGS 原值写入 PN!E16（F16 跟母版公式）。标签可在 Office 转换映射中改。
 """
 from __future__ import annotations
 
@@ -397,10 +398,28 @@ def parse_atlas_cost_sheet(
     return emp
 
 
+_DEFAULT_TRAVEL_ADVANCE_NEEDLES = (
+    "advance for business travel expenses",
+    "advance for business travel",
+)
+
+
+def _travel_advance_label_needles() -> tuple[str, ...]:
+    """Office mapping_json.travelAdvanceLabelNeedles；空则回落默认。"""
+    raw = _active_mapping().get("travelAdvanceLabelNeedles")
+    if isinstance(raw, str):
+        items = [raw]
+    elif isinstance(raw, (list, tuple)):
+        items = list(raw)
+    else:
+        items = []
+    needles = tuple(str(x).strip() for x in items if str(x).strip())
+    return needles or _DEFAULT_TRAVEL_ADVANCE_NEEDLES
+
+
 def _read_travel_advance_kgs(ws: Worksheet, usd_kgs: float | None) -> float | None:
-    adv_row = _find_label_row(ws, "advance for business travel expenses")
-    if adv_row is None:
-        adv_row = _find_label_row(ws, "advance for business travel")
+    needles = _travel_advance_label_needles()
+    adv_row = _find_label_row(ws, *needles)
     if adv_row is None:
         return None
     adv_kgs = _as_float(ws.cell(adv_row, 8).value)

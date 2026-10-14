@@ -545,6 +545,11 @@ ENGINE_DEFAULTS: dict[str, dict[str, Any]] = {
             "fallback": "api",
             "defaultCurrency": "KGS",
         },
+        # 源表 A 列标签包含任一子串即视为差旅垫付行（金额≠0 另出 Expense）
+        "travelAdvanceLabelNeedles": [
+            "advance for business travel expenses",
+            "advance for business travel",
+        ],
     },
 }
 
