@@ -23,6 +23,35 @@ from bill_validation.contracts import ValidationError, nonempty, require
 
 from .contracts import validate_ai_collection, validate_collection_request
 
+_DEFAULT_SOURCE_WORKBOOK_CHAR_LIMIT = 1_500_000
+_MAX_SOURCE_WORKBOOK_CHAR_LIMIT = 2_500_000
+_SOURCE_CELL_TEXT_MAX = 2048
+
+
+def source_workbook_char_limit() -> int:
+    """Cap for sourceWorkbookCells JSON size (all original xlsx in one AI run)."""
+    raw = os.environ.get("AI_SOURCE_WORKBOOK_CHAR_LIMIT", "").strip()
+    if not raw:
+        return _DEFAULT_SOURCE_WORKBOOK_CHAR_LIMIT
+    try:
+        n = int(raw)
+    except ValueError:
+        return _DEFAULT_SOURCE_WORKBOOK_CHAR_LIMIT
+    return max(100_000, min(n, _MAX_SOURCE_WORKBOOK_CHAR_LIMIT))
+
+
+def _compact_value_for_source_view(value):
+    """Shrink pathological cells without changing coordinates."""
+    if isinstance(value, str) and len(value) > _SOURCE_CELL_TEXT_MAX:
+        return value[:_SOURCE_CELL_TEXT_MAX] + "…[truncated]"
+    if isinstance(value, dict):
+        out = dict(value)
+        cv = out.get("cachedValue")
+        if isinstance(cv, str) and len(cv) > _SOURCE_CELL_TEXT_MAX:
+            out["cachedValue"] = cv[:_SOURCE_CELL_TEXT_MAX] + "…[truncated]"
+        return out
+    return value
+
 
 class AIProviderError(RuntimeError):
     """Provider transport/model failure, distinct from business disagreement."""
@@ -628,6 +657,7 @@ class OpenAIResponsesProvider(AIProvider):
         """
         result = []
         characters = 0
+        char_limit = source_workbook_char_limit()
         for document in documents:
             path = Path(self._document_resolver(copy.deepcopy(document))).resolve()
             if path.suffix.lower() not in {".xlsx", ".xlsm"}:
@@ -645,10 +675,16 @@ class OpenAIResponsesProvider(AIProvider):
                             value = cell.value
                             if cell.data_type == "f":
                                 value = {"formula": value, "cachedValue": cached[ws.title][cell.coordinate].value}
+                            value = _compact_value_for_source_view(value)
                             # JSON conversion only: no source-value normalization or inference.
                             encoded = json.dumps(value, ensure_ascii=False, default=str)
                             characters += len(encoded) + len(cell.coordinate) + 8
-                            require(characters <= 750000, "Original XLSX coordinate view is too large; split the input bill")
+                            require(
+                                characters <= char_limit,
+                                "Original XLSX coordinate view is too large "
+                                f"({characters} chars > limit {char_limit}); split the input bill or set "
+                                f"AI_SOURCE_WORKBOOK_CHAR_LIMIT (max {_MAX_SOURCE_WORKBOOK_CHAR_LIMIT})",
+                            )
                             cells[cell.coordinate] = json.loads(encoded)
                     sheets.append({"sheetName": ws.title, "cells": cells})
                 result.append({"fileId": document["fileId"], "sheets": sheets})
