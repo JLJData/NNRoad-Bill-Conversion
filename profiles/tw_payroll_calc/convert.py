@@ -38,6 +38,7 @@ from bill_convert.formula_layout import (
     sort_employees_by_code,
     tw_l_row_for_data_row,
 )
+from bill_convert.column_cell_map import apply_column_cell_map_to_record
 from bill_convert.formula_layout import _default_example_row as _default_example_row_for_mapping
 from bill_convert.header_scan import find_header_row_by_markers
 from bill_convert.headers import (
@@ -349,6 +350,7 @@ def read_pc_employees(ws: Worksheet, header_row: int) -> list[dict[str, Any]]:
                 if target_hdr in record and norm(src_hdr) not in rename:
                     continue
                 record[target_hdr] = val
+        apply_column_cell_map_to_record(record, row, ws, _active_mapping())
         employees.append(record)
 
     if not employees:

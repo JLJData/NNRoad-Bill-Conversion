@@ -39,6 +39,7 @@ from bill_convert.formula_layout import (
     tw_l_row_for_data_row,
 )
 from bill_convert.formula_layout import _default_example_row as default_example_row_for_mapping
+from bill_convert.column_cell_map import apply_column_cell_map_to_record
 from bill_convert.headers import list_qualified_header_cells
 from convert_mapping import find_sheet_name, resolve_convert_mapping
 from fx_rate import fetch_usd_rates, get_hk_pn_fx_rate
@@ -273,6 +274,7 @@ def read_hk_l_employees(ws: Worksheet) -> list[dict[str, Any]]:
                 if target_hdr in record and norm(src_hdr) not in rename:
                     continue
                 record[target_hdr] = val
+        apply_column_cell_map_to_record(record, row, ws, _active_mapping())
         employees.append(record)
 
     if not employees:

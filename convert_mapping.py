@@ -815,6 +815,7 @@ def resolve_convert_mapping(engine_id: str, raw: dict[str, Any] | None) -> dict[
         override.pop("fxPolicy", None)
         for whole_key in (
             "columnRename",
+            "columnCellMap",
             "skipSourceHeaders",
             "connectSalarySplit",
             "indiaSalarySplit",

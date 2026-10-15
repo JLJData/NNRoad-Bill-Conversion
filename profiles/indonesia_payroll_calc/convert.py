@@ -34,6 +34,7 @@ from bill_convert.convert_checks import (
 )
 from bill_convert.formula_copy import shift_row_formula
 from bill_convert.formula_layout import sort_employees_by_code
+from bill_convert.column_cell_map import apply_column_cell_map_to_record
 from bill_convert.headers import list_qualified_header_cells
 from convert_mapping import find_sheet_name, resolve_convert_mapping
 from fx_rate import get_indonesia_pn_fx_rate
@@ -460,6 +461,14 @@ def _parse_employees_from_sheet(
                 continue
             num = _as_float(val)
             emp[target] = num if num is not None else val
+        apply_column_cell_map_to_record(
+            emp,
+            row,
+            ws,
+            _active_mapping(),
+            coerce_number=_as_float,
+            is_formula_cell=lambda v: bool(_cell_formula_text(v)),
+        )
         for zkey in _ZERO_FILL_KEYS:
             emp.setdefault(zkey, 0)
         employees.append(emp)
@@ -543,6 +552,15 @@ def _enrich_employees_from_data_only(
                 num = _as_float(ws.cell(row, col).value)
                 if num is not None:
                     emp[target] = num
+            apply_column_cell_map_to_record(
+                emp,
+                row,
+                ws,
+                _active_mapping(),
+                coerce_number=_as_float,
+                is_formula_cell=lambda v: bool(_cell_formula_text(v)),
+                overwrite=False,
+            )
             idx += 1
         return employees
     finally:

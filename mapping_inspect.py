@@ -275,6 +275,9 @@ def _inspect_fixed_header_source(
                     en_s = str(en).strip() if en is not None else ""
                 employees.append({"cnName": cn_s, "enName": en_s})
 
+    extra = _cell_map_inspect_headers(mapping)
+    if extra:
+        headers = list(headers) + extra
     wb.close()
     return {
         "ok": True,
@@ -283,6 +286,15 @@ def _inspect_fixed_header_source(
         "headers": headers,
         "employees": employees,
     }
+
+
+def _cell_map_inspect_headers(mapping: dict[str, Any]) -> list[dict[str, Any]]:
+    try:
+        from bill_convert.column_cell_map import inspect_headers_for_column_cell_map
+
+        return inspect_headers_for_column_cell_map(mapping)
+    except Exception:
+        return []
 
 
 def _inspect_uae_source(source_path: Path, mapping: dict[str, Any]) -> dict[str, Any]:
