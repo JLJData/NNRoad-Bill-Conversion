@@ -45,6 +45,7 @@ from bill_convert.formula_layout import (
     tw_l_row_for_data_row,
 )
 from bill_convert.formula_layout import _default_example_row as default_example_row_for_mapping
+from bill_convert.column_cell_map import apply_column_cell_map_to_record
 from bill_convert.headers import list_qualified_header_cells
 from profiles.tw_payroll_calc.convert import match_ee_code
 
@@ -132,6 +133,17 @@ def parse_expense_count(text: Any) -> int:
     return int(m.group(1)) if m else 0
 
 
+def _coerce_number(val: Any) -> float | None:
+    if val is None or val == "":
+        return None
+    if isinstance(val, (int, float)) and not isinstance(val, bool):
+        return float(val)
+    try:
+        return float(str(val).replace(",", "").strip())
+    except (ValueError, TypeError):
+        return None
+
+
 def extract_by_label_col_a(ws: Worksheet, label: str, value_col: int) -> Any:
     target = norm(label)
     for row in range(1, (ws.max_row or 0) + 1):
@@ -167,6 +179,14 @@ def read_calc_employees(ws: Worksheet) -> list[dict[str, Any]]:
         record: dict[str, Any] = {}
         for hdr, col in headers.items():
             record[hdr] = clean_value(ws.cell(row, col).value)
+        apply_column_cell_map_to_record(
+            record,
+            row,
+            ws,
+            _active_mapping(),
+            coerce_number=_coerce_number,
+            is_formula_cell=lambda v: isinstance(v, str) and str(v).startswith("="),
+        )
         employees.append(record)
 
     if not employees:
