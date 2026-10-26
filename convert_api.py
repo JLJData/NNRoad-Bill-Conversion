@@ -21,7 +21,7 @@
   POST /file-role/classify          轻量角色探测（Excel inspect / PDF 关键字+旁路）
   POST /mapping/inspect-source     样例源表头
   GET  /ai-validation/profiles     AI 对比试点配置（不调用模型）
-  POST /ai-validation/run          原账单 + 当前母版 → AI 对比工作簿（最后一个 -L；可选 CODE 结果仅锚定人名）
+  POST /ai-validation/run          原账单 + 当前母版 → AI 对比工作簿（默认最后一张 -L；CODE 有多张 -L 时按 CODE 张数填）
   POST /ai-validation/suggest-prompt  CODE/AI 差异摘要 + 用户需求 → 建议 aiInstructions
   GET  /region-template?region=Taiwan  地区默认 PN 母版
   POST /excel-snapshot  multipart: file, sheet(可选默认PN), max_cells(可选默认300)

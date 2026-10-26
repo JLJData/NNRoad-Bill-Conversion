@@ -31,6 +31,25 @@ def _sha256(raw: bytes) -> str:
     return hashlib.sha256(raw).hexdigest()
 
 
+# 精确以 -L 结尾（UK-L）；以及 CODE 扩出来的 UK-L (2) / China-L (2)
+_L_SHEET_RE = re.compile(r"(?i)^.+\-l(?:\s*\(\d+\))?$")
+
+
+def list_l_sheet_names(sheetnames: list[str]) -> list[str]:
+    """Workbook 顺序中所有地区 -L 表，含 ``UK-L (2)``。"""
+    return [name for name in sheetnames if _L_SHEET_RE.match(str(name).strip())]
+
+
+def list_l_sheets_in_workbook(workbook_path: str | Path) -> list[str]:
+    path = Path(workbook_path)
+    require(path.is_file(), "Workbook is missing")
+    wb = load_workbook(path, read_only=True, keep_links=False)
+    try:
+        return list_l_sheet_names(list(wb.sheetnames))
+    finally:
+        wb.close()
+
+
 def _last_l_sheet(sheetnames: list[str]) -> str:
     matches = [name for name in sheetnames if name.strip().casefold().endswith("-l")]
     require(bool(matches), "Template has no worksheet ending in -L")
@@ -1291,13 +1310,16 @@ def resolve_dynamic_template_fill_targets(plan: dict, template_manifest: dict, *
 
 
 def inspect_last_l_sheet(template_path: str | Path, *, max_nonempty_cells: int = 20000,
-                         header_row: int | None = None) -> dict:
-    """Return a bounded, read-only manifest for the last sheet ending in ``-L``."""
+                         header_row: int | None = None, sheet_name: str | None = None) -> dict:
+    """Return a bounded, read-only manifest for one ``-L`` sheet (default: last exact ``*-L``)."""
     path = Path(template_path)
     raw = path.read_bytes()
     wb = load_workbook(BytesIO(raw), data_only=False, read_only=False, keep_links=False)
     try:
-        sheet_name = _last_l_sheet(list(wb.sheetnames))
+        if sheet_name:
+            require(sheet_name in wb.sheetnames, f"Worksheet {sheet_name!r} is missing")
+        else:
+            sheet_name = _last_l_sheet(list(wb.sheetnames))
         ws = wb[sheet_name]
         header_row, column_contexts = _column_contexts(ws, header_row=header_row)
         cells = []

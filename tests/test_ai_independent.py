@@ -471,6 +471,57 @@ class IndependentTests(unittest.TestCase):
         self.assertIsNone(out["UK-L"]["B7"].value)
         self.assertEqual(out["UK-L"]["A7"].value, "Gross Salary")
 
+    def test_list_l_sheets_includes_numbered_copies(self):
+        from ai_collection.template_fill import list_l_sheet_names, list_l_sheets_in_workbook
+
+        self.assertEqual(
+            list_l_sheet_names(["PN", "UK-L", "UK EE", "UK-L (2)", "China-L (2)"]),
+            ["UK-L", "UK-L (2)", "China-L (2)"],
+        )
+        wb = Workbook()
+        wb.active.title = "PN"
+        wb.create_sheet("UK-L")
+        wb.create_sheet("UK-L (2)")
+        path = self.root / "code-multi-l.xlsx"
+        wb.save(path)
+        wb.close()
+        self.assertEqual(list_l_sheets_in_workbook(path), ["UK-L", "UK-L (2)"])
+
+    def test_prepare_clones_missing_code_l_sheets(self):
+        from ai_collection.independent import keep_ai_comparison_sheets
+
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "UK-L"
+        ws["A3"] = "Sample Name- Salary Calculation for FY 2025/26"
+        ws["A5"], ws["B5"] = "Details", "Amount in GBP"
+        for row, label in ((7, "Gross Salary"), (8, "Holiday Pay"), (9, "Car Allowance"),
+                           (10, "ER' NIC"), (11, "EE'NIC")):
+            ws.cell(row, 1, label)
+            ws.cell(row, 2, 1)
+        wb.create_sheet("PN")["A1"] = "keep-or-drop"
+        wb.save(self.template)
+        wb.close()
+        blank = self.root / "uk-multi-blank.xlsx"
+        manifest = prepare_independent_template(
+            self.template, blank,
+            layout={"layout": "vertical_label_amount", "labelColumn": 1, "amountColumn": 2},
+            l_sheet_names=["UK-L", "UK-L (2)"],
+        )
+        self.assertEqual(manifest["lSheetNames"], ["UK-L", "UK-L (2)"])
+        self.assertEqual(len(manifest["lSheetManifests"]), 2)
+        out = load_workbook(blank)
+        self.addCleanup(out.close)
+        self.assertIn("UK-L (2)", out.sheetnames)
+        self.assertIsNone(out["UK-L"]["B7"].value)
+        self.assertIsNone(out["UK-L (2)"]["B7"].value)
+        out.close()
+        removed = keep_ai_comparison_sheets(blank, keep_l_sheets=["UK-L", "UK-L (2)"])
+        self.assertIn("PN", removed)
+        kept = load_workbook(blank)
+        self.addCleanup(kept.close)
+        self.assertEqual(kept.sheetnames, ["UK-L", "UK-L (2)"])
+
 
 if __name__ == "__main__":
     unittest.main()

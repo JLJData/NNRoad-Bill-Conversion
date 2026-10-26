@@ -25,7 +25,7 @@ from bill_validation.contracts import ValidationError, decimal_text, nonempty, r
 from .template_fill import (
     _dynamic_value, _is_service_fee_label, _parse_sheet_coordinate,
     _is_person_name_label, _normalized_semantic, _column_contexts,
-    _last_l_sheet, inspect_last_l_sheet,
+    _last_l_sheet, inspect_last_l_sheet, list_l_sheet_names, list_l_sheets_in_workbook,
 )
 
 AUDIT_SHEET = "_AI_Audit"
@@ -231,130 +231,187 @@ def _clear_vertical_sample_inputs(ws, layout: dict, spec: dict) -> dict:
     }
 
 
-def prepare_independent_template(template_path, output_path, *, layout=None) -> dict:
+def _ensure_named_l_sheets(wb, names: list[str]) -> None:
+    existing = list_l_sheet_names(list(wb.sheetnames))
+    donor = existing[0] if existing else _last_l_sheet(list(wb.sheetnames))
+    for name in names:
+        if name in wb.sheetnames:
+            continue
+        dest = wb.copy_worksheet(wb[donor])
+        dest.title = name
+
+
+def _prepare_l_worksheet(ws, layout: dict) -> dict:
+    """Clear sample inputs on one -L sheet; return inspect extras for that sheet."""
+    vertical = _resolve_vertical_spec(ws, layout, required=_vertical_requested(layout))
+    if vertical:
+        extras = _clear_vertical_sample_inputs(ws, layout, vertical)
+        extras["layout"] = VERTICAL_LAYOUT
+        return extras
+    header = _header(ws, layout)
+    _, contexts = _column_contexts(ws, header)
+    name_cols = {c["column"] for c in contexts if _is_person_name_label(c["primaryLabel"])}
+    if layout.get("nameColumns") is not None:
+        require(isinstance(layout["nameColumns"], list) and all(type(c) is int and 1 <= c <= ws.max_column
+                for c in layout["nameColumns"]), "targetL.nameColumns must contain valid 1-based column numbers")
+        name_cols = set(layout["nameColumns"])
+    require(bool(name_cols), "Template needs identifiable employee-name columns")
+    input_cols = {c["column"] for c in contexts}
+    require(name_cols <= input_cols, "Employee-name columns must have template headers")
+    require(isinstance(layout.get("protectedCells", []), list)
+            and all(isinstance(c, str) and re.fullmatch(r"[A-Z]{1,3}[1-9][0-9]*", c)
+                    for c in layout.get("protectedCells", [])), "targetL.protectedCells must be a list of cell coordinates")
+    protected = set(layout.get("protectedCells") or [])
+    rows = []
+    explicit_start, explicit_end = layout.get("dataStartRow"), layout.get("dataEndRow")
+    require(not explicit_end or explicit_start, "targetL.dataEndRow requires dataStartRow")
+    if explicit_end:
+        require(header < int(explicit_start) <= int(explicit_end) <= 20000,
+                "Invalid targetL employee row range")
+        rows = list(range(int(explicit_start), int(explicit_end) + 1))
+    else:
+        aggregate_rows, detail_rows = set(), set()
+        for row in ws.iter_rows(min_row=header + 1, max_row=min(ws.max_row, 20000)):
+            if any(_person(ws.cell(row[0].row, c).value) for c in name_cols):
+                continue
+            for cell in row:
+                formula = re.fullmatch(r"=SUM\(\$?([A-Z]+)\$?(\d+):\$?([A-Z]+)\$?(\d+)\)",
+                                       str(cell.value or ""), re.IGNORECASE)
+                if formula:
+                    first, last = int(formula[2]), int(formula[4])
+                    if header < first < last <= min(ws.max_row, 20000) and not first <= cell.row <= last:
+                        aggregate_rows.add(cell.row)
+                        detail_rows.update(range(first, last + 1))
+        for r in range(max(header + 1, int(explicit_start or 1)), min(ws.max_row, 20000) + 1):
+            cells = [ws.cell(r, c) for c in input_cols]
+            names = [_person(ws.cell(r, c).value) for c in name_cols]
+            literals = [c.value for c in cells if c.value is not None and c.data_type != "f"]
+            summary = any(_normalized_semantic(v) in {"total", "subtotal", "grandtotal", "合计", "总计"}
+                          for v in literals if isinstance(v, str))
+            payroll = any(c.data_type == "f" or isinstance(c.value, (int, float)) for c in cells)
+            numeric_only = all(isinstance(v, (int, float)) for v in literals)
+            if not summary and r not in aggregate_rows and (
+                    payroll and (any(names) or numeric_only) or r in detail_rows and not literals):
+                rows.append(r)
+        if not rows:
+            start = int(explicit_start or header + 1)
+            require(not any(ws.cell(r, c).value is not None for r in range(start, ws.max_row + 1)
+                            for c in input_cols),
+                    "Employee input area is ambiguous; configure targetL.dataStartRow/dataEndRow/protectedCells")
+            rows = list(range(start, max(start, ws.max_row) + 1))
+    require(len(rows) <= 20000, "Template employee area exceeds the row limit")
+    cleared = []
+    for r in rows:
+        for c in input_cols:
+            cell = ws.cell(r, c)
+            if (not isinstance(cell, MergedCell) and cell.data_type != "f"
+                    and cell.value is not None and cell.coordinate not in protected):
+                cleared.append(cell.coordinate)
+                cell.value = None
+    metadata = {}
+    for row in ws.iter_rows(max_row=min(rows) - 1):
+        for cell in row:
+            if cell.coordinate in protected or isinstance(cell, MergedCell):
+                continue
+            if _date_value(cell.value):
+                metadata[cell.coordinate] = "date"
+    for r in rows:
+        for c in input_cols:
+            cell = ws.cell(r, c)
+            ref = re.fullmatch(r"=\$?([A-Z]+)\$?(\d+)", str(cell.value or ""))
+            if ref and int(ref[2]) < min(rows):
+                target = ws[f"{ref[1]}{ref[2]}"]
+                if target.coordinate not in protected and (target.value is None or _date_value(target.value)):
+                    metadata[target.coordinate] = "date"
+    for ref in metadata:
+        if ws[ref].value is not None:
+            cleared.append(ref)
+            ws[ref] = None
+    return {
+        "headerRow": header,
+        "employeeRows": rows,
+        "dataStartRow": min(rows),
+        "metadataInputs": metadata,
+        "nameColumns": sorted(name_cols),
+        "clearedSampleCells": cleared,
+    }
+
+
+def _manifest_from_prepared(output, extras: dict, *, sheet_name: str) -> dict:
+    header = extras.get("headerRow")
+    manifest = inspect_last_l_sheet(output, header_row=header, sheet_name=sheet_name)
+    extra = {k: v for k, v in extras.items() if k != "headerRow"}
+    manifest.update(extra)
+    return manifest
+
+
+def prepare_independent_template(template_path, output_path, *, layout=None,
+                                 l_sheet_names: list[str] | None = None) -> dict:
     """Clear sample inputs on identifiable employee rows, never a whole row band.
 
-    No CODE workbook is consulted. Fixed labels, footer rows, formulas, protected
-    cells and other sheets are preserved. Ambiguous layouts require configuration.
-    UK / EOR single-person sheets use targetL.layout=vertical_label_amount (also
-    auto-detected when the last -L sheet is a narrow label|amount form).
+    ``l_sheet_names``：仅当 CODE 结果有多张 -L 时传入，按这些表名准备（缺的从表内已有 -L 克隆）。
+    未传或只有一张时仍只处理最后一个精确 ``*-L`` 表。
     """
     layout = layout or {}
     require(isinstance(layout, dict), "targetL must be an object")
     source, output = Path(template_path).resolve(), Path(output_path).resolve()
     require(source != output and not output.exists(), "Prepared template must be a new file")
+    multi = bool(l_sheet_names) and len(l_sheet_names) > 1
     wb = load_workbook(source, keep_links=False)
-    cleared = []
-    vertical_extras = None
-    header = None
-    rows = None
-    metadata = None
-    name_cols = None
+    extras_by_name: dict[str, dict] = {}
     try:
         require(AUDIT_SHEET not in wb.sheetnames and PROVENANCE_SHEET not in wb.sheetnames,
                 "Use the master template, not an earlier AI comparison workbook")
-        ws = wb[_last_l_sheet(wb.sheetnames)]
-        vertical = _resolve_vertical_spec(ws, layout, required=_vertical_requested(layout))
-        if vertical:
-            vertical_extras = _clear_vertical_sample_inputs(ws, layout, vertical)
-            header = vertical_extras["headerRow"]
+        if multi:
+            _ensure_named_l_sheets(wb, list(l_sheet_names))
+            targets = list(l_sheet_names)
         else:
-            header = _header(ws, layout)
-            _, contexts = _column_contexts(ws, header)
-            name_cols = {c["column"] for c in contexts if _is_person_name_label(c["primaryLabel"])}
-            if layout.get("nameColumns") is not None:
-                require(isinstance(layout["nameColumns"], list) and all(type(c) is int and 1 <= c <= ws.max_column
-                        for c in layout["nameColumns"]), "targetL.nameColumns must contain valid 1-based column numbers")
-                name_cols = set(layout["nameColumns"])
-            require(bool(name_cols), "Template needs identifiable employee-name columns")
-            input_cols = {c["column"] for c in contexts}
-            require(name_cols <= input_cols, "Employee-name columns must have template headers")
-            require(isinstance(layout.get("protectedCells", []), list)
-                    and all(isinstance(c, str) and re.fullmatch(r"[A-Z]{1,3}[1-9][0-9]*", c)
-                            for c in layout.get("protectedCells", [])), "targetL.protectedCells must be a list of cell coordinates")
-            protected = set(layout.get("protectedCells") or [])
-            rows = []
-            explicit_start, explicit_end = layout.get("dataStartRow"), layout.get("dataEndRow")
-            require(not explicit_end or explicit_start, "targetL.dataEndRow requires dataStartRow")
-            if explicit_end:
-                require(header < int(explicit_start) <= int(explicit_end) <= 20000,
-                        "Invalid targetL employee row range")
-                rows = list(range(int(explicit_start), int(explicit_end) + 1))
-            else:
-                # A nameless SUM over multiple rows describes a detail band, not an
-                # employee. This also finds truly blank slots underneath top totals.
-                aggregate_rows, detail_rows = set(), set()
-                for row in ws.iter_rows(min_row=header + 1, max_row=min(ws.max_row, 20000)):
-                    if any(_person(ws.cell(row[0].row, c).value) for c in name_cols):
-                        continue
-                    for cell in row:
-                        formula = re.fullmatch(r"=SUM\(\$?([A-Z]+)\$?(\d+):\$?([A-Z]+)\$?(\d+)\)",
-                                               str(cell.value or ""), re.IGNORECASE)
-                        if formula:
-                            first, last = int(formula[2]), int(formula[4])
-                            if header < first < last <= min(ws.max_row, 20000) and not first <= cell.row <= last:
-                                aggregate_rows.add(cell.row)
-                                detail_rows.update(range(first, last + 1))
-                for r in range(max(header + 1, int(explicit_start or 1)), min(ws.max_row, 20000) + 1):
-                    cells = [ws.cell(r, c) for c in input_cols]
-                    names = [_person(ws.cell(r, c).value) for c in name_cols]
-                    literals = [c.value for c in cells if c.value is not None and c.data_type != "f"]
-                    # A summary or explanatory row must not be treated as a sample employee.
-                    summary = any(_normalized_semantic(v) in {"total", "subtotal", "grandtotal", "合计", "总计"}
-                                  for v in literals if isinstance(v, str))
-                    payroll = any(c.data_type == "f" or isinstance(c.value, (int, float)) for c in cells)
-                    numeric_only = all(isinstance(v, (int, float)) for v in literals)
-                    if not summary and r not in aggregate_rows and (
-                            payroll and (any(names) or numeric_only) or r in detail_rows and not literals):
-                        rows.append(r)
-                # A genuinely empty table is usable without inventing sample identities.
-                if not rows:
-                    start = int(explicit_start or header + 1)
-                    require(not any(ws.cell(r, c).value is not None for r in range(start, ws.max_row + 1)
-                                    for c in input_cols),
-                            "Employee input area is ambiguous; configure targetL.dataStartRow/dataEndRow/protectedCells")
-                    rows = list(range(start, max(start, ws.max_row) + 1))
-            require(len(rows) <= 20000, "Template employee area exceeds the row limit")
-            for r in rows:
-                for c in input_cols:
-                    cell = ws.cell(r, c)
-                    if (not isinstance(cell, MergedCell) and cell.data_type != "f"
-                            and cell.value is not None and cell.coordinate not in protected):
-                        cleared.append(cell.coordinate)
-                        cell.value = None
-            # Date inputs referenced by employee formulas, and existing date literals
-            # above the table, are metadata inputs, not employee names or fixed labels.
-            metadata = {}
-            for row in ws.iter_rows(max_row=min(rows) - 1):
-                for cell in row:
-                    if cell.coordinate in protected or isinstance(cell, MergedCell):
-                        continue
-                    if _date_value(cell.value):
-                        metadata[cell.coordinate] = "date"
-            for r in rows:
-                for c in input_cols:
-                    cell = ws.cell(r, c)
-                    ref = re.fullmatch(r"=\$?([A-Z]+)\$?(\d+)", str(cell.value or ""))
-                    if ref and int(ref[2]) < min(rows):
-                        target = ws[f"{ref[1]}{ref[2]}"]
-                        if target.coordinate not in protected and (target.value is None or _date_value(target.value)):
-                            metadata[target.coordinate] = "date"
-            for ref in metadata:
-                if ws[ref].value is not None:
-                    cleared.append(ref)
-                    ws[ref] = None
+            targets = [_last_l_sheet(list(wb.sheetnames))]
+        for name in targets:
+            require(name in wb.sheetnames, f"Worksheet {name!r} is missing")
+            extras_by_name[name] = _prepare_l_worksheet(wb[name], layout)
         output.parent.mkdir(parents=True, exist_ok=True)
         wb.save(output)
     finally:
         wb.close()
-    manifest = inspect_last_l_sheet(output, header_row=header)
-    if vertical_extras is not None:
-        extras = {k: v for k, v in vertical_extras.items() if k != "headerRow"}
-        manifest.update(extras)
-    else:
-        manifest.update(employeeRows=rows, dataStartRow=min(rows), metadataInputs=metadata,
-                        nameColumns=sorted(name_cols), clearedSampleCells=cleared)
-    return manifest
+    manifests = [_manifest_from_prepared(output, extras_by_name[name], sheet_name=name) for name in extras_by_name]
+    primary = manifests[-1] if not multi else manifests[0]
+    if multi:
+        primary = dict(primary)
+        primary["lSheetManifests"] = manifests
+        primary["lSheetNames"] = [item["sheetName"] for item in manifests]
+    return primary
+
+
+def code_sheet_identity_hint(code_path, sheet_name: str) -> str:
+    """CODE 某张 -L 上可辨认的人名（竖表标题或姓名列），仅作分表提示。"""
+    if not code_path:
+        return ""
+    path = Path(code_path)
+    if not path.is_file():
+        return ""
+    wb = load_workbook(path, data_only=True, keep_links=False)
+    try:
+        if sheet_name not in wb.sheetnames:
+            return ""
+        ws = wb[sheet_name]
+        for row in ws.iter_rows(max_row=min(ws.max_row or 1, 40)):
+            for cell in row:
+                if cell.data_type == "f":
+                    continue
+                match = _TITLE_RE.match(_cell_label(cell.value))
+                if match:
+                    return match.group(1).strip()
+        _, contexts = _column_contexts(ws)
+        name_cols = [c["column"] for c in contexts if _is_person_name_label(c.get("primaryLabel"))]
+        for row in ws.iter_rows(min_row=2, max_row=min(ws.max_row or 1, 80)):
+            names = [_cell_label(ws.cell(row[0].row, col).value) for col in name_cols]
+            names = [item for item in names if _person(item)]
+            if names:
+                return " / ".join(names)
+    finally:
+        wb.close()
+    return ""
 
 
 def plan_sha256(plan: dict) -> str:
@@ -541,18 +598,24 @@ def validate_independent_plan(plan: dict, manifest: dict, documents: list[dict],
 
 
 def write_independent_template_copy(template_path: str | Path, output_path: str | Path,
-                                    plan: dict, documents: list[dict], *, source_paths=None, manifest=None) -> dict:
+                                    plan: dict, documents: list[dict], *, source_paths=None,
+                                    manifest=None, into_existing: bool = False) -> dict:
     source, output = Path(template_path).resolve(), Path(output_path).resolve()
-    require(source != output and not output.exists(), "Independent AI output must be a new file")
+    if into_existing:
+        require(source != output and output.is_file(), "Independent AI output must already exist")
+    else:
+        require(source != output and not output.exists(), "Independent AI output must be a new file")
     manifest = manifest or inspect_last_l_sheet(source)
     require(hashlib.sha256(source.read_bytes()).hexdigest() == manifest["templateSha256"], "Prepared template changed")
     validate_independent_template(manifest)
     validate_independent_plan(plan, manifest, documents, source_paths=source_paths)
     output.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(source, output)
+    if not into_existing:
+        shutil.copy2(source, output)
     try:
         wb = load_workbook(output, data_only=False, keep_links=False)
         try:
+            require(manifest["sheetName"] in wb.sheetnames, "AI output is missing the target -L sheet")
             ws = wb[manifest["sheetName"]]
             name_cell = manifest.get("employeeNameCell") if _is_vertical_manifest(manifest) else None
             name_fy = manifest.get("employeeNameFy")
@@ -569,13 +632,15 @@ def write_independent_template_copy(template_path: str | Path, output_path: str 
                     cell.data_type = "s"  # Literal model text must never become a formula.
             for sheet in wb.worksheets:
                 sheet.sheet_view.tabSelected = False
-            wb.active = manifest["sheetIndex"]
-            ws.sheet_view.tabSelected = True
+            if manifest["sheetName"] in wb.sheetnames:
+                wb.active = wb.sheetnames.index(manifest["sheetName"])
+                ws.sheet_view.tabSelected = True
             wb.save(output)
         finally:
             wb.close()
     except Exception:
-        output.unlink(missing_ok=True)
+        if not into_existing:
+            output.unlink(missing_ok=True)
         raise
     return {"templateSha256": manifest["templateSha256"],
             "outputSha256": hashlib.sha256(output.read_bytes()).hexdigest(),
@@ -762,28 +827,31 @@ def _inline_removed_sheet_refs(wb, kept: list[str], removed: list[str], code_val
     return inlined
 
 
-def keep_ai_comparison_sheets(path: str | Path, code_path: str | Path | None = None) -> list[str]:
-    """Drop PN and other template sheets; keep the last -L plus independent audit sheets.
+def keep_ai_comparison_sheets(path: str | Path, code_path: str | Path | None = None,
+                              keep_l_sheets: list[str] | None = None) -> list[str]:
+    """Drop PN and other template sheets; keep selected -L plus independent audit sheets.
 
-    AI comparison never publishes PN. Leaving those formulas in the workbook
-    makes LibreOffice recalculate unused summary cells such as PN!F15.
+    默认只留最后一个精确 ``*-L``。CODE 有多张 -L 时传入 ``keep_l_sheets``。
     """
     output = Path(path)
     wb = load_workbook(output, keep_links=False)
     code_values = load_workbook(code_path, data_only=True, keep_links=False) if code_path else None
     try:
         last_l = _last_l_sheet(list(wb.sheetnames))
-        keep = {last_l, AUDIT_SHEET, PROVENANCE_SHEET}
+        keep_l = [name for name in (keep_l_sheets or [last_l]) if name in wb.sheetnames]
+        require(bool(keep_l), "AI comparison has no -L sheet to keep")
+        keep = set(keep_l) | {AUDIT_SHEET, PROVENANCE_SHEET}
         removed = [name for name in wb.sheetnames if name not in keep]
         if removed:
             _inline_removed_sheet_refs(wb, [n for n in wb.sheetnames if n in keep], removed, code_values)
         for name in removed:
             del wb[name]
         if removed:
-            wb.active = wb.sheetnames.index(last_l)
+            active = keep_l[0]
+            wb.active = wb.sheetnames.index(active)
             for sheet in wb.worksheets:
                 sheet.sheet_view.tabSelected = False
-            wb[last_l].sheet_view.tabSelected = True
+            wb[active].sheet_view.tabSelected = True
             wb.save(output)
         return removed
     finally:
