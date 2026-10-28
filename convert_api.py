@@ -977,6 +977,26 @@ async def ai_validation_run(
                 raise HTTPException(status_code=400, detail="原始供应商账单为空")
             path.write_bytes(content)
             original_paths.append(path)
+        source_hints = json.loads(source_hints_json) if source_hints_json and source_hints_json.strip() else None
+        unlock_mapping = _with_unlock_hints(
+            source_hints if isinstance(source_hints, dict) else None,
+            duration=str(period).strip(),
+        )
+        unlocked_dir = tmp_dir / "unlocked"
+        unlocked_dir.mkdir(parents=True, exist_ok=True)
+        opened: list[Path] = []
+        for path in original_paths:
+            if path.suffix.lower() not in {".xlsx", ".xlsm", ".xls"}:
+                opened.append(path)
+                continue
+            hint_map = _with_unlock_hints(unlock_mapping, filename=path.name, duration=str(period).strip())
+            try:
+                pwds = collect_unlock_passwords(path, mapping=hint_map)
+                opened.append(unlock_xlsx(path, unlocked_dir, passwords=pwds))
+            except Exception as exc:
+                print(f"[ai] original unlock skipped {path.name}: {exc}", flush=True)
+                opened.append(path)
+        original_paths = opened
         template_path = tmp_dir / ("current-template" + template_suffix)
         template_bytes = await template.read()
         if not template_bytes:
@@ -993,7 +1013,6 @@ async def ai_validation_run(
                 raise HTTPException(status_code=400, detail="CODE 结果为空")
             code_result_path.write_bytes(code_bytes)
         output_path = tmp_dir / "AI_comparison.xlsx"
-        source_hints = json.loads(source_hints_json) if source_hints_json and source_hints_json.strip() else None
         metadata = run_ai_comparison_workbook(
             original_paths=original_paths,
             template_path=template_path,

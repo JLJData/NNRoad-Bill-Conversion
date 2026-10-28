@@ -11,12 +11,75 @@ from pathlib import Path
 
 from bill_validation.contracts import require
 from .independent import (
-    AUDIT_SHEET, PROVENANCE_SHEET, code_owned_columns, code_sheet_identity_hint,
+    AUDIT_SHEET, PROVENANCE_SHEET, VERTICAL_LAYOUT, code_owned_columns, code_sheet_identity_hint,
     copy_independent_special_cells,
     embed_independent_audit, keep_ai_comparison_sheets, plan_sha256, prepare_independent_template,
     validate_independent_plan, validate_independent_template, write_independent_template_copy,
 )
-from .template_fill import list_l_sheets_in_workbook, normalize_code_provenance_cells
+from .template_fill import list_l_sheets_in_workbook, normalize_code_provenance_cells, _normalized_semantic
+
+
+def _multi_l_fill_mode(manifests: list, sheet_hints: dict, engine_id: str) -> str:
+    """same_roster=同人多表（China-L / China-L (2)）；one_person_per_sheet=一人一表（UK-L (2)）。"""
+    names = [str(item.get("sheetName") or "") for item in manifests]
+    if str(engine_id or "").strip() == "china_hrone_payment_notice":
+        return "same_roster"
+    if names and all(n.strip().casefold().startswith("china-l") for n in names):
+        return "same_roster"
+    if any(str(item.get("layout") or "").strip() == VERTICAL_LAYOUT for item in manifests):
+        return "one_person_per_sheet"
+    keys = ["/".join(sorted({_normalized_semantic(person) for person in (sheet_hints.get(n) or "").split(" / ")
+                             if _normalized_semantic(person)})) for n in names]
+    keys = [k for k in keys if k]
+    if len(keys) >= 2 and len(set(keys)) == 1:
+        return "same_roster"
+    if len(set(keys)) > 1:
+        return "one_person_per_sheet"
+    return "same_roster"
+
+
+def _source_sheet_candidates(sheet_name: str, source_hints: dict, engine_id: str) -> list[str]:
+    """Use explicit per-table bindings; a second target sheet does not imply another person."""
+    copies = source_hints.get("lSheetCopies")
+    if copies is None and engine_id:
+        from convert_mapping import resolve_convert_mapping
+        copies = resolve_convert_mapping(engine_id, {}).get("lSheetCopies")
+    for item in copies or []:
+        target, source = item.get("target") or {}, item.get("source") or {}
+        if sheet_name in [target.get("sheet"), *(target.get("candidates") or [])]:
+            return list(dict.fromkeys(n for n in [source.get("sheet"), *(source.get("candidates") or [])] if n))
+    return {"china-l": ["S-Payslip"], "china-l (2)": ["S-Payroll Report"]}.get(sheet_name.casefold(), [])
+
+
+def _multi_l_sheet_instructions(sheet_name: str, manifests: list, sheet_hints: dict, mode: str) -> list[str]:
+    names = [str(item.get("sheetName") or "") for item in manifests]
+    extra = [
+        f"Fill only worksheet {sheet_name}. This CODE result has {len(manifests)} -L sheets: {', '.join(names)}.",
+    ]
+    hint = (sheet_hints.get(sheet_name) or "").strip()
+    if mode == "one_person_per_sheet":
+        extra.append(
+            "Each -L sheet is a different person (or a different vertical employee pack). "
+            "Do not copy another -L sheet's identity or amounts onto this sheet."
+        )
+        if hint:
+            extra.append(f"This -L sheet corresponds to: {hint}")
+        return extra
+    extra.append(
+        "These -L sheets share the same employee roster. They are different source tables "
+        "for the same person(s) (e.g. payslip vs payroll report), not different people."
+    )
+    extra.append(
+        "Fill this sheet from the original bill table that matches its columns; "
+        "do not invent a second employee just because there is a second -L sheet."
+    )
+    if sheet_name.strip().casefold() == "china-l":
+        extra.append("China-L is filled from S-Payslip (or the equivalent payslip sheet).")
+    elif sheet_name.strip().casefold().startswith("china-l"):
+        extra.append("China-L (2) is filled from S-Payroll Report (or the equivalent payroll report sheet).")
+    if hint:
+        extra.append(f"Employee identity on this sheet: {hint}")
+    return extra
 
 
 def run_independent(*, documents, resolved, template_path, output_path, run_id, period,
@@ -54,6 +117,7 @@ def run_independent(*, documents, resolved, template_path, output_path, run_id, 
         manifest = prepare_independent_template(
             template_path, prepared, layout=source_hints.get("targetL"),
             l_sheet_names=code_l_names if multi_l else None,
+            engine_id=str(source_hints.get("engineId") or source_hints.get("engine_id") or "").strip() or None,
         )
         manifests = list(manifest.get("lSheetManifests") or [manifest])
         provenance = normalize_code_provenance_cells(source_hints.get("codeProvenanceCells"))
@@ -72,15 +136,32 @@ def run_independent(*, documents, resolved, template_path, output_path, run_id, 
         base_instructions = _instructions(source_hints or {})
         plans = []
         artifacts = []
+        sheet_hints = {
+            item["sheetName"]: code_sheet_identity_hint(code_result_path, item["sheetName"])
+            for item in manifests
+        } if multi_l else {}
+        engine_id = str(source_hints.get("engineId") or source_hints.get("engine_id") or "").strip()
+        multi_mode = _multi_l_fill_mode(manifests, sheet_hints, engine_id) if multi_l else ""
+        audit["multiLFillMode"] = multi_mode
         for index, sheet_manifest in enumerate(manifests):
             sheet_name = sheet_manifest["sheetName"]
             extra = []
             if multi_l:
-                extra.append(f"Fill only worksheet {sheet_name}. This CODE result has {len(manifests)} -L sheets.")
-                extra.append("Do not write another -L sheet's person or amounts onto this sheet.")
-                hint = code_sheet_identity_hint(code_result_path, sheet_name)
-                if hint:
-                    extra.append(f"This -L sheet corresponds to: {hint}")
+                if multi_mode == "one_person_per_sheet":
+                    sheet_manifest["codeSheetIdentityHint"] = sheet_hints.get(sheet_name) or ""
+                    sheet_manifest["otherSheetIdentityHints"] = [
+                        hint for name, hint in sheet_hints.items() if name != sheet_name and hint
+                    ]
+                else:
+                    sheet_manifest["sourceSheetCandidates"] = _source_sheet_candidates(
+                        sheet_name, source_hints, engine_id,
+                    )
+                extra.extend(_multi_l_sheet_instructions(
+                    sheet_name, manifests, sheet_hints, multi_mode,
+                ))
+                if sheet_manifest.get("sourceSheetCandidates"):
+                    extra.append("Every write on this sheet must cite its bound original source table: "
+                                 + ", ".join(sheet_manifest["sourceSheetCandidates"]))
             print(f"[ai] independent: planning sheet {sheet_name} ({index + 1}/{len(manifests)})", flush=True)
 
             def validate(plan, _manifest=sheet_manifest):
@@ -107,7 +188,7 @@ def run_independent(*, documents, resolved, template_path, output_path, run_id, 
         artifact = artifacts[-1]
         audit["finalPlan"] = copy.deepcopy(plan)
         audit["finalPlans"] = copy.deepcopy(plans)
-        audit["finalPlanSha256"] = plan_sha256(plan)
+        audit["finalPlanSha256"] = plan_sha256({"plans": plans}) if multi_l else plan_sha256(plan)
         audit["rawAiWorkbookSha256"] = artifact["outputSha256"]
         special_records, special_issues = [], []
         l_names = {item["sheetName"] for item in manifests}
@@ -134,7 +215,8 @@ def run_independent(*, documents, resolved, template_path, output_path, run_id, 
             "schemaId": "independent-template-last-L" if not multi_l else "independent-template-multi-L",
             "schemaVersion": manifest["templateSha256"][:16],
             "comparisonMode": "independent", "planVersion": 4, "period": period, "currency": currency,
-            "sheetName": ",".join(keep_names), "lSheetNames": keep_names,
+            "sheetName": keep_names[0], "lSheetNames": keep_names,
+            "multiLFillMode": multi_mode,
             "templateSha256": manifest["templateSha256"],
             "outputSha256": hashlib.sha256(output.read_bytes()).hexdigest(), "writeCount": write_count,
             "firstPlanSha256": audit["attempts"][0]["planSha256"] if audit["attempts"] else None,

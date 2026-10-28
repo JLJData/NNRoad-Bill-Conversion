@@ -10,6 +10,7 @@ import os
 import re
 import ssl
 import time
+import zipfile
 import urllib.error
 import urllib.request
 from abc import ABC, abstractmethod
@@ -18,6 +19,7 @@ from typing import Callable
 
 from openpyxl import load_workbook
 from openpyxl.utils import get_column_letter
+from openpyxl.utils.exceptions import InvalidFileException
 
 from bill_validation.contracts import ValidationError, nonempty, require
 
@@ -662,8 +664,15 @@ class OpenAIResponsesProvider(AIProvider):
             path = Path(self._document_resolver(copy.deepcopy(document))).resolve()
             if path.suffix.lower() not in {".xlsx", ".xlsm"}:
                 continue
-            wb = load_workbook(path, data_only=False, keep_links=False)
-            cached = load_workbook(path, data_only=True, keep_links=False)
+            try:
+                wb = load_workbook(path, data_only=False, keep_links=False)
+                cached = load_workbook(path, data_only=True, keep_links=False)
+            except (zipfile.BadZipFile, InvalidFileException, OSError, KeyError) as exc:
+                print(
+                    f"[ai] skip sourceWorkbookCells for {path.name}: not a readable xlsx ({exc})",
+                    flush=True,
+                )
+                continue
             try:
                 sheets = []
                 for ws in wb:
@@ -760,6 +769,13 @@ class OpenAIResponsesProvider(AIProvider):
                     + ", ".join(f"{item['cell']} ({item.get('value')})" for item in locked[:200])
                     + ". Omit those writes; add an issue only if the reported amount looks inconsistent."
                 )
+        if template_manifest.get("codeSheetIdentityHint"):
+            rules.append("This request fills only the employee identified by template.codeSheetIdentityHint. "
+                         "Other original employees belong to other -L sheets. Read all amounts independently "
+                         "from that person's original bill; never combine people or infer amounts from CODE.")
+        if template_manifest.get("sourceSheetCandidates"):
+            rules.append("This -L sheet is a source-table view of the same employee roster. Every write must "
+                         "cite one of template.sourceSheetCandidates; other source tables belong to other -L sheets.")
         profile_instructions = [str(item) for item in (instructions or []) if nonempty(item)]
         prompt = {
             "task": "Independently read the original supplier bills and fill the blank master template. Return planVersion 4.",

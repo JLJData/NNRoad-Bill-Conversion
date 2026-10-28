@@ -265,6 +265,106 @@ class IndependentTests(unittest.TestCase):
         self.addCleanup(wb.close)
         self.assertEqual(wb["Payroll-L"]["C2"].value, "Fixed instruction")
 
+    def test_data_start_row_without_end_rejects_ambiguous_notes(self):
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "China-L"
+        ws.append(["Employee Name", "Basic Salary", "Note"])
+        ws["A3"] = "See payroll appendix"
+        ws["B3"] = "n/a"
+        wb.save(self.template)
+        wb.close()
+        before = self.template.read_bytes()
+        output = self.root / "start-only.xlsx"
+        with self.assertRaisesRegex(ValidationError, "China-L.*ambiguous"):
+            prepare_independent_template(
+                self.template, output,
+                layout={"headerRow": 1, "dataStartRow": 2, "nameColumns": [1]},
+            )
+        self.assertFalse(output.exists())
+        self.assertEqual(self.template.read_bytes(), before)
+
+    def test_blank_template_does_not_clear_fixed_instructions(self):
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Payroll-L"
+        ws.append(["Employee Name", "Basic Salary"])
+        ws["A5"], ws["B5"] = "Keep this fixed instruction", "USD"
+        wb.save(self.template)
+        wb.close()
+        before = self.template.read_bytes()
+        output = self.root / "blank-with-notes.xlsx"
+        with self.assertRaisesRegex(ValidationError, "Payroll-L.*ambiguous"):
+            prepare_independent_template(self.template, output)
+        self.assertFalse(output.exists())
+        self.assertEqual(self.template.read_bytes(), before)
+
+    def test_explicit_employee_range_preserves_fixed_notes_below_it(self):
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Payroll-L"
+        ws.append(["Employee Name", "Basic Salary"])
+        ws["A5"], ws["B5"] = "Keep this fixed instruction", "USD"
+        wb.save(self.template)
+        wb.close()
+        output = self.root / "bounded.xlsx"
+        manifest = prepare_independent_template(
+            self.template, output, layout={"dataStartRow": 2, "dataEndRow": 3},
+        )
+        self.assertEqual(manifest["employeeRows"], [2, 3])
+        out = load_workbook(output)
+        self.addCleanup(out.close)
+        self.assertEqual(out["Payroll-L"]["A5"].value, "Keep this fixed instruction")
+        self.assertEqual(out["Payroll-L"]["B5"].value, "USD")
+
+    def test_blank_template_preserves_explicitly_protected_notes(self):
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Payroll-L"
+        ws.append(["Employee Name", "Basic Salary"])
+        ws["A3"], ws["B3"] = "Fixed instruction", "USD"
+        wb.save(self.template)
+        wb.close()
+        output = self.root / "protected.xlsx"
+        manifest = prepare_independent_template(
+            self.template, output, layout={"dataStartRow": 2, "protectedCells": ["A3", "B3"]},
+        )
+        self.assertIn(2, manifest["employeeRows"])
+        out = load_workbook(output)
+        self.addCleanup(out.close)
+        self.assertEqual(out["Payroll-L"]["A3"].value, "Fixed instruction")
+        self.assertEqual(out["Payroll-L"]["B3"].value, "USD")
+
+    def test_china_l_uses_engine_data_start_when_layout_omitted(self):
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "China-L"
+        ws["A1"] = "Period"
+        ws["B1"] = "2026-09"
+        ws["A3"] = "Group"
+        ws["A4"] = "Name 姓名"
+        ws["B4"] = "Basic Salary"
+        ws["A8"] = "Sum\n合计"
+        ws["A10"], ws["B10"] = "appendix", "n/a"
+        for index, total in enumerate((0, "=SUM(B5:B7)")):
+            with self.subTest(total=total):
+                ws["B8"] = total
+                wb.save(self.template)
+                output = self.root / f"china-blank-{index}.xlsx"
+                manifest = prepare_independent_template(
+                    self.template, output, engine_id="china_hrone_payment_notice",
+                )
+                self.assertEqual(manifest["headerRow"], 4)
+                self.assertEqual(manifest["employeeRows"], [5, 6, 7])
+                out = load_workbook(output)
+                self.addCleanup(out.close)
+                self.assertEqual(out["China-L"]["A8"].value, "Sum\n合计")
+                self.assertEqual(out["China-L"]["B8"].value, total)
+                self.assertEqual(out["China-L"]["A10"].value, "appendix")
+                self.assertEqual(out["China-L"]["B10"].value, "n/a")
+                self.assertEqual(out["China-L"]["A1"].value, "Period")
+        wb.close()
+
     def test_top_summary_identifies_blank_detail_slots_without_using_summary_as_employee(self):
         wb = Workbook()
         ws = wb.active

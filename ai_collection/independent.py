@@ -39,6 +39,10 @@ _VERTICAL_SKIP_LABELS = {
     "details", "amount", "amountingbp", "amountinusd", "exchangerate",
     "label", "item", "description",
 }
+_SUMMARY_LABELS = {
+    "sum", "total", "subtotal", "grandtotal", "合计", "总计", "小计",
+    "sum合计", "total合计", "total总计", "subtotal小计", "grandtotal总计",
+}
 
 
 def is_excluded_service_fee(label):
@@ -55,7 +59,7 @@ def _person(value) -> str:
     if not isinstance(value, str) or _date_value(value):
         return ""
     key = _normalized_semantic(value)
-    if key in {"total", "subtotal", "grandtotal", "sum", "合计", "总计", "小计"}:
+    if key in _SUMMARY_LABELS:
         return ""
     return key
 
@@ -233,10 +237,12 @@ def _clear_vertical_sample_inputs(ws, layout: dict, spec: dict) -> dict:
 
 def _ensure_named_l_sheets(wb, names: list[str]) -> None:
     existing = list_l_sheet_names(list(wb.sheetnames))
-    donor = existing[0] if existing else _last_l_sheet(list(wb.sheetnames))
+    require(bool(existing), "Template has no -L worksheet to clone")
     for name in names:
         if name in wb.sheetnames:
             continue
+        base = re.sub(r"\s*\(\d+\)$", "", name).strip().casefold()
+        donor = next((n for n in existing if n.strip().casefold() == base), existing[-1])
         dest = wb.copy_worksheet(wb[donor])
         dest.title = name
 
@@ -265,6 +271,8 @@ def _prepare_l_worksheet(ws, layout: dict) -> dict:
     rows = []
     explicit_start, explicit_end = layout.get("dataStartRow"), layout.get("dataEndRow")
     require(not explicit_end or explicit_start, "targetL.dataEndRow requires dataStartRow")
+    if explicit_start:
+        require(header < int(explicit_start) <= 20000, "Invalid targetL employee dataStartRow")
     if explicit_end:
         require(header < int(explicit_start) <= int(explicit_end) <= 20000,
                 "Invalid targetL employee row range")
@@ -286,7 +294,7 @@ def _prepare_l_worksheet(ws, layout: dict) -> dict:
             cells = [ws.cell(r, c) for c in input_cols]
             names = [_person(ws.cell(r, c).value) for c in name_cols]
             literals = [c.value for c in cells if c.value is not None and c.data_type != "f"]
-            summary = any(_normalized_semantic(v) in {"total", "subtotal", "grandtotal", "合计", "总计"}
+            summary = any(_normalized_semantic(v) in _SUMMARY_LABELS
                           for v in literals if isinstance(v, str))
             payroll = any(c.data_type == "f" or isinstance(c.value, (int, float)) for c in cells)
             numeric_only = all(isinstance(v, (int, float)) for v in literals)
@@ -295,10 +303,23 @@ def _prepare_l_worksheet(ws, layout: dict) -> dict:
                 rows.append(r)
         if not rows:
             start = int(explicit_start or header + 1)
-            require(not any(ws.cell(r, c).value is not None for r in range(start, ws.max_row + 1)
-                            for c in input_cols),
+            last = max(start, min(ws.max_row, 20000))
+            # An empty employee band can end at an identifiable totals row.
+            # Everything at/below that footer stays outside AI's writable area.
+            for r in range(start, last + 1):
+                if any(ws.cell(r, c).data_type != "f"
+                       and _normalized_semantic(ws.cell(r, c).value) in _SUMMARY_LABELS
+                       for c in input_cols):
+                    last = r - 1
+                    break
+            require(last >= start,
                     "Employee input area is ambiguous; configure targetL.dataStartRow/dataEndRow/protectedCells")
-            rows = list(range(start, max(start, ws.max_row) + 1))
+            ambiguous = [ws.cell(r, c).coordinate for r in range(start, last + 1) for c in input_cols
+                         if ws.cell(r, c).value is not None and ws.cell(r, c).coordinate not in protected]
+            require(not ambiguous,
+                    "Employee input area is ambiguous; configure targetL.dataStartRow/dataEndRow/protectedCells"
+                    + (" (" + ", ".join(ambiguous[:10]) + ")" if ambiguous else ""))
+            rows = list(range(start, last + 1))
     require(len(rows) <= 20000, "Template employee area exceeds the row limit")
     cleared = []
     for r in rows:
@@ -345,8 +366,38 @@ def _manifest_from_prepared(output, extras: dict, *, sheet_name: str) -> dict:
     return manifest
 
 
+def _layout_for_l_sheet(layout: dict | None, *, sheet_name: str, engine_id: str | None = None) -> dict:
+    """补齐 targetL：Office 常不带 dataStartRow，用引擎默认（China-L 为第 4 行表头、第 5 行数据）。"""
+    merged = dict(layout or {})
+    engine_target: dict = {}
+    if engine_id:
+        try:
+            from convert_mapping import resolve_convert_mapping
+            mapping = resolve_convert_mapping(str(engine_id).strip(), {})
+        except Exception:
+            mapping = {}
+        engine_target = dict(mapping.get("targetL") or {}) if isinstance(mapping, dict) else {}
+        for item in mapping.get("lSheetCopies") or []:
+            if not isinstance(item, dict):
+                continue
+            target = item.get("target") if isinstance(item.get("target"), dict) else {}
+            names = [target.get("sheet"), *(target.get("candidates") or [])]
+            if sheet_name in {str(n).strip() for n in names if n}:
+                engine_target = dict(target)
+                break
+    for key in ("headerRow", "dataStartRow", "dataEndRow", "layout",
+                "labelColumn", "amountColumn", "nameColumns", "protectedCells"):
+        if merged.get(key) in (None, "") and engine_target.get(key) not in (None, ""):
+            merged[key] = engine_target[key]
+    if str(sheet_name or "").strip().casefold().startswith("china-l"):
+        merged.setdefault("headerRow", 4)
+        merged.setdefault("dataStartRow", 5)
+    return merged
+
+
 def prepare_independent_template(template_path, output_path, *, layout=None,
-                                 l_sheet_names: list[str] | None = None) -> dict:
+                                 l_sheet_names: list[str] | None = None,
+                                 engine_id: str | None = None) -> dict:
     """Clear sample inputs on identifiable employee rows, never a whole row band.
 
     ``l_sheet_names``：仅当 CODE 结果有多张 -L 时传入，按这些表名准备（缺的从表内已有 -L 克隆）。
@@ -369,7 +420,11 @@ def prepare_independent_template(template_path, output_path, *, layout=None,
             targets = [_last_l_sheet(list(wb.sheetnames))]
         for name in targets:
             require(name in wb.sheetnames, f"Worksheet {name!r} is missing")
-            extras_by_name[name] = _prepare_l_worksheet(wb[name], layout)
+            sheet_layout = _layout_for_l_sheet(layout, sheet_name=name, engine_id=engine_id)
+            try:
+                extras_by_name[name] = _prepare_l_worksheet(wb[name], sheet_layout)
+            except ValidationError as exc:
+                raise ValidationError(f"{name}: {exc}") from exc
         output.parent.mkdir(parents=True, exist_ok=True)
         wb.save(output)
     finally:
@@ -402,16 +457,46 @@ def code_sheet_identity_hint(code_path, sheet_name: str) -> str:
                 match = _TITLE_RE.match(_cell_label(cell.value))
                 if match:
                     return match.group(1).strip()
-        _, contexts = _column_contexts(ws)
+        try:
+            header = _header(ws, {})
+        except ValidationError:
+            return ""
+        _, contexts = _column_contexts(ws, header)
         name_cols = [c["column"] for c in contexts if _is_person_name_label(c.get("primaryLabel"))]
-        for row in ws.iter_rows(min_row=2, max_row=min(ws.max_row or 1, 80)):
+        roster = []
+        for row in ws.iter_rows(min_row=header + 1, max_row=min(ws.max_row or 1, 20000)):
             names = [_cell_label(ws.cell(row[0].row, col).value) for col in name_cols]
             names = [item for item in names if _person(item)]
             if names:
-                return " / ".join(names)
+                roster.extend(names)
+        return " / ".join(dict.fromkeys(roster))
     finally:
         wb.close()
     return ""
+
+
+def _check_sheet_person(value, manifest, where):
+    """Reject a known other sheet's employee without normalizing AI facts to CODE."""
+    expected = _normalized_semantic(manifest.get("codeSheetIdentityHint") or "")
+    actual = _normalized_semantic(value or "")
+    others = {_normalized_semantic(name) for name in manifest.get("otherSheetIdentityHints") or []}
+    require(not actual or actual == expected or actual not in others,
+            f"{where}: employee belongs to another -L sheet; fill only {manifest['sheetName']}")
+
+
+def _check_evidence_person(evidence, manifest, where):
+    expected = manifest.get("codeSheetIdentityHint") or ""
+    if not expected:
+        return
+    quoted = str(evidence.get("rawText") or "")
+
+    def mentions(name):
+        tokens = [re.escape(token) for token in re.split(r"\W+", name) if token]
+        return bool(tokens) and re.search(r"(?<!\w)" + r"\W*".join(tokens) + r"(?!\w)", quoted, re.IGNORECASE)
+
+    others = [name for name in manifest.get("otherSheetIdentityHints") or [] if name]
+    require(mentions(expected) or not any(mentions(name) for name in others),
+            f"{where}: source evidence quotes another -L sheet's employee")
 
 
 def plan_sha256(plan: dict) -> str:
@@ -467,6 +552,7 @@ def validate_independent_plan(plan: dict, manifest: dict, documents: list[dict],
                 "source", "confidence", "reason"}
     seen = set()
     workbooks = {}
+    source_identities = {}
     pdfs = {}
     employee_rows = set(manifest.get("employeeRows") or [])
     name_rows = set()
@@ -531,6 +617,7 @@ def validate_independent_plan(plan: dict, manifest: dict, documents: list[dict],
                     title = _TITLE_RE.match(str(value)) if kind == "text" else None
                     person = _person(title.group(1) if title else value)
                     require(kind == "text" and bool(person), f"{cell}: employee name must be text")
+                    _check_sheet_person(title.group(1) if title else value, manifest, cell)
                     named_employee = True
                 elif vertical and field is not None:
                     used_rows.add(row)
@@ -540,6 +627,7 @@ def validate_independent_plan(plan: dict, manifest: dict, documents: list[dict],
                     used_rows.add(row)
                     if column in set(manifest.get("nameColumns") or []):
                         require(kind == "text" and bool(_person(value)), f"{cell}: employee name must be text")
+                        _check_sheet_person(value, manifest, cell)
                         name_rows.add(row)
                     require(column not in set(manifest.get("codeOwnedColumns") or []),
                             f"{cell}: CODE-owned special field; omit this write")
@@ -551,6 +639,13 @@ def validate_independent_plan(plan: dict, manifest: dict, documents: list[dict],
                         and nonempty(evidence.get("rawText")), f"{cell}: invalid source evidence")
                 require(evidence["page"] is None or type(evidence["page"]) is int and evidence["page"] >= 1,
                         f"{cell}: invalid source page")
+                _check_evidence_person(evidence, manifest, cell)
+                source_candidates = manifest.get("sourceSheetCandidates") or []
+                if source_candidates:
+                    parsed_source = _parse_sheet_coordinate(evidence["location"])
+                    require(parsed_source is not None and parsed_source[0].strip().casefold()
+                            in {str(name).strip().casefold() for name in source_candidates},
+                            f"{cell}: {manifest['sheetName']} must use source table {source_candidates}")
                 # Check the existence of a cited XLSX cell, not its semantic mapping
                 # or equality to the proposed amount. Differences must remain observable.
                 path = (source_paths or {}).get(evidence["fileId"])
@@ -576,6 +671,30 @@ def validate_independent_plan(plan: dict, manifest: dict, documents: list[dict],
                     continue
                 ws = wb[sheet_name]
                 sr, sc = coordinate_to_tuple(source_cell)
+                if manifest.get("otherSheetIdentityHints"):
+                    # A correct target name cannot legitimize amounts cited from another person's sheet/row.
+                    identity_key = (evidence["fileId"], sheet_name)
+                    if identity_key not in source_identities:
+                        titles = []
+                        for source_row in ws.iter_rows(max_row=min(ws.max_row, 20000), max_col=min(ws.max_column, 256)):
+                            for source_value in source_row:
+                                title = _TITLE_RE.match(_cell_label(source_value.value))
+                                if title:
+                                    titles.append((source_value.row, title.group(1)))
+                        try:
+                            source_header = _header(ws, {})
+                            _, source_contexts = _column_contexts(ws, source_header)
+                        except ValidationError:
+                            source_header, source_contexts = 0, []
+                        source_identities[identity_key] = (titles, source_header, source_contexts)
+                    titles, source_header, source_contexts = source_identities[identity_key]
+                    source_person = next((name for title_row, name in reversed(titles) if title_row <= sr), None)
+                    if source_person:
+                        _check_sheet_person(source_person, manifest, cell)
+                    if sr > source_header:
+                        for ctx in source_contexts:
+                            if _is_person_name_label(ctx.get("primaryLabel")):
+                                _check_sheet_person(ws.cell(sr, ctx["column"]).value, manifest, cell)
                 if not (sr <= ws.max_row and sc <= ws.max_column):
                     source_errors.append(f"{cell}: source cell is outside the source sheet ({evidence['location']})")
                 elif ws[source_cell].value is None:
@@ -837,16 +956,24 @@ def keep_ai_comparison_sheets(path: str | Path, code_path: str | Path | None = N
     wb = load_workbook(output, keep_links=False)
     code_values = load_workbook(code_path, data_only=True, keep_links=False) if code_path else None
     try:
-        last_l = _last_l_sheet(list(wb.sheetnames))
-        keep_l = [name for name in (keep_l_sheets or [last_l]) if name in wb.sheetnames]
-        require(bool(keep_l), "AI comparison has no -L sheet to keep")
+        if keep_l_sheets is None and code_path:
+            code_names = list_l_sheets_in_workbook(code_path)
+            keep_l_sheets = code_names if len(code_names) > 1 else None
+        keep_l = list(keep_l_sheets) if keep_l_sheets else [_last_l_sheet(list(wb.sheetnames))]
+        require(all(name in wb.sheetnames for name in keep_l), "AI comparison is missing a CODE -L worksheet")
         keep = set(keep_l) | {AUDIT_SHEET, PROVENANCE_SHEET}
         removed = [name for name in wb.sheetnames if name not in keep]
         if removed:
             _inline_removed_sheet_refs(wb, [n for n in wb.sheetnames if n in keep], removed, code_values)
         for name in removed:
             del wb[name]
-        if removed:
+        reordered = False
+        for index, name in enumerate(keep_l):
+            offset = index - wb.sheetnames.index(name)
+            if offset:
+                wb.move_sheet(wb[name], offset=offset)
+                reordered = True
+        if removed or reordered:
             active = keep_l[0]
             wb.active = wb.sheetnames.index(active)
             for sheet in wb.worksheets:
