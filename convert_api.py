@@ -41,6 +41,7 @@ from pathlib import Path
 from fastapi import FastAPI, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
 from starlette.background import BackgroundTask
+from starlette.concurrency import run_in_threadpool
 from starlette.responses import Response
 
 from convert_mapping import resolve_convert_mapping
@@ -992,7 +993,7 @@ async def ai_validation_run(
             hint_map = _with_unlock_hints(unlock_mapping, filename=path.name, duration=str(period).strip())
             try:
                 pwds = collect_unlock_passwords(path, mapping=hint_map)
-                opened.append(unlock_xlsx(path, unlocked_dir, passwords=pwds))
+                opened.append(await run_in_threadpool(unlock_xlsx, path, unlocked_dir, passwords=pwds))
             except Exception as exc:
                 print(f"[ai] original unlock skipped {path.name}: {exc}", flush=True)
                 opened.append(path)
@@ -1013,7 +1014,7 @@ async def ai_validation_run(
                 raise HTTPException(status_code=400, detail="CODE 结果为空")
             code_result_path.write_bytes(code_bytes)
         output_path = tmp_dir / "AI_comparison.xlsx"
-        metadata = run_ai_comparison_workbook(
+        metadata = await run_in_threadpool(run_ai_comparison_workbook,
             original_paths=original_paths,
             template_path=template_path,
             output_path=output_path,
@@ -1093,7 +1094,7 @@ async def ai_validation_suggest_prompt(request: Request):
     if provider != "openai":
         raise HTTPException(status_code=400, detail="Only the openai AI validation provider is supported")
     try:
-        result = suggest_ai_instructions(
+        result = await run_in_threadpool(suggest_ai_instructions,
             user_request=user_request,
             current_instructions=[str(x) for x in current],
             comparison=comparison,
